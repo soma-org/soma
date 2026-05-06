@@ -123,6 +123,7 @@ message TransactionKind {
     Settle settle = 51;
     RequestClose request_close = 52;
     WithdrawAfterTimeout withdraw_after_timeout = 53;
+    TopUp top_up = 54;
 
     // Per-commit accumulator settlement system transaction (Stage 6a).
     Settlement settlement = 60;
@@ -540,4 +541,18 @@ message RequestClose {
 message WithdrawAfterTimeout {
   // Channel object ID (hex string).
   optional string channel_id = 1;
+}
+
+// Payer-only: add `amount` to the channel's deposit, debited from
+// the payer's accumulator in the channel's coin type. Clears any
+// pending close-timer so a renewing payer can withdraw their close
+// request and keep the relationship running.
+message TopUp {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // Coin denomination ("SOMA" / "USDC"). Must match the channel's
+  // token; the executor rejects mismatch.
+  optional string coin_type = 2;
+  // Top-up amount, in the channel's smallest unit. Must be > 0.
+  optional uint64 amount = 3;
 }

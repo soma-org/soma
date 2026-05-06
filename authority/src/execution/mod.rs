@@ -449,7 +449,8 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::OpenChannel(_)
         | TransactionKind::Settle(_)
         | TransactionKind::RequestClose(_)
-        | TransactionKind::WithdrawAfterTimeout(_) => Box::new(ChannelExecutor::new()),
+        | TransactionKind::WithdrawAfterTimeout(_)
+        | TransactionKind::TopUp(_) => Box::new(ChannelExecutor::new()),
 
         // Per-commit balance settlement (Stage 3)
         TransactionKind::Settlement(_) => Box::new(SettlementExecutor::new()),

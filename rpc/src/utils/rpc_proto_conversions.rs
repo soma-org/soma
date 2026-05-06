@@ -184,6 +184,54 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::BridgePaused => (ExecutionErrorKind::OtherError, Some("Bridge is paused".into())),
             E::BridgeNonceAlreadyProcessed => (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into())),
             E::BridgeInsufficientSignatureStake => (ExecutionErrorKind::OtherError, Some("Bridge: insufficient signature stake".into())),
+
+            // Payment-channel errors
+            E::ChannelCallerNotPayee { expected, actual } => (
+                ExecutionErrorKind::ChannelCallerNotPayee,
+                Some(format!("expected={expected}, actual={actual}")),
+            ),
+            E::ChannelCallerNotPayer { expected, actual } => (
+                ExecutionErrorKind::ChannelCallerNotPayer,
+                Some(format!("expected={expected}, actual={actual}")),
+            ),
+            E::ChannelVoucherNotMonotonic { cumulative, settled } => (
+                ExecutionErrorKind::ChannelVoucherNotMonotonic,
+                Some(format!("cumulative={cumulative}, settled={settled}")),
+            ),
+            E::ChannelOverspend { cumulative, available } => (
+                ExecutionErrorKind::ChannelOverspend,
+                Some(format!("cumulative={cumulative}, available={available}")),
+            ),
+            E::ChannelGraceNotElapsed { now_ms, earliest_ms } => (
+                ExecutionErrorKind::ChannelGraceNotElapsed,
+                Some(format!("now_ms={now_ms}, earliest_ms={earliest_ms}")),
+            ),
+            E::ChannelCloseAlreadyPending => (
+                ExecutionErrorKind::ChannelCloseAlreadyPending,
+                None,
+            ),
+            E::ChannelNoCloseRequest => (
+                ExecutionErrorKind::ChannelNoCloseRequest,
+                None,
+            ),
+            E::ChannelInvalidVoucherSignature { reason } => (
+                ExecutionErrorKind::ChannelInvalidVoucherSignature,
+                Some(reason),
+            ),
+            E::ChannelAmountZero => (ExecutionErrorKind::ChannelAmountZero, None),
+            E::ChannelInvalidInput { reason } => (
+                ExecutionErrorKind::ChannelInvalidInput,
+                Some(reason),
+            ),
+            E::ChannelCoinTypeMismatch => (
+                ExecutionErrorKind::ChannelCoinTypeMismatch,
+                None,
+            ),
+            E::NotAChannel { object_id } => (
+                ExecutionErrorKind::NotAChannel,
+                Some(object_id.to_hex()),
+            ),
+            E::ChannelClockMissing => (ExecutionErrorKind::ChannelClockMissing, None),
         };
 
         message.set_kind(kind);
@@ -679,6 +727,11 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
             }),
+            K::TopUp(args) => Kind::TopUp(TopUp {
+                channel_id: Some(args.channel_id.to_string()),
+                coin_type: Some(coin_type_label(args.coin_type).to_string()),
+                amount: Some(args.amount),
+            }),
 
             K::BalanceTransfer(args) => Kind::BalanceTransfer(BalanceTransfer {
                 coin_type: Some(coin_type_label(args.coin_type).to_string()),
@@ -1042,10 +1095,12 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
         Ok(protocol_config::SystemParameters {
             epoch_duration_ms: proto_params.epoch_duration_ms.ok_or("Missing epoch_duration_ms")?,
             unit_fee: proto_params.unit_fee.ok_or("Missing unit_fee")?,
-            // Defaulted when missing from proto so older RPC clients
-            // remain compatible. Real on-chain SystemParameters always
-            // carry a value (set in `build_system_parameters`).
-            channel_grace_period_ms: 10 * 60 * 1000,
+            // Default to mainnet's 10-minute grace when missing — keeps
+            // older RPC clients compatible. Real on-chain SystemParameters
+            // always carry a value (set in `build_system_parameters`).
+            channel_grace_period_ms: proto_params
+                .channel_grace_period_ms
+                .unwrap_or(10 * 60 * 1000),
         })
     }
 }
@@ -1380,6 +1435,7 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
             unit_fee: Some(domain_params.unit_fee),
+            channel_grace_period_ms: Some(domain_params.channel_grace_period_ms),
         })
     }
 }

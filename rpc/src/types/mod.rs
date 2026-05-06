@@ -46,7 +46,8 @@ pub use transaction::{
     GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
     OpenChannelArgs, RemoveValidatorArgs, RequestCloseArgs, RevealModelArgs, SettleArgs,
     SettlementTransaction, SignedTransaction, SubmissionManifest, SubmitDataArgs,
-    Transaction, TransactionKind, UpdateValidatorMetadataArgs, WithdrawAfterTimeoutArgs,
+    TopUpArgs, Transaction, TransactionKind, UpdateValidatorMetadataArgs,
+    WithdrawAfterTimeoutArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

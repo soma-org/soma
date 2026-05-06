@@ -62,6 +62,7 @@ pub enum IntentScope {
     CheckpointSummary = 7,
     ProofOfPossession = 8, // Used for validator proof of possession of protocol key.
     PaymentVoucher = 9,    // Used for off-chain payment-channel vouchers (see types::channel).
+    PaymentVoucherHttp = 10, // Off-chain HTTP-bound voucher (inference proxy/server, see types::channel::HttpVoucher).
 }
 
 impl TryFrom<u8> for IntentScope {

@@ -18,6 +18,7 @@ use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 use crate::error::SomaRpcResult;
 
+pub mod channel;
 pub mod client_config;
 pub mod crypto_utils;
 pub mod error;

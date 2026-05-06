@@ -96,6 +96,21 @@ pub enum ExecutionError {
     CertificateDenied,
     SharedObjectCongestion,
 
+    // Payment-channel errors
+    ChannelCallerNotPayee { expected: Address, actual: Address },
+    ChannelCallerNotPayer { expected: Address, actual: Address },
+    ChannelVoucherNotMonotonic { cumulative: u64, settled: u64 },
+    ChannelOverspend { cumulative: u64, available: u64 },
+    ChannelGraceNotElapsed { now_ms: u64, earliest_ms: u64 },
+    ChannelCloseAlreadyPending,
+    ChannelNoCloseRequest,
+    ChannelInvalidVoucherSignature { reason: String },
+    ChannelAmountZero,
+    ChannelInvalidInput { reason: String },
+    ChannelCoinTypeMismatch,
+    NotAChannel { object_id: Address },
+    ChannelClockMissing,
+
     // Generic error for cases not covered by specific variants
     OtherError(String),
 }

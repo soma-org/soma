@@ -7,16 +7,16 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use tokio::sync::Mutex;
-use types::base::SomaAddress;
+use ::types::base::SomaAddress;
+use ::types::object::ObjectID;
 
-use crate::chain::types::{ChannelHandle, ChannelState};
 use crate::channel::running_tab::TabClientState;
 use crate::persist::{read_json, write_json};
 
 #[derive(Clone)]
 pub struct ClientStore {
     base: PathBuf,
-    cache: Arc<tokio::sync::RwLock<HashMap<ChannelHandle, Arc<Mutex<ChannelSlot>>>>>,
+    cache: Arc<tokio::sync::RwLock<HashMap<ObjectID, Arc<Mutex<ChannelSlot>>>>>,
 }
 
 pub struct ChannelSlot {
@@ -35,8 +35,8 @@ impl ClientStore {
         }
     }
 
-    fn channel_path(&self, h: &ChannelHandle) -> PathBuf {
-        self.base.join("channels").join(format!("{}.json", h.0))
+    fn channel_path(&self, id: &ObjectID) -> PathBuf {
+        self.base.join("channels").join(format!("{}.json", id))
     }
 
     fn pointer_path(&self, addr: &SomaAddress) -> PathBuf {
@@ -45,7 +45,7 @@ impl ClientStore {
             .join(format!("{addr}.txt"))
     }
 
-    pub fn read_pointer(&self, addr: &SomaAddress) -> Option<ChannelHandle> {
+    pub fn read_pointer(&self, addr: &SomaAddress) -> Option<ObjectID> {
         let path = self.pointer_path(addr);
         match std::fs::read_to_string(&path) {
             Ok(s) => {
@@ -53,30 +53,30 @@ impl ClientStore {
                 if s.is_empty() {
                     None
                 } else {
-                    Some(ChannelHandle(s.to_string()))
+                    s.parse::<ObjectID>().ok()
                 }
             }
             Err(_) => None,
         }
     }
 
-    pub fn write_pointer(&self, addr: &SomaAddress, h: &ChannelHandle) -> std::io::Result<()> {
+    pub fn write_pointer(&self, addr: &SomaAddress, id: &ObjectID) -> std::io::Result<()> {
         let path = self.pointer_path(addr);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, h.0.as_bytes())
+        std::fs::write(path, id.to_string().as_bytes())
     }
 
-    pub async fn slot(&self, h: &ChannelHandle) -> Option<Arc<Mutex<ChannelSlot>>> {
-        if let Some(s) = self.cache.read().await.get(h) {
+    pub async fn slot(&self, id: &ObjectID) -> Option<Arc<Mutex<ChannelSlot>>> {
+        if let Some(s) = self.cache.read().await.get(id) {
             return Some(s.clone());
         }
-        let path = self.channel_path(h);
+        let path = self.channel_path(id);
         let state: Option<TabClientState> = read_json(&path).ok().flatten();
         if let Some(state) = state {
             let slot = Arc::new(Mutex::new(ChannelSlot { state, path }));
-            self.cache.write().await.insert(h.clone(), slot.clone());
+            self.cache.write().await.insert(*id, slot.clone());
             Some(slot)
         } else {
             None
@@ -85,27 +85,21 @@ impl ClientStore {
 
     pub async fn init_slot(
         &self,
-        chan: &ChannelState,
-        provider_pubkey_hex: &str,
+        channel_id: ObjectID,
+        provider_address: SomaAddress,
         provider_endpoint: &str,
+        deposit_micros: u64,
     ) -> anyhow::Result<Arc<Mutex<ChannelSlot>>> {
-        let path = self.channel_path(&chan.handle);
-        let state = TabClientState {
-            handle: chan.handle.clone(),
-            provider_address: chan.provider,
-            provider_pubkey_hex: provider_pubkey_hex.to_string(),
-            provider_endpoint: provider_endpoint.to_string(),
-            deposit_micros: chan.deposit_micros,
-            cumulative_authorized_micros: 0,
-            last_authorized: None,
-            realized: HashMap::new(),
-        };
+        let path = self.channel_path(&channel_id);
+        let state = TabClientState::new(
+            channel_id,
+            provider_address,
+            provider_endpoint.to_string(),
+            deposit_micros,
+        );
         write_json(&path, &state).context("write client channel state")?;
         let slot = Arc::new(Mutex::new(ChannelSlot { state, path }));
-        self.cache
-            .write()
-            .await
-            .insert(chan.handle.clone(), slot.clone());
+        self.cache.write().await.insert(channel_id, slot.clone());
         Ok(slot)
     }
 }

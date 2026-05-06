@@ -6023,6 +6023,19 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
             Self::ModelDecryptionKeyCommitmentMismatch => "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
             Self::InvalidGasCoinType => "INVALID_GAS_COIN_TYPE",
+            Self::ChannelCallerNotPayee => "CHANNEL_CALLER_NOT_PAYEE",
+            Self::ChannelCallerNotPayer => "CHANNEL_CALLER_NOT_PAYER",
+            Self::ChannelVoucherNotMonotonic => "CHANNEL_VOUCHER_NOT_MONOTONIC",
+            Self::ChannelOverspend => "CHANNEL_OVERSPEND",
+            Self::ChannelGraceNotElapsed => "CHANNEL_GRACE_NOT_ELAPSED",
+            Self::ChannelCloseAlreadyPending => "CHANNEL_CLOSE_ALREADY_PENDING",
+            Self::ChannelNoCloseRequest => "CHANNEL_NO_CLOSE_REQUEST",
+            Self::ChannelInvalidVoucherSignature => "CHANNEL_INVALID_VOUCHER_SIGNATURE",
+            Self::ChannelAmountZero => "CHANNEL_AMOUNT_ZERO",
+            Self::ChannelInvalidInput => "CHANNEL_INVALID_INPUT",
+            Self::ChannelCoinTypeMismatch => "CHANNEL_COIN_TYPE_MISMATCH",
+            Self::NotAChannel => "NOT_A_CHANNEL",
+            Self::ChannelClockMissing => "CHANNEL_CLOCK_MISSING",
         };
         serializer.serialize_str(variant)
     }
@@ -6092,6 +6105,19 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "INVALID_PROOF_OF_POSSESSION",
             "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
             "INVALID_GAS_COIN_TYPE",
+            "CHANNEL_CALLER_NOT_PAYEE",
+            "CHANNEL_CALLER_NOT_PAYER",
+            "CHANNEL_VOUCHER_NOT_MONOTONIC",
+            "CHANNEL_OVERSPEND",
+            "CHANNEL_GRACE_NOT_ELAPSED",
+            "CHANNEL_CLOSE_ALREADY_PENDING",
+            "CHANNEL_NO_CLOSE_REQUEST",
+            "CHANNEL_INVALID_VOUCHER_SIGNATURE",
+            "CHANNEL_AMOUNT_ZERO",
+            "CHANNEL_INVALID_INPUT",
+            "CHANNEL_COIN_TYPE_MISMATCH",
+            "NOT_A_CHANNEL",
+            "CHANNEL_CLOCK_MISSING",
         ];
 
         struct GeneratedVisitor;
@@ -6190,6 +6216,19 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "INVALID_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::InvalidProofOfPossession),
                     "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch),
                     "INVALID_GAS_COIN_TYPE" => Ok(execution_error::ExecutionErrorKind::InvalidGasCoinType),
+                    "CHANNEL_CALLER_NOT_PAYEE" => Ok(execution_error::ExecutionErrorKind::ChannelCallerNotPayee),
+                    "CHANNEL_CALLER_NOT_PAYER" => Ok(execution_error::ExecutionErrorKind::ChannelCallerNotPayer),
+                    "CHANNEL_VOUCHER_NOT_MONOTONIC" => Ok(execution_error::ExecutionErrorKind::ChannelVoucherNotMonotonic),
+                    "CHANNEL_OVERSPEND" => Ok(execution_error::ExecutionErrorKind::ChannelOverspend),
+                    "CHANNEL_GRACE_NOT_ELAPSED" => Ok(execution_error::ExecutionErrorKind::ChannelGraceNotElapsed),
+                    "CHANNEL_CLOSE_ALREADY_PENDING" => Ok(execution_error::ExecutionErrorKind::ChannelCloseAlreadyPending),
+                    "CHANNEL_NO_CLOSE_REQUEST" => Ok(execution_error::ExecutionErrorKind::ChannelNoCloseRequest),
+                    "CHANNEL_INVALID_VOUCHER_SIGNATURE" => Ok(execution_error::ExecutionErrorKind::ChannelInvalidVoucherSignature),
+                    "CHANNEL_AMOUNT_ZERO" => Ok(execution_error::ExecutionErrorKind::ChannelAmountZero),
+                    "CHANNEL_INVALID_INPUT" => Ok(execution_error::ExecutionErrorKind::ChannelInvalidInput),
+                    "CHANNEL_COIN_TYPE_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ChannelCoinTypeMismatch),
+                    "NOT_A_CHANNEL" => Ok(execution_error::ExecutionErrorKind::NotAChannel),
+                    "CHANNEL_CLOCK_MISSING" => Ok(execution_error::ExecutionErrorKind::ChannelClockMissing),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -15907,6 +15946,9 @@ impl serde::Serialize for SystemParameters {
         if self.unit_fee.is_some() {
             len += 1;
         }
+        if self.channel_grace_period_ms.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemParameters", len)?;
         if let Some(v) = self.epoch_duration_ms.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -15917,6 +15959,11 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("unitFee", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.channel_grace_period_ms.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("channelGracePeriodMs", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -15932,12 +15979,15 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "epochDurationMs",
             "unit_fee",
             "unitFee",
+            "channel_grace_period_ms",
+            "channelGracePeriodMs",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             EpochDurationMs,
             UnitFee,
+            ChannelGracePeriodMs,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -15962,6 +16012,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                         match value {
                             "epochDurationMs" | "epoch_duration_ms" => Ok(GeneratedField::EpochDurationMs),
                             "unitFee" | "unit_fee" => Ok(GeneratedField::UnitFee),
+                            "channelGracePeriodMs" | "channel_grace_period_ms" => Ok(GeneratedField::ChannelGracePeriodMs),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -15985,6 +16036,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             {
                 let mut epoch_duration_ms__ = None;
                 let mut unit_fee__ = None;
+                let mut channel_grace_period_ms__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::EpochDurationMs => {
@@ -16003,6 +16055,14 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::ChannelGracePeriodMs => {
+                            if channel_grace_period_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("channelGracePeriodMs"));
+                            }
+                            channel_grace_period_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -16011,6 +16071,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 Ok(SystemParameters {
                     epoch_duration_ms: epoch_duration_ms__,
                     unit_fee: unit_fee__,
+                    channel_grace_period_ms: channel_grace_period_ms__,
                 })
             }
         }
@@ -16871,6 +16932,143 @@ impl<'de> serde::Deserialize<'de> for TargetState {
         deserializer.deserialize_struct("soma.rpc.TargetState", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for TopUp {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.channel_id.is_some() {
+            len += 1;
+        }
+        if self.coin_type.is_some() {
+            len += 1;
+        }
+        if self.amount.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.TopUp", len)?;
+        if let Some(v) = self.channel_id.as_ref() {
+            struct_ser.serialize_field("channelId", v)?;
+        }
+        if let Some(v) = self.coin_type.as_ref() {
+            struct_ser.serialize_field("coinType", v)?;
+        }
+        if let Some(v) = self.amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("amount", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for TopUp {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "channel_id",
+            "channelId",
+            "coin_type",
+            "coinType",
+            "amount",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChannelId,
+            CoinType,
+            Amount,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "channelId" | "channel_id" => Ok(GeneratedField::ChannelId),
+                            "coinType" | "coin_type" => Ok(GeneratedField::CoinType),
+                            "amount" => Ok(GeneratedField::Amount),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = TopUp;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.TopUp")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<TopUp, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut channel_id__ = None;
+                let mut coin_type__ = None;
+                let mut amount__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChannelId => {
+                            if channel_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("channelId"));
+                            }
+                            channel_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::CoinType => {
+                            if coin_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("coinType"));
+                            }
+                            coin_type__ = map_.next_value()?;
+                        }
+                        GeneratedField::Amount => {
+                            if amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("amount"));
+                            }
+                            amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(TopUp {
+                    channel_id: channel_id__,
+                    coin_type: coin_type__,
+                    amount: amount__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.TopUp", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for Transaction {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -17630,6 +17828,9 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::WithdrawAfterTimeout(v) => {
                     struct_ser.serialize_field("withdrawAfterTimeout", v)?;
                 }
+                transaction_kind::Kind::TopUp(v) => {
+                    struct_ser.serialize_field("topUp", v)?;
+                }
                 transaction_kind::Kind::Settlement(v) => {
                     struct_ser.serialize_field("settlement", v)?;
                 }
@@ -17722,6 +17923,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "requestClose",
             "withdraw_after_timeout",
             "withdrawAfterTimeout",
+            "top_up",
+            "topUp",
             "settlement",
             "balance_transfer",
             "balanceTransfer",
@@ -17767,6 +17970,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             Settle,
             RequestClose,
             WithdrawAfterTimeout,
+            TopUp,
             Settlement,
             BalanceTransfer,
             __SkipField__,
@@ -17829,6 +18033,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "settle" => Ok(GeneratedField::Settle),
                             "requestClose" | "request_close" => Ok(GeneratedField::RequestClose),
                             "withdrawAfterTimeout" | "withdraw_after_timeout" => Ok(GeneratedField::WithdrawAfterTimeout),
+                            "topUp" | "top_up" => Ok(GeneratedField::TopUp),
                             "settlement" => Ok(GeneratedField::Settlement),
                             "balanceTransfer" | "balance_transfer" => Ok(GeneratedField::BalanceTransfer),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -18119,6 +18324,13 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("withdrawAfterTimeout"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::WithdrawAfterTimeout)
+;
+                        }
+                        GeneratedField::TopUp => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("topUp"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::TopUp)
 ;
                         }
                         GeneratedField::Settlement => {

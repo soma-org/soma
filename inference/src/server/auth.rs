@@ -11,9 +11,10 @@ use axum::response::{IntoResponse, Response};
 use http::HeaderValue;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use ::types::object::ObjectID;
 
-use crate::chain::types::{ChannelHandle, ChannelStatus};
 use crate::channel::header::SomaPayHeader;
+use crate::channel::running_tab::split_combined_header;
 use crate::channel::{ChannelError, PaymentChannel, RequestMeta};
 use crate::new_request_id;
 use crate::now_ms;
@@ -105,7 +106,15 @@ pub async fn auth_middleware(
         ),
     };
 
-    let parsed = match SomaPayHeader::parse(auth_header) {
+    let (somapay_str, onchain_sig) = match split_combined_header(auth_header) {
+        Ok(p) => p,
+        Err(_) => return err_response(
+            StatusCode::UNAUTHORIZED,
+            "auth_malformed",
+            "SomaPay header malformed",
+        ),
+    };
+    let parsed = match SomaPayHeader::parse(&somapay_str) {
         Ok(p) => p,
         Err(_) => return err_response(
             StatusCode::UNAUTHORIZED,
@@ -114,44 +123,51 @@ pub async fn auth_middleware(
         ),
     };
 
-    let handle = ChannelHandle(parsed.handle.clone());
+    let channel_id: ObjectID = parsed.channel_id;
 
-    let chan_state = match state.chain.channel(&handle).await {
-        Ok(s) => s,
-        Err(_) => return err_response(
-            StatusCode::NOT_FOUND,
-            "channel_unknown",
-            "channel handle unknown",
-        ),
-    };
-    if chan_state.status != ChannelStatus::Open {
-        return err_response(
-            StatusCode::UNAUTHORIZED,
-            "channel_closed",
-            "channel not open",
-        );
-    }
-
-    let slot = match state.ledger.slot(&handle).await {
+    // Look the channel up on-chain (or load cached slot first if we
+    // already have one).
+    let slot = match state.ledger.slot(&channel_id).await {
         Some(s) => s,
-        None => match state.ledger.init_slot(&chan_state).await {
-            Ok(s) => s,
-            Err(e) => return err_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "ledger_init_failed",
-                &format!("{e}"),
-            ),
-        },
+        None => {
+            let chan = match state.chain.get(channel_id).await {
+                Ok(c) => c,
+                Err(_) => return err_response(
+                    StatusCode::NOT_FOUND,
+                    "channel_unknown",
+                    "channel id not found on chain",
+                ),
+            };
+            // Reject channels addressed to a different payee.
+            let our_addr = state.chain.signer_address();
+            if chan.payee != our_addr {
+                return err_response(
+                    StatusCode::UNAUTHORIZED,
+                    "wrong_payee",
+                    "channel payee does not match this provider",
+                );
+            }
+            match state.ledger.init_slot(channel_id, &chan).await {
+                Ok(s) => s,
+                Err(e) => return err_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "ledger_init_failed",
+                    &format!("{e}"),
+                ),
+            }
+        }
     };
 
     let guard = slot.lock_owned().await;
     let mut slot_inner = guard;
     let result = state
         .channel
-        .pre_flight(&mut slot_inner.state, auth_header, &meta, worst_case)
+        .pre_flight(&mut slot_inner.state, &somapay_str, &meta, worst_case)
         .await;
     match result {
         Ok(()) => {
+            // Stash the latest on-chain sig — used at settle time.
+            slot_inner.state.last_onchain_sig = Some(onchain_sig);
             if let Err(e) = state.ledger.persist(&mut slot_inner).await {
                 return err_response(
                     StatusCode::INTERNAL_SERVER_ERROR,

@@ -2549,6 +2549,7 @@ mod _getter_impls {
             Self {
                 epoch_duration_ms: None,
                 unit_fee: None,
+                channel_grace_period_ms: None,
             }
         }
         #[doc(hidden)]
@@ -2562,6 +2563,10 @@ mod _getter_impls {
         }
         pub fn with_unit_fee(mut self, field: u64) -> Self {
             self.unit_fee = Some(field.into());
+            self
+        }
+        pub fn with_channel_grace_period_ms(mut self, field: u64) -> Self {
+            self.channel_grace_period_ms = Some(field.into());
             self
         }
     }
@@ -4826,6 +4831,37 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::WithdrawAfterTimeout(field.into()));
             self
         }
+        pub fn top_up(&self) -> &TopUp {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &self.kind {
+                field as _
+            } else {
+                TopUp::default_instance() as _
+            }
+        }
+        pub fn top_up_opt(&self) -> Option<&TopUp> {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn top_up_opt_mut(&mut self) -> Option<&mut TopUp> {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn top_up_mut(&mut self) -> &mut TopUp {
+            if self.top_up_opt_mut().is_none() {
+                self.kind = Some(transaction_kind::Kind::TopUp(TopUp::default()));
+            }
+            self.top_up_opt_mut().unwrap()
+        }
+        pub fn with_top_up(mut self, field: TopUp) -> Self {
+            self.kind = Some(transaction_kind::Kind::TopUp(field.into()));
+            self
+        }
         pub fn settlement(&self) -> &Settlement {
             if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
                 field as _
@@ -6335,6 +6371,32 @@ mod _getter_impls {
         }
         pub fn with_channel_id(mut self, field: String) -> Self {
             self.channel_id = Some(field.into());
+            self
+        }
+    }
+    impl TopUp {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                coin_type: None,
+                amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: TopUp = TopUp::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
             self
         }
     }

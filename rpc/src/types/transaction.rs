@@ -169,6 +169,7 @@ pub enum TransactionKind {
     Settle(SettleArgs),
     RequestClose(RequestCloseArgs),
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
+    TopUp(TopUpArgs),
 
     /// Per-commit accumulator settlement system transaction (Stage 6a).
     /// Injected by the consensus handler exactly once per commit;
@@ -183,8 +184,8 @@ pub enum TransactionKind {
 /// Stage 7 args struct (rpc::types layer).
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct BalanceTransferArgs {
-    /// Coin type label ("USDC", "SOMA").
-    pub coin_type: String,
+    /// Coin denomination. Parsed at the proto→rpc::types boundary.
+    pub coin_type: types::object::CoinType,
     pub transfers: Vec<(Address, u64)>,
 }
 
@@ -234,9 +235,10 @@ pub struct BridgeEmergencyUnpauseArgs {
 pub struct OpenChannelArgs {
     pub payee: Address,
     pub authorized_signer: Address,
-    /// Coin denomination as a string label ("SOMA" / "USDC"). Round-trips
-    /// through the proto layer.
-    pub token: String,
+    /// Coin denomination. Parsed from the proto string label
+    /// ("SOMA"/"USDC") at the proto→rpc::types boundary so a typo
+    /// fails fast in conversion rather than at consensus-time.
+    pub token: types::object::CoinType,
     pub deposit_amount: u64,
 }
 
@@ -257,6 +259,16 @@ pub struct RequestCloseArgs {
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct WithdrawAfterTimeoutArgs {
     pub channel_id: Address,
+}
+
+/// Args for `TopUp` (rpc::types layer). Coin type is parsed from the
+/// proto string at the proto→rpc::types boundary so a typo fails
+/// fast in conversion.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct TopUpArgs {
+    pub channel_id: Address,
+    pub coin_type: types::object::CoinType,
+    pub amount: u64,
 }
 
 // Supporting types for validator management

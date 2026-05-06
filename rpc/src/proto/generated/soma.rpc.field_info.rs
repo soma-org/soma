@@ -4038,11 +4038,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const CHANNEL_GRACE_PERIOD_MS_FIELD: &'static MessageField = &MessageField {
+            name: "channel_grace_period_ms",
+            json_name: "channelGracePeriodMs",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for SystemParameters {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_DURATION_MS_FIELD,
             Self::UNIT_FEE_FIELD,
+            Self::CHANNEL_GRACE_PERIOD_MS_FIELD,
         ];
     }
     impl SystemParameters {
@@ -4071,6 +4078,10 @@ mod _field_impls {
         }
         pub fn unit_fee(mut self) -> String {
             self.path.push(SystemParameters::UNIT_FEE_FIELD.name);
+            self.finish()
+        }
+        pub fn channel_grace_period_ms(mut self) -> String {
+            self.path.push(SystemParameters::CHANNEL_GRACE_PERIOD_MS_FIELD.name);
             self.finish()
         }
     }
@@ -5891,6 +5902,12 @@ mod _field_impls {
             number: 53i32,
             message_fields: Some(WithdrawAfterTimeout::FIELDS),
         };
+        pub const TOP_UP_FIELD: &'static MessageField = &MessageField {
+            name: "top_up",
+            json_name: "topUp",
+            number: 54i32,
+            message_fields: Some(TopUp::FIELDS),
+        };
         pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
             name: "settlement",
             json_name: "settlement",
@@ -5944,6 +5961,7 @@ mod _field_impls {
             Self::SETTLE_FIELD,
             Self::REQUEST_CLOSE_FIELD,
             Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
+            Self::TOP_UP_FIELD,
             Self::SETTLEMENT_FIELD,
             Self::BALANCE_TRANSFER_FIELD,
         ];
@@ -6127,6 +6145,10 @@ mod _field_impls {
         pub fn withdraw_after_timeout(mut self) -> WithdrawAfterTimeoutFieldPathBuilder {
             self.path.push(TransactionKind::WITHDRAW_AFTER_TIMEOUT_FIELD.name);
             WithdrawAfterTimeoutFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn top_up(mut self) -> TopUpFieldPathBuilder {
+            self.path.push(TransactionKind::TOP_UP_FIELD.name);
+            TopUpFieldPathBuilder::new_with_base(self.path)
         }
         pub fn settlement(mut self) -> SettlementFieldPathBuilder {
             self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
@@ -8836,6 +8858,66 @@ mod _field_impls {
         }
         pub fn channel_id(mut self) -> String {
             self.path.push(WithdrawAfterTimeout::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl TopUp {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for TopUp {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::COIN_TYPE_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
+    }
+    impl TopUp {
+        pub fn path_builder() -> TopUpFieldPathBuilder {
+            TopUpFieldPathBuilder::new()
+        }
+    }
+    pub struct TopUpFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TopUpFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(TopUp::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(TopUp::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(TopUp::AMOUNT_FIELD.name);
             self.finish()
         }
     }

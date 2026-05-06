@@ -48,6 +48,12 @@ message SystemParameters {
 
   // Per-unit fee. Tx fee = unit_fee * executor.fee_units(...).
   optional uint64 unit_fee = 2;
+
+  // Payment-channel grace period: how long after `RequestClose`
+  // a payer must wait before they can call `WithdrawAfterTimeout`.
+  // Surfaced so wallets/proxies can compute "earliest withdrawable"
+  // without reading the SystemState BCS directly.
+  optional uint64 channel_grace_period_ms = 3;
 }
 
 message EmissionPool {

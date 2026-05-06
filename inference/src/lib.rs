@@ -31,8 +31,11 @@ pub mod server;
 
 pub mod http_util;
 
-pub use chain::{Discovery, ProviderRecord, ChannelHandle, ChannelState, ChannelStatus, OpenChannelParams, ChainError};
-pub use channel::{PaymentChannel, RequestMeta, ChannelError, RunningTab};
+pub use chain::{
+    chain::ChainChannelSurface, ChainError, ChannelStatus, ChannelSurface, ProviderRecord,
+    ProviderRegistry,
+};
+pub use channel::{ChannelError, PaymentChannel, RequestMeta, RunningTab};
 
 /// UNIX time in milliseconds.
 pub fn now_ms() -> u64 {

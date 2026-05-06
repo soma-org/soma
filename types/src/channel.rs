@@ -107,6 +107,96 @@ impl Voucher {
     }
 }
 
+/// Off-chain HTTP-bound voucher signed for the inference marketplace
+/// (proxy → provider HTTP path). Same primitive as [`Voucher`]
+/// (Ed25519/MultiSig over `IntentMessage<HttpVoucher>` under
+/// [`crate::intent::IntentScope::PaymentVoucherHttp`]) but additionally
+/// commits to the per-request HTTP context so an adversarial provider
+/// can't replay the signature against a different request.
+///
+/// The on-chain executor never sees `HttpVoucher` — it's purely a
+/// transport-layer authorization. When the provider settles on-chain,
+/// it builds an ordinary `Voucher` with the same `(channel_id,
+/// cumulative_amount)` and uses that signature instead.
+///
+/// **Field rationale**:
+///   - `channel_id` + `cumulative_amount`: matches `Voucher`, so a
+///     payer signing both layers commits to the same monetary intent.
+///   - `expires_ms`: per-request expiry so a provider can't sit on a
+///     signature indefinitely.
+///   - `body_sha256`: binds to the request body so the request body
+///     can't be swapped after the signature is produced.
+///   - `request_id_sha256`: scopes to a unique request id; together
+///     with `body_sha256` prevents two distinct requests from sharing
+///     a signature.
+///   - `method_path_sha256`: binds to method+path (precomputed by the
+///     signer so the on-the-wire struct stays fixed-size).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HttpVoucher {
+    pub channel_id: ObjectID,
+    pub cumulative_amount: u64,
+    pub expires_ms: TimestampMs,
+    pub body_sha256: [u8; 32],
+    pub request_id_sha256: [u8; 32],
+    pub method_path_sha256: [u8; 32],
+}
+
+impl HttpVoucher {
+    pub const fn new(
+        channel_id: ObjectID,
+        cumulative_amount: u64,
+        expires_ms: TimestampMs,
+        body_sha256: [u8; 32],
+        request_id_sha256: [u8; 32],
+        method_path_sha256: [u8; 32],
+    ) -> Self {
+        Self {
+            channel_id,
+            cumulative_amount,
+            expires_ms,
+            body_sha256,
+            request_id_sha256,
+            method_path_sha256,
+        }
+    }
+
+    /// Convenience constructor that hashes the per-request strings so
+    /// callers don't need to import sha2 directly.
+    pub fn from_request(
+        channel_id: ObjectID,
+        cumulative_amount: u64,
+        expires_ms: TimestampMs,
+        body_bytes: &[u8],
+        request_id: &str,
+        method: &str,
+        path: &str,
+    ) -> Self {
+        use sha2::{Digest, Sha256};
+        let body_sha256: [u8; 32] = Sha256::digest(body_bytes).into();
+        let request_id_sha256: [u8; 32] = Sha256::digest(request_id.as_bytes()).into();
+        let mut h = Sha256::new();
+        h.update(method.as_bytes());
+        h.update(b"\n");
+        h.update(path.as_bytes());
+        let method_path_sha256: [u8; 32] = h.finalize().into();
+        Self::new(
+            channel_id,
+            cumulative_amount,
+            expires_ms,
+            body_sha256,
+            request_id_sha256,
+            method_path_sha256,
+        )
+    }
+
+    /// Project this HTTP voucher down to its on-chain `Voucher`
+    /// equivalent — the same `(channel_id, cumulative_amount)` pair
+    /// the provider would settle with on the chain.
+    pub fn to_voucher(&self) -> Voucher {
+        Voucher::new(self.channel_id, self.cumulative_amount)
+    }
+}
+
 impl Channel {
     /// Construct a fresh channel for `OpenChannel` execution.
     /// `settled_amount` starts at 0 and `close_requested_at_ms` at None.

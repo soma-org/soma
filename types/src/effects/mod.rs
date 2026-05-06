@@ -1094,6 +1094,78 @@ pub enum ExecutionFailureStatus {
     BridgeInsufficientSignatureStake,
 
     //
+    // Payment-channel errors
+    //
+    /// Settle was called by someone other than the channel's payee.
+    #[error("Channel op requires payee {expected}; called by {actual}")]
+    ChannelCallerNotPayee { expected: SomaAddress, actual: SomaAddress },
+
+    /// RequestClose/WithdrawAfterTimeout/TopUp was called by someone
+    /// other than the channel's payer.
+    #[error("Channel op requires payer {expected}; called by {actual}")]
+    ChannelCallerNotPayer { expected: SomaAddress, actual: SomaAddress },
+
+    /// Voucher.cumulative_amount must strictly exceed channel.settled_amount.
+    #[error(
+        "Voucher cumulative_amount {cumulative} not greater than settled_amount {settled}"
+    )]
+    ChannelVoucherNotMonotonic { cumulative: u64, settled: u64 },
+
+    /// Voucher.cumulative_amount exceeds the channel's total escrowed funds
+    /// (channel.deposit + channel.settled_amount).
+    #[error("Voucher cumulative_amount {cumulative} exceeds available {available}")]
+    ChannelOverspend { cumulative: u64, available: u64 },
+
+    /// WithdrawAfterTimeout called before grace_period_ms elapsed since
+    /// RequestClose.
+    #[error(
+        "Channel grace period not elapsed: now {now_ms}ms, earliest withdrawable \
+         {earliest_ms}ms"
+    )]
+    ChannelGraceNotElapsed { now_ms: u64, earliest_ms: u64 },
+
+    /// RequestClose called but a close is already pending — the original
+    /// timer is preserved.
+    #[error("Channel close already pending")]
+    ChannelCloseAlreadyPending,
+
+    /// WithdrawAfterTimeout called without a prior RequestClose.
+    #[error("Channel WithdrawAfterTimeout requires a prior RequestClose")]
+    ChannelNoCloseRequest,
+
+    /// Voucher signature did not verify against the channel's
+    /// authorized_signer.
+    #[error("Channel voucher signature verification failed: {reason}")]
+    ChannelInvalidVoucherSignature { reason: String },
+
+    /// OpenChannel/TopUp deposit/amount must be > 0.
+    #[error("Channel deposit/top-up amount must be non-zero")]
+    ChannelAmountZero,
+
+    /// OpenChannel rejected: payee == payer (self-channel) or
+    /// authorized_signer == ZERO.
+    #[error("Channel input invalid: {reason}")]
+    ChannelInvalidInput { reason: String },
+
+    /// TopUp.coin_type does not match channel.token. Reservation
+    /// pre-pass would have keyed on the wrong accumulator.
+    #[error("TopUp coin_type does not match channel token")]
+    ChannelCoinTypeMismatch,
+
+    /// The object loaded for a channel op was not a Channel object.
+    /// Distinct from ObjectNotFound (the object exists, but of the
+    /// wrong type — typically because the channel was already deleted
+    /// and the id reused).
+    #[error("Object {object_id} is not a Channel")]
+    NotAChannel { object_id: ObjectID },
+
+    /// Clock object was not declared as a shared input by a channel
+    /// op that needs it (RequestClose, WithdrawAfterTimeout). Wallet
+    /// builders auto-declare it; this surfaces only for hand-built txs.
+    #[error("Channel op requires Clock (object 0x6) as a read-only shared input")]
+    ChannelClockMissing,
+
+    //
     // Post-execution errors
     //
     /// Generic SOMA error that wraps other error types

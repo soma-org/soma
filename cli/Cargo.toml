@@ -21,6 +21,7 @@ rand.workspace = true
 anyhow.workspace = true
 bcs.workspace = true
 fastcrypto.workspace = true
+base64.workspace = true
 sdk.workspace = true
 node.workspace = true
 test-cluster.workspace = true

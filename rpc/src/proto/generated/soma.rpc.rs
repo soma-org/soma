@@ -738,6 +738,35 @@ pub mod execution_error {
         ModelDecryptionKeyCommitmentMismatch = 57,
         /// Gas coin must be USDC
         InvalidGasCoinType = 58,
+        ///
+        /// Payment-channel errors.
+        ///
+        /// Channel op needs payee but caller wasn't.
+        ChannelCallerNotPayee = 60,
+        /// Channel op needs payer but caller wasn't.
+        ChannelCallerNotPayer = 61,
+        /// Voucher cumulative_amount <= channel.settled_amount.
+        ChannelVoucherNotMonotonic = 62,
+        /// Voucher cumulative_amount > deposit + settled_amount.
+        ChannelOverspend = 63,
+        /// WithdrawAfterTimeout before grace_period_ms elapsed.
+        ChannelGraceNotElapsed = 64,
+        /// RequestClose called twice.
+        ChannelCloseAlreadyPending = 65,
+        /// WithdrawAfterTimeout without a prior RequestClose.
+        ChannelNoCloseRequest = 66,
+        /// Voucher signature did not verify.
+        ChannelInvalidVoucherSignature = 67,
+        /// OpenChannel/TopUp amount was zero.
+        ChannelAmountZero = 68,
+        /// OpenChannel input invariant failed (self-channel, zero signer).
+        ChannelInvalidInput = 69,
+        /// TopUp coin_type didn't match channel token.
+        ChannelCoinTypeMismatch = 70,
+        /// Object loaded for a channel op was not a Channel.
+        NotAChannel = 71,
+        /// Clock not declared as a shared input by a channel op that needs it.
+        ChannelClockMissing = 72,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -810,6 +839,21 @@ pub mod execution_error {
                     "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH"
                 }
                 Self::InvalidGasCoinType => "INVALID_GAS_COIN_TYPE",
+                Self::ChannelCallerNotPayee => "CHANNEL_CALLER_NOT_PAYEE",
+                Self::ChannelCallerNotPayer => "CHANNEL_CALLER_NOT_PAYER",
+                Self::ChannelVoucherNotMonotonic => "CHANNEL_VOUCHER_NOT_MONOTONIC",
+                Self::ChannelOverspend => "CHANNEL_OVERSPEND",
+                Self::ChannelGraceNotElapsed => "CHANNEL_GRACE_NOT_ELAPSED",
+                Self::ChannelCloseAlreadyPending => "CHANNEL_CLOSE_ALREADY_PENDING",
+                Self::ChannelNoCloseRequest => "CHANNEL_NO_CLOSE_REQUEST",
+                Self::ChannelInvalidVoucherSignature => {
+                    "CHANNEL_INVALID_VOUCHER_SIGNATURE"
+                }
+                Self::ChannelAmountZero => "CHANNEL_AMOUNT_ZERO",
+                Self::ChannelInvalidInput => "CHANNEL_INVALID_INPUT",
+                Self::ChannelCoinTypeMismatch => "CHANNEL_COIN_TYPE_MISMATCH",
+                Self::NotAChannel => "NOT_A_CHANNEL",
+                Self::ChannelClockMissing => "CHANNEL_CLOCK_MISSING",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -883,6 +927,21 @@ pub mod execution_error {
                     Some(Self::ModelDecryptionKeyCommitmentMismatch)
                 }
                 "INVALID_GAS_COIN_TYPE" => Some(Self::InvalidGasCoinType),
+                "CHANNEL_CALLER_NOT_PAYEE" => Some(Self::ChannelCallerNotPayee),
+                "CHANNEL_CALLER_NOT_PAYER" => Some(Self::ChannelCallerNotPayer),
+                "CHANNEL_VOUCHER_NOT_MONOTONIC" => Some(Self::ChannelVoucherNotMonotonic),
+                "CHANNEL_OVERSPEND" => Some(Self::ChannelOverspend),
+                "CHANNEL_GRACE_NOT_ELAPSED" => Some(Self::ChannelGraceNotElapsed),
+                "CHANNEL_CLOSE_ALREADY_PENDING" => Some(Self::ChannelCloseAlreadyPending),
+                "CHANNEL_NO_CLOSE_REQUEST" => Some(Self::ChannelNoCloseRequest),
+                "CHANNEL_INVALID_VOUCHER_SIGNATURE" => {
+                    Some(Self::ChannelInvalidVoucherSignature)
+                }
+                "CHANNEL_AMOUNT_ZERO" => Some(Self::ChannelAmountZero),
+                "CHANNEL_INVALID_INPUT" => Some(Self::ChannelInvalidInput),
+                "CHANNEL_COIN_TYPE_MISMATCH" => Some(Self::ChannelCoinTypeMismatch),
+                "NOT_A_CHANNEL" => Some(Self::NotAChannel),
+                "CHANNEL_CLOCK_MISSING" => Some(Self::ChannelClockMissing),
                 _ => None,
             }
         }
@@ -3550,6 +3609,12 @@ pub struct SystemParameters {
     /// Per-unit fee. Tx fee = unit_fee * executor.fee_units(...).
     #[prost(uint64, optional, tag = "2")]
     pub unit_fee: ::core::option::Option<u64>,
+    /// Payment-channel grace period: how long after `RequestClose`
+    /// a payer must wait before they can call `WithdrawAfterTimeout`.
+    /// Surfaced so wallets/proxies can compute "earliest withdrawable"
+    /// without reading the SystemState BCS directly.
+    #[prost(uint64, optional, tag = "3")]
+    pub channel_grace_period_ms: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -3953,7 +4018,7 @@ pub struct ValidDuring {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 60, 61"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4052,6 +4117,8 @@ pub mod transaction_kind {
         RequestClose(super::RequestClose),
         #[prost(message, tag = "53")]
         WithdrawAfterTimeout(super::WithdrawAfterTimeout),
+        #[prost(message, tag = "54")]
+        TopUp(super::TopUp),
         /// Per-commit accumulator settlement system transaction (Stage 6a).
         #[prost(message, tag = "60")]
         Settlement(super::Settlement),
@@ -4642,6 +4709,24 @@ pub struct WithdrawAfterTimeout {
     /// Channel object ID (hex string).
     #[prost(string, optional, tag = "1")]
     pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Payer-only: add `amount` to the channel's deposit, debited from
+/// the payer's accumulator in the channel's coin type. Clears any
+/// pending close-timer so a renewing payer can withdraw their close
+/// request and keep the relationship running.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TopUp {
+    /// Channel object ID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Coin denomination ("SOMA" / "USDC"). Must match the channel's
+    /// token; the executor rejects mismatch.
+    #[prost(string, optional, tag = "2")]
+    pub coin_type: ::core::option::Option<::prost::alloc::string::String>,
+    /// Top-up amount, in the channel's smallest unit. Must be > 0.
+    #[prost(uint64, optional, tag = "3")]
+    pub amount: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -366,7 +366,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             OpenChannel(args) => Kind::OpenChannel(super::OpenChannel {
                 payee: Some(args.payee.to_string()),
                 authorized_signer: Some(args.authorized_signer.to_string()),
-                token: Some(args.token.clone()),
+                token: Some(args.token.to_string()),
                 deposit_amount: Some(args.deposit_amount),
             }),
             Settle(args) => Kind::Settle(super::Settle {
@@ -379,6 +379,11 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             }),
             WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(super::WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
+            }),
+            TopUp(args) => Kind::TopUp(super::TopUp {
+                channel_id: Some(args.channel_id.to_string()),
+                coin_type: Some(args.coin_type.to_string()),
+                amount: Some(args.amount),
             }),
 
             Settlement(settlement) => Kind::Settlement(super::Settlement {
@@ -418,7 +423,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             }),
 
             BalanceTransfer(args) => Kind::BalanceTransfer(super::BalanceTransfer {
-                coin_type: Some(args.coin_type.clone()),
+                coin_type: Some(args.coin_type.to_string()),
                 transfers: args
                     .transfers
                     .iter()
@@ -742,8 +747,10 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .map_err(|e| TryFromProtoError::invalid("authorized_signer", e))?,
                 token: args
                     .token
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("token"))?,
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("token"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| TryFromProtoError::invalid("token", e))?,
                 deposit_amount: args
                     .deposit_amount
                     .ok_or_else(|| TryFromProtoError::missing("deposit_amount"))?,
@@ -785,6 +792,24 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
                 })
             }
+
+            Kind::TopUp(args) => Self::TopUp(crate::types::TopUpArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                coin_type: args
+                    .coin_type
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("coin_type"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| TryFromProtoError::invalid("coin_type", e))?,
+                amount: args
+                    .amount
+                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+            }),
 
             Kind::Settlement(settlement) => {
                 let mut changes = Vec::with_capacity(settlement.changes.len());
@@ -848,8 +873,12 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             Kind::BalanceTransfer(args) => {
                 let coin_type = args
                     .coin_type
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("balance_transfer.coin_type"))?;
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("balance_transfer.coin_type"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| {
+                        TryFromProtoError::invalid("balance_transfer.coin_type", e)
+                    })?;
                 let mut transfers = Vec::with_capacity(args.transfers.len());
                 for entry in &args.transfers {
                     let recipient = entry

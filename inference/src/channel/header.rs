@@ -1,119 +1,137 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! `Authorization: SomaPay v1 <handle> <cum_micros> <expires_ms> <sig>` —
-//! per-request authorization header. The signature is detached Ed25519 over
-//! a SHA-256 digest of the canonical input.
+//! `Authorization: SomaPay v2 <channel_id> <bcs(http_voucher)_b64> <bcs(http_sig)_b64>`
+//! and the companion `X-Soma-Onchain-Sig: <bcs(generic_sig)_b64>` —
+//! per-request authorization headers.
+//!
+//! Both signatures are produced via the SDK's `sign_*_voucher`
+//! helpers (Ed25519/MultiSig over `IntentMessage<X>` with their
+//! respective scopes) — there is no inference-local signing
+//! primitive any more. See `sdk::channel`.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use fastcrypto::traits::ToFromBytes as _;
+use ::types::channel::HttpVoucher;
+use ::types::crypto::GenericSignature;
+use ::types::object::ObjectID;
 
 use crate::channel::ChannelError;
 
 #[derive(Debug, Clone)]
 pub struct SomaPayHeader {
-    pub handle: String,
-    pub cum_micros: u64,
-    pub expires_ms: u64,
-    pub sig_b64: String, // url-safe-no-pad
+    pub channel_id: ObjectID,
+    pub http_voucher: HttpVoucher,
+    pub http_sig: GenericSignature,
 }
+
+const SCHEME: &str = "SomaPay";
+const VERSION: &str = "v2";
 
 impl SomaPayHeader {
     pub fn parse(value: &str) -> Result<Self, ChannelError> {
         let value = value.trim();
         let mut parts = value.split_whitespace();
         let scheme = parts.next().ok_or(ChannelError::Malformed)?;
-        if !scheme.eq_ignore_ascii_case("SomaPay") {
+        if !scheme.eq_ignore_ascii_case(SCHEME) {
             return Err(ChannelError::Malformed);
         }
         let version = parts.next().ok_or(ChannelError::Malformed)?;
-        if version != "v1" {
+        if version != VERSION {
             return Err(ChannelError::Malformed);
         }
-        let handle = parts.next().ok_or(ChannelError::Malformed)?.to_string();
-        let cum: u64 = parts
-            .next()
-            .ok_or(ChannelError::Malformed)?
-            .parse()
+        let channel_id_str = parts.next().ok_or(ChannelError::Malformed)?;
+        let channel_id = channel_id_str
+            .parse::<ObjectID>()
             .map_err(|_| ChannelError::Malformed)?;
-        let expires: u64 = parts
-            .next()
-            .ok_or(ChannelError::Malformed)?
-            .parse()
-            .map_err(|_| ChannelError::Malformed)?;
-        let sig = parts.next().ok_or(ChannelError::Malformed)?.to_string();
+        let voucher_b64 = parts.next().ok_or(ChannelError::Malformed)?;
+        let sig_b64 = parts.next().ok_or(ChannelError::Malformed)?;
         if parts.next().is_some() {
             return Err(ChannelError::Malformed);
         }
-        Ok(Self { handle, cum_micros: cum, expires_ms: expires, sig_b64: sig })
+
+        let voucher_bytes = URL_SAFE_NO_PAD
+            .decode(voucher_b64.as_bytes())
+            .map_err(|_| ChannelError::Malformed)?;
+        let http_voucher: HttpVoucher =
+            bcs::from_bytes(&voucher_bytes).map_err(|_| ChannelError::Malformed)?;
+        if http_voucher.channel_id != channel_id {
+            return Err(ChannelError::Malformed);
+        }
+
+        let sig_bytes = URL_SAFE_NO_PAD
+            .decode(sig_b64.as_bytes())
+            .map_err(|_| ChannelError::Malformed)?;
+        let http_sig =
+            GenericSignature::from_bytes(&sig_bytes).map_err(|_| ChannelError::Malformed)?;
+
+        Ok(Self { channel_id, http_voucher, http_sig })
     }
 
     pub fn format(&self) -> String {
+        let voucher_bytes =
+            bcs::to_bytes(&self.http_voucher).expect("HttpVoucher BCS infallible");
+        let voucher_b64 = URL_SAFE_NO_PAD.encode(&voucher_bytes);
+        let sig_b64 = URL_SAFE_NO_PAD.encode(self.http_sig.as_ref());
         format!(
-            "SomaPay v1 {} {} {} {}",
-            self.handle, self.cum_micros, self.expires_ms, self.sig_b64
+            "{} {} {} {} {}",
+            SCHEME, VERSION, self.channel_id, voucher_b64, sig_b64
         )
     }
-
-    pub fn sig_bytes(&self) -> Result<[u8; 64], ChannelError> {
-        let v = URL_SAFE_NO_PAD
-            .decode(self.sig_b64.as_bytes())
-            .map_err(|_| ChannelError::Malformed)?;
-        if v.len() != 64 {
-            return Err(ChannelError::Malformed);
-        }
-        let mut arr = [0u8; 64];
-        arr.copy_from_slice(&v);
-        Ok(arr)
-    }
 }
 
-/// Canonical bytes-to-be-signed for one authorization. Newline-delimited so
-/// adversarial input can't reframe one field as another.
-pub fn digest_input(
-    handle: &str,
-    cum_micros: u64,
-    expires_ms: u64,
-    method: &str,
-    path: &str,
-    body_sha256_hex: &str,
-    request_id: &str,
-) -> Vec<u8> {
-    let mut out = Vec::with_capacity(256);
-    out.extend_from_slice(b"SomaPay/v1\n");
-    out.extend_from_slice(handle.as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(cum_micros.to_string().as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(expires_ms.to_string().as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(method.as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(path.as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(body_sha256_hex.as_bytes());
-    out.push(b'\n');
-    out.extend_from_slice(request_id.as_bytes());
-    out
+/// Wire format for the on-chain voucher signature companion header.
+/// The provider stores the latest one and uses it when calling
+/// `sdk::channel::settle` on shutdown.
+pub fn encode_onchain_sig(sig: &GenericSignature) -> String {
+    URL_SAFE_NO_PAD.encode(sig.as_ref())
 }
+
+pub fn decode_onchain_sig(value: &str) -> Result<GenericSignature, ChannelError> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value.trim().as_bytes())
+        .map_err(|_| ChannelError::Malformed)?;
+    GenericSignature::from_bytes(&bytes).map_err(|_| ChannelError::Malformed)
+}
+
+pub const ONCHAIN_SIG_HEADER: &str = "x-soma-onchain-sig";
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::types::channel::HttpVoucher;
+    use ::types::object::ObjectID;
 
     #[test]
-    fn round_trip_format_parse() {
-        let h = SomaPayHeader {
-            handle: "01HZZK".to_string(),
-            cum_micros: 12345,
-            expires_ms: 1700000000000,
-            sig_b64: "AAAA".to_string(),
-        };
+    fn round_trip_parse_format() {
+        // Minimal header round-trip with a known-shape signature; we
+        // can't produce a real signature here without a keystore, so
+        // fall back to verifying the parse rejects mismatched
+        // channel_ids.
+        let id_a = ObjectID::random();
+        let id_b = ObjectID::random();
+        let hv = HttpVoucher::from_request(id_a, 100, 0, b"", "rid", "POST", "/v1/x");
+        // Bogus 65-byte Ed25519 sig: 1-byte flag (0 == ED25519) + 64 zero bytes + 32 zero pk = 97 bytes.
+        let mut sig_bytes = vec![0u8; 97];
+        sig_bytes[0] = 0; // ED25519 flag
+        let http_sig = GenericSignature::from_bytes(&sig_bytes).expect("ed25519 sig parses");
+        let h = SomaPayHeader { channel_id: id_a, http_voucher: hv, http_sig };
         let s = h.format();
-        let p = SomaPayHeader::parse(&s).unwrap();
-        assert_eq!(p.handle, h.handle);
-        assert_eq!(p.cum_micros, h.cum_micros);
-        assert_eq!(p.expires_ms, h.expires_ms);
-        assert_eq!(p.sig_b64, h.sig_b64);
+        let parsed = SomaPayHeader::parse(&s).expect("round-trips");
+        assert_eq!(parsed.channel_id, id_a);
+        assert_eq!(parsed.http_voucher.cumulative_amount, 100);
+
+        // Channel-id mismatch must be rejected.
+        let hv_b = HttpVoucher::from_request(id_b, 100, 0, b"", "rid", "POST", "/v1/x");
+        let mut sig_bytes2 = vec![0u8; 97];
+        sig_bytes2[0] = 0;
+        let bad = SomaPayHeader {
+            channel_id: id_a,
+            http_voucher: hv_b,
+            http_sig: GenericSignature::from_bytes(&sig_bytes2).unwrap(),
+        };
+        let s = bad.format();
+        assert!(SomaPayHeader::parse(&s).is_err());
     }
 }

@@ -21,6 +21,7 @@ reqwest.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 tower.workspace = true
+bcs.workspace = true
 
 # Serde + persistence
 serde = { workspace = true, features = ["derive"] }
@@ -47,6 +48,9 @@ tempfile.workspace = true
 tokio = { version = "1", features = ["full", "test-util"] }
 wiremock.workspace = true
 rand.workspace = true
+test-cluster.workspace = true
+soma-keys.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

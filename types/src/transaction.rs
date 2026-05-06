@@ -124,6 +124,7 @@ pub enum TransactionKind {
     Settle(SettleArgs),
     RequestClose(RequestCloseArgs),
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
+    TopUp(TopUpArgs),
 
     /// Stage 7: stateless value transfer — debits sender's
     /// accumulator balance, credits each recipient's. No owned
@@ -301,6 +302,23 @@ pub struct WithdrawAfterTimeoutArgs {
     pub channel_id: ObjectID,
 }
 
+/// Args for `TopUp`. Payer-only. Increments `channel.deposit` by
+/// `amount` (debited from the payer's accumulator in the channel's
+/// own coin type) and clears any pending `close_requested_at_ms`,
+/// turning the close timer back off so the relationship can keep
+/// running.
+///
+/// `coin_type` must match the channel's coin type — committed by the
+/// caller so the reservation pre-pass can register the withdrawal
+/// before the channel object is loaded. Mismatch is rejected at
+/// execution.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct TopUpArgs {
+    pub channel_id: ObjectID,
+    pub coin_type: crate::object::CoinType,
+    pub amount: u64,
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeEmergencyUnpauseArgs {
     pub aggregated_signature: Vec<u8>,
@@ -382,6 +400,7 @@ impl TransactionKind {
                 | TransactionKind::Settle(_)
                 | TransactionKind::RequestClose(_)
                 | TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::TopUp(_)
         )
     }
 
@@ -392,6 +411,7 @@ impl TransactionKind {
             TransactionKind::Settle(args) => Some(args.channel_id),
             TransactionKind::RequestClose(args) => Some(args.channel_id),
             TransactionKind::WithdrawAfterTimeout(args) => Some(args.channel_id),
+            TransactionKind::TopUp(args) => Some(args.channel_id),
             _ => None,
         }
     }
@@ -1241,6 +1261,20 @@ impl TransactionData {
                     self.sender(),
                     args.token,
                     args.deposit_amount,
+                ));
+            }
+        }
+        // TopUp: payer adds `amount` to the channel's escrow, debited
+        // from their accumulator. The pre-pass uses `args.coin_type`
+        // (caller-committed) so the reservation can be registered
+        // before the channel object is loaded; the executor verifies
+        // the coin_type matches the channel and rejects otherwise.
+        if let TransactionKind::TopUp(args) = self.kind() {
+            if args.amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    args.coin_type,
+                    args.amount,
                 ));
             }
         }

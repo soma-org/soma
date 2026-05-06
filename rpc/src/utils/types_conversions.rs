@@ -406,10 +406,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             TK::BalanceTransfer(args) => {
                 TransactionKind::BalanceTransfer(crate::types::BalanceTransferArgs {
-                    coin_type: match args.coin_type {
-                        types::object::CoinType::Soma => "SOMA".to_string(),
-                        types::object::CoinType::Usdc => "USDC".to_string(),
-                    },
+                    coin_type: args.coin_type,
                     transfers: args
                         .transfers
                         .into_iter()
@@ -552,11 +549,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             // Payment-channel transactions
             TransactionKind::OpenChannel(args) => {
-                let token = parse_coin_type(&args.token)?;
                 TK::OpenChannel(types::transaction::OpenChannelArgs {
                     payee: args.payee.into(),
                     authorized_signer: args.authorized_signer.into(),
-                    token,
+                    token: args.token,
                     deposit_amount: args.deposit_amount,
                 })
             }
@@ -589,6 +585,15 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     )),
                 })
             }
+            TransactionKind::TopUp(args) => {
+                TK::TopUp(types::transaction::TopUpArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    coin_type: args.coin_type,
+                    amount: args.amount,
+                })
+            }
 
             TransactionKind::Settlement(settlement) => {
                 TK::Settlement(types::transaction::SettlementTransaction {
@@ -601,9 +606,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
 
             TransactionKind::BalanceTransfer(args) => {
-                let coin_type = parse_coin_type(&args.coin_type)?;
                 TK::BalanceTransfer(types::transaction::BalanceTransferArgs {
-                    coin_type,
+                    coin_type: args.coin_type,
                     transfers: args
                         .transfers
                         .into_iter()
@@ -1362,6 +1366,59 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             | types::effects::ExecutionFailureStatus::BridgeInsufficientSignatureStake => {
                 Self::OtherError(value.to_string())
             }
+
+            // Payment-channel errors — typed at the rpc::types layer so
+            // integrators can match on them programmatically.
+            types::effects::ExecutionFailureStatus::ChannelCallerNotPayee {
+                expected,
+                actual,
+            } => Self::ChannelCallerNotPayee {
+                expected: expected.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected,
+                actual,
+            } => Self::ChannelCallerNotPayer {
+                expected: expected.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::ChannelVoucherNotMonotonic {
+                cumulative,
+                settled,
+            } => Self::ChannelVoucherNotMonotonic { cumulative, settled },
+            types::effects::ExecutionFailureStatus::ChannelOverspend {
+                cumulative,
+                available,
+            } => Self::ChannelOverspend { cumulative, available },
+            types::effects::ExecutionFailureStatus::ChannelGraceNotElapsed {
+                now_ms,
+                earliest_ms,
+            } => Self::ChannelGraceNotElapsed { now_ms, earliest_ms },
+            types::effects::ExecutionFailureStatus::ChannelCloseAlreadyPending => {
+                Self::ChannelCloseAlreadyPending
+            }
+            types::effects::ExecutionFailureStatus::ChannelNoCloseRequest => {
+                Self::ChannelNoCloseRequest
+            }
+            types::effects::ExecutionFailureStatus::ChannelInvalidVoucherSignature {
+                reason,
+            } => Self::ChannelInvalidVoucherSignature { reason },
+            types::effects::ExecutionFailureStatus::ChannelAmountZero => {
+                Self::ChannelAmountZero
+            }
+            types::effects::ExecutionFailureStatus::ChannelInvalidInput { reason } => {
+                Self::ChannelInvalidInput { reason }
+            }
+            types::effects::ExecutionFailureStatus::ChannelCoinTypeMismatch => {
+                Self::ChannelCoinTypeMismatch
+            }
+            types::effects::ExecutionFailureStatus::NotAChannel { object_id } => {
+                Self::NotAChannel { object_id: object_id.into() }
+            }
+            types::effects::ExecutionFailureStatus::ChannelClockMissing => {
+                Self::ChannelClockMissing
+            }
         }
     }
 }
@@ -1479,6 +1536,44 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::OtherError(string) => {
                 Self::SomaError(types::error::SomaError::from(string))
             }
+
+            // Payment-channel errors — typed both directions.
+            ExecutionError::ChannelCallerNotPayee { expected, actual } => {
+                Self::ChannelCallerNotPayee {
+                    expected: expected.into(),
+                    actual: actual.into(),
+                }
+            }
+            ExecutionError::ChannelCallerNotPayer { expected, actual } => {
+                Self::ChannelCallerNotPayer {
+                    expected: expected.into(),
+                    actual: actual.into(),
+                }
+            }
+            ExecutionError::ChannelVoucherNotMonotonic { cumulative, settled } => {
+                Self::ChannelVoucherNotMonotonic { cumulative, settled }
+            }
+            ExecutionError::ChannelOverspend { cumulative, available } => {
+                Self::ChannelOverspend { cumulative, available }
+            }
+            ExecutionError::ChannelGraceNotElapsed { now_ms, earliest_ms } => {
+                Self::ChannelGraceNotElapsed { now_ms, earliest_ms }
+            }
+            ExecutionError::ChannelCloseAlreadyPending => Self::ChannelCloseAlreadyPending,
+            ExecutionError::ChannelNoCloseRequest => Self::ChannelNoCloseRequest,
+            ExecutionError::ChannelInvalidVoucherSignature { reason } => {
+                Self::ChannelInvalidVoucherSignature { reason }
+            }
+            ExecutionError::ChannelAmountZero => Self::ChannelAmountZero,
+            ExecutionError::ChannelInvalidInput { reason } => {
+                Self::ChannelInvalidInput { reason }
+            }
+            ExecutionError::ChannelCoinTypeMismatch => Self::ChannelCoinTypeMismatch,
+            ExecutionError::NotAChannel { object_id } => {
+                Self::NotAChannel { object_id: object_id.into() }
+            }
+            ExecutionError::ChannelClockMissing => Self::ChannelClockMissing,
+
             _ => unreachable!("sdk shouldn't have a variant that the mono repo doesn't"),
         }
     }

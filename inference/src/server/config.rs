@@ -1,17 +1,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
-
 use serde::Deserialize;
 
 use crate::catalog::ModelCard;
-use crate::persist::expand_home;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub server: Server,
-    pub chain: Chain,
     pub backend: Backend,
     #[serde(default)]
     pub auth: Auth,
@@ -23,24 +19,6 @@ pub struct Config {
 pub struct Server {
     pub listen: String,
     pub public_endpoint: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Chain {
-    pub mode: String,
-    pub soma_home: String,
-    #[serde(default = "default_heartbeat")]
-    pub heartbeat_interval_secs: u64,
-}
-
-fn default_heartbeat() -> u64 {
-    600
-}
-
-impl Chain {
-    pub fn soma_home_path(&self) -> PathBuf {
-        expand_home(&self.soma_home)
-    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -4,15 +4,16 @@
 //! Executor for payment-channel transactions.
 //!
 //! Phase 1 ops: `OpenChannel`, `Settle`, `RequestClose`,
-//! `WithdrawAfterTimeout`. See `types::channel` for the on-chain
-//! `Channel` object layout and the `Voucher` signing scheme. The op
-//! semantics + access-control rules mirror Tempo's MPP session
-//! `TempoStreamChannel` adapted to Soma:
+//! `WithdrawAfterTimeout`, `TopUp`. See `types::channel` for the
+//! on-chain `Channel` object layout and the `Voucher` signing
+//! scheme. The op semantics + access-control rules mirror Tempo's
+//! MPP session `TempoStreamChannel` adapted to Soma:
 //!
 //! | Op                     | Caller   | Purpose                                       |
 //! |------------------------|----------|-----------------------------------------------|
 //! | OpenChannel            | anyone\* | Creates channel, signer becomes the payer     |
 //! | Settle                 | payee    | Pay delta on a voucher; channel stays alive   |
+//! | TopUp                  | payer    | Refill deposit; clears any pending close      |
 //! | RequestClose           | payer    | Start grace timer for forced close            |
 //! | WithdrawAfterTimeout   | payer    | After grace elapses, return remainder, delete |
 //!
@@ -31,7 +32,8 @@ use types::object::{Object, ObjectID};
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
-    OpenChannelArgs, RequestCloseArgs, SettleArgs, TransactionKind, WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, TransactionKind,
+    WithdrawAfterTimeoutArgs,
 };
 
 use super::{TransactionExecutor, checked_add, checked_sub};
@@ -53,12 +55,11 @@ impl ChannelExecutor {
     ) -> ExecutionResult<()> {
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
-        signature.verify_authenticator(&intent_msg, channel.authorized_signer).map_err(|e| {
-            ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Voucher signature verification failed: {}",
-                e
-            )))
-        })?;
+        signature
+            .verify_authenticator(&intent_msg, channel.authorized_signer)
+            .map_err(|e| {
+                ExecutionFailureStatus::ChannelInvalidVoucherSignature { reason: e.to_string() }
+            })?;
         Ok(())
     }
 
@@ -72,12 +73,9 @@ impl ChannelExecutor {
             .read_object(&channel_id)
             .ok_or(ExecutionFailureStatus::ObjectNotFound { object_id: channel_id })?
             .clone();
-        let channel = object.as_channel().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Object {} is not a Channel",
-                channel_id
-            )))
-        })?;
+        let channel = object
+            .as_channel()
+            .ok_or(ExecutionFailureStatus::NotAChannel { object_id: channel_id })?;
         Ok((object, channel))
     }
 
@@ -85,11 +83,9 @@ impl ChannelExecutor {
     /// requires the caller's tx to have declared
     /// `SharedInputObject::CLOCK_OBJ_READ`.
     fn read_clock_ts(store: &TemporaryStore) -> ExecutionResult<TimestampMs> {
-        store.read_clock_timestamp_ms().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from(
-                "Clock object missing from inputs (tx must declare CLOCK_OBJ_READ)".to_string(),
-            ))
-        })
+        store
+            .read_clock_timestamp_ms()
+            .ok_or(ExecutionFailureStatus::ChannelClockMissing)
     }
 
     /// Execute `OpenChannel`. Signer becomes the payer; deposit is
@@ -106,9 +102,23 @@ impl ChannelExecutor {
     ) -> ExecutionResult<()> {
         // Reject zero-deposit channels — they're useless and create state bloat.
         if args.deposit_amount == 0 {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(
-                "Channel deposit must be non-zero".to_string(),
-            ))
+            return Err(ExecutionFailureStatus::ChannelAmountZero.into());
+        }
+        // Reject self-channels: payer == payee makes no semantic sense
+        // (it'd burn gas to round-trip funds through escrow).
+        if args.payee == signer {
+            return Err(ExecutionFailureStatus::ChannelInvalidInput {
+                reason: "payee must differ from payer".to_string(),
+            }
+            .into());
+        }
+        // Reject zero-address authorized_signer — no key can sign for
+        // it, which makes the channel only closable through
+        // RequestClose+timeout (and any Settle attempt fails).
+        if args.authorized_signer == SomaAddress::ZERO {
+            return Err(ExecutionFailureStatus::ChannelInvalidInput {
+                reason: "authorized_signer must be non-zero".to_string(),
+            }
             .into());
         }
 
@@ -152,10 +162,10 @@ impl ChannelExecutor {
 
         // 2. Caller-authorization: only the payee can submit Settle.
         if signer != channel.payee {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Settle must be submitted by the channel payee ({}), got {}",
-                channel.payee, signer
-            )))
+            return Err(ExecutionFailureStatus::ChannelCallerNotPayee {
+                expected: channel.payee,
+                actual: signer,
+            }
             .into());
         }
 
@@ -165,10 +175,10 @@ impl ChannelExecutor {
 
         // 4. Cumulative-monotonicity (replay protection).
         if args.cumulative_amount <= channel.settled_amount {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Voucher cumulative_amount {} must be > settled_amount {}",
-                args.cumulative_amount, channel.settled_amount
-            )))
+            return Err(ExecutionFailureStatus::ChannelVoucherNotMonotonic {
+                cumulative: args.cumulative_amount,
+                settled: channel.settled_amount,
+            }
             .into());
         }
 
@@ -176,10 +186,10 @@ impl ChannelExecutor {
         //    total funds ever escrowed (deposit + already-settled).
         let max_cumulative = channel.max_cumulative_amount();
         if args.cumulative_amount > max_cumulative {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Voucher cumulative_amount {} exceeds available funds {}",
-                args.cumulative_amount, max_cumulative
-            )))
+            return Err(ExecutionFailureStatus::ChannelOverspend {
+                cumulative: args.cumulative_amount,
+                available: max_cumulative,
+            }
             .into());
         }
 
@@ -224,10 +234,10 @@ impl ChannelExecutor {
 
         // Caller-authorization: only the payer can request close.
         if signer != channel.payer {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "RequestClose must be submitted by the channel payer ({}), got {}",
-                channel.payer, signer
-            )))
+            return Err(ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected: channel.payer,
+                actual: signer,
+            }
             .into());
         }
 
@@ -236,10 +246,7 @@ impl ChannelExecutor {
         // payee's grace window. Reject to keep the original timer
         // intact.
         if channel.close_requested_at_ms.is_some() {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(
-                "RequestClose already pending for this channel".to_string(),
-            ))
-            .into());
+            return Err(ExecutionFailureStatus::ChannelCloseAlreadyPending.into());
         }
 
         let now_ms = Self::read_clock_ts(store)?;
@@ -265,18 +272,16 @@ impl ChannelExecutor {
         let (_channel_object, channel) = Self::load_channel(store, args.channel_id)?;
 
         if signer != channel.payer {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "WithdrawAfterTimeout must be submitted by the channel payer ({}), got {}",
-                channel.payer, signer
-            )))
+            return Err(ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected: channel.payer,
+                actual: signer,
+            }
             .into());
         }
 
-        let close_requested_at_ms = channel.close_requested_at_ms.ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from(
-                "WithdrawAfterTimeout requires a prior RequestClose".to_string(),
-            ))
-        })?;
+        let close_requested_at_ms = channel
+            .close_requested_at_ms
+            .ok_or(ExecutionFailureStatus::ChannelNoCloseRequest)?;
 
         // Read protocol grace period from SystemState (declared as
         // read-only shared input by this tx kind).
@@ -296,10 +301,10 @@ impl ChannelExecutor {
         let now_ms = Self::read_clock_ts(store)?;
         let earliest_withdrawable = checked_add(close_requested_at_ms, grace_ms)?;
         if now_ms < earliest_withdrawable {
-            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Grace period not elapsed: now={}, earliest_withdrawable={}",
-                now_ms, earliest_withdrawable
-            )))
+            return Err(ExecutionFailureStatus::ChannelGraceNotElapsed {
+                now_ms,
+                earliest_ms: earliest_withdrawable,
+            }
             .into());
         }
 
@@ -321,6 +326,64 @@ impl ChannelExecutor {
             );
         }
         store.delete_input_object(&args.channel_id);
+
+        Ok(())
+    }
+
+    /// Execute `TopUp`. Payer-only. Adds `args.amount` to the
+    /// channel's escrow (debited from the payer's accumulator),
+    /// clears any pending close timer so the channel keeps running.
+    /// `args.coin_type` must match the channel's token (the
+    /// reservation pre-pass is keyed on it before the channel object
+    /// is loaded; mismatch is rejected here as defense-in-depth).
+    fn execute_top_up(
+        &self,
+        store: &mut TemporaryStore,
+        signer: SomaAddress,
+        args: TopUpArgs,
+        _tx_digest: TransactionDigest,
+    ) -> ExecutionResult<()> {
+        // Reject zero-amount top-ups: pure state bloat.
+        if args.amount == 0 {
+            return Err(ExecutionFailureStatus::ChannelAmountZero.into());
+        }
+
+        let (channel_object, mut channel) = Self::load_channel(store, args.channel_id)?;
+
+        // Caller-authorization: only the payer can top up.
+        if signer != channel.payer {
+            return Err(ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected: channel.payer,
+                actual: signer,
+            }
+            .into());
+        }
+
+        // Coin-type must match — the reservation pre-pass keyed on
+        // `args.coin_type`, so any mismatch would corrupt accounting.
+        if args.coin_type != channel.token {
+            return Err(ExecutionFailureStatus::ChannelCoinTypeMismatch.into());
+        }
+
+        // Increase the on-channel deposit and clear any pending
+        // close-timer (per `Channel.close_requested_at_ms` doc:
+        // "Cleared by `TopUp` so a renewing payer can withdraw
+        // their close request"). Net accumulator supply is conserved
+        // (payer debited via Split below; deposit grows by the same
+        // amount).
+        channel.deposit = checked_add(channel.deposit, args.amount)?;
+        channel.close_requested_at_ms = None;
+
+        let mut updated_channel_object = channel_object;
+        updated_channel_object.set_channel_data(&channel);
+        store.mutate_input_object(updated_channel_object);
+
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(channel.payer, channel.token),
+            types::effects::object_change::AccumulatorOperation::Split,
+            args.amount,
+        );
 
         Ok(())
     }
@@ -350,6 +413,7 @@ impl TransactionExecutor for ChannelExecutor {
             TransactionKind::WithdrawAfterTimeout(args) => {
                 self.execute_withdraw_after_timeout(store, signer, args, tx_digest)
             }
+            TransactionKind::TopUp(args) => self.execute_top_up(store, signer, args, tx_digest),
             _ => Err(ExecutionFailureStatus::InvalidTransactionType.into()),
         }
     }
@@ -563,6 +627,49 @@ mod tests {
         assert_eq!(ch.deposit, 100_000);
         assert_eq!(ch.settled_amount, 0);
         assert_eq!(ch.close_requested_at_ms, None);
+    }
+
+    /// Self-channels (payer == payee) are rejected at the executor.
+    /// Burning gas to round-trip your own funds through escrow is
+    /// nonsense; reject up front.
+    #[test]
+    fn open_channel_rejects_self_channel() {
+        let f = Fixture::new();
+        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_open(
+            &mut store,
+            f.payer,
+            OpenChannelArgs {
+                payee: f.payer, // same as signer
+                authorized_signer: f.signer_addr,
+                token: CoinType::Usdc,
+                deposit_amount: 1_000,
+            },
+            TransactionDigest::default(),
+        )
+        .expect_err("self-channel must be rejected");
+    }
+
+    /// Zero authorized_signer makes the channel un-Settle-able and
+    /// only closable via the timeout path. Reject at open.
+    #[test]
+    fn open_channel_rejects_zero_authorized_signer() {
+        let f = Fixture::new();
+        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_open(
+            &mut store,
+            f.payer,
+            OpenChannelArgs {
+                payee: f.payee,
+                authorized_signer: SomaAddress::ZERO,
+                token: CoinType::Usdc,
+                deposit_amount: 1_000,
+            },
+            TransactionDigest::default(),
+        )
+        .expect_err("zero authorized_signer must be rejected");
     }
 
     /// Zero-deposit channels are rejected — they're useless and create
@@ -970,5 +1077,130 @@ mod tests {
             TransactionDigest::default(),
         )
         .expect_err("non-payer must be rejected");
+    }
+
+    // ---------------------------------------------------------------
+    // TopUp tests
+    // ---------------------------------------------------------------
+
+    /// Happy path: payer adds funds; channel deposit grows by the
+    /// amount; payer's accumulator is split (debited) by the same.
+    #[test]
+    fn top_up_happy_path() {
+        let f = Fixture::new();
+        let channel = f.channel_with_deposit(1_000);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payer,
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Usdc, amount: 500 },
+            TransactionDigest::default(),
+        )
+        .expect("TopUp succeeds");
+
+        let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
+        assert_eq!(updated.deposit, 1_500);
+        assert_eq!(updated.settled_amount, 0);
+        assert_eq!(updated.close_requested_at_ms, None);
+
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::AccumulatorOperation;
+        let writes = store.accumulator_writes();
+        let payer_id = BalanceAccumulator::derive_id(f.payer, CoinType::Usdc);
+        let w = writes.get(&payer_id).expect("payer's withdraw must exist");
+        assert_eq!(w.operation, AccumulatorOperation::Split);
+        assert_eq!(w.value.as_u64(), 500);
+    }
+
+    /// TopUp clears any pending close-timer — the renewal-after-
+    /// requested-close path. Payer effectively cancels their close.
+    #[test]
+    fn top_up_clears_close_request() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(1_000);
+        channel.close_requested_at_ms = Some(42_000);
+        let mut store = make_store(50_000, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payer,
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Usdc, amount: 100 },
+            TransactionDigest::default(),
+        )
+        .expect("TopUp succeeds even when close was pending");
+
+        let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
+        assert_eq!(updated.deposit, 1_100);
+        assert!(
+            updated.close_requested_at_ms.is_none(),
+            "TopUp must clear pending close timer"
+        );
+    }
+
+    /// Zero-amount TopUp is rejected — pure state bloat.
+    #[test]
+    fn top_up_rejects_zero_amount() {
+        let f = Fixture::new();
+        let channel = f.channel_with_deposit(1_000);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payer,
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Usdc, amount: 0 },
+            TransactionDigest::default(),
+        )
+        .expect_err("zero-amount TopUp must be rejected");
+    }
+
+    /// Caller-restriction: only the payer can submit TopUp.
+    #[test]
+    fn top_up_rejects_non_payer_caller() {
+        let f = Fixture::new();
+        let channel = f.channel_with_deposit(1_000);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payee, // not the payer
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Usdc, amount: 100 },
+            TransactionDigest::default(),
+        )
+        .expect_err("non-payer must be rejected");
+    }
+
+    /// Coin-type mismatch is rejected: the channel is USDC but
+    /// caller passed SOMA. The reservation pre-pass would have
+    /// reserved the wrong accumulator; refusing here is
+    /// defense-in-depth.
+    #[test]
+    fn top_up_rejects_coin_type_mismatch() {
+        let f = Fixture::new();
+        let channel = f.channel_with_deposit(1_000);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payer,
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Soma, amount: 100 },
+            TransactionDigest::default(),
+        )
+        .expect_err("coin_type mismatch must be rejected");
+    }
+
+    /// Channel-not-found is rejected.
+    #[test]
+    fn top_up_rejects_missing_channel() {
+        let f = Fixture::new();
+        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_top_up(
+            &mut store,
+            f.payer,
+            TopUpArgs { channel_id: f.channel_id, coin_type: CoinType::Usdc, amount: 100 },
+            TransactionDigest::default(),
+        )
+        .expect_err("missing channel must be rejected");
     }
 }

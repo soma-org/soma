@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::catalog::ModelCard;
-use crate::chain::Discovery;
+use crate::chain::ChannelSurface;
 use crate::channel::{PaymentChannel, RunningTab};
 use crate::now_ms;
 use crate::openai::stream::{extract_usage_from_chunk, find_double_newline};
@@ -26,7 +26,7 @@ use crate::server::backend::Backend;
 use crate::server::ledger::Ledger;
 
 pub struct ProviderState {
-    pub chain: Arc<dyn Discovery>,
+    pub chain: Arc<dyn ChannelSurface>,
     pub backend: Arc<dyn Backend>,
     pub channel: Arc<RunningTab>,
     pub ledger: Ledger,

@@ -83,7 +83,7 @@ pub async fn forward_chat_completion(
             request_id: &request_id,
         };
 
-        let auth_header = {
+        let combined = {
             let mut g = slot.lock().await;
             ctx.channel
                 .authorize(&mut g.state, &meta, worst_case_micros)
@@ -94,7 +94,9 @@ pub async fn forward_chat_completion(
 
         let url = format!("{}{}", provider.endpoint.trim_end_matches('/'), path);
         let mut h = pass_inbound(inbound_headers);
-        h.insert(http::header::AUTHORIZATION, auth_header.parse().unwrap());
+        // The combined value is `<somapay-header>||<onchain-sig-b64>`.
+        // We send both in the Authorization header; the server splits.
+        h.insert(http::header::AUTHORIZATION, combined.parse().unwrap());
         h.insert("x-request-id", request_id.parse().unwrap());
         if !h.contains_key(http::header::CONTENT_TYPE) {
             h.insert(http::header::CONTENT_TYPE, "application/json".parse().unwrap());

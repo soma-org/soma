@@ -8,13 +8,11 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use reqwest::Client;
 use tokio::sync::RwLock;
-use types::base::SomaAddress;
+use ::types::base::SomaAddress;
+use ::types::object::CoinType;
 
 use crate::catalog::{ModelCard, ModelsResponse};
-use crate::chain::types::{ChannelState, OpenChannelParams, ProviderRecord};
-use crate::chain::Discovery;
-use crate::now_ms;
-use crate::pricing;
+use crate::chain::{ChannelSurface, ProviderRegistry, ProviderRecord};
 use crate::proxy::config::Config;
 use crate::proxy::state::{ChannelSlot, ClientStore};
 
@@ -27,12 +25,12 @@ pub struct ProviderInfo {
 }
 
 pub struct Router {
-    pub chain: Arc<dyn Discovery>,
+    pub registry: Arc<dyn ProviderRegistry>,
+    pub chain: Arc<dyn ChannelSurface>,
     pub http: Client,
     pub store: ClientStore,
     pub cfg: Arc<Config>,
     pub client_address: SomaAddress,
-    pub client_pubkey_hex: String,
     cache: Arc<RwLock<CacheState>>,
 }
 
@@ -43,23 +41,23 @@ struct CacheState {
 
 impl Router {
     pub fn new(
-        chain: Arc<dyn Discovery>,
+        registry: Arc<dyn ProviderRegistry>,
+        chain: Arc<dyn ChannelSurface>,
         store: ClientStore,
         cfg: Arc<Config>,
         client_address: SomaAddress,
-        client_pubkey_hex: String,
     ) -> Self {
         let http = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
             .expect("build http client");
         Self {
+            registry,
             chain,
             http,
             store,
             cfg,
             client_address,
-            client_pubkey_hex,
             cache: Arc::new(RwLock::new(CacheState {
                 last_refresh: None,
                 providers: Vec::new(),
@@ -68,7 +66,7 @@ impl Router {
     }
 
     pub async fn refresh_providers(&self) -> anyhow::Result<()> {
-        let recs: Vec<ProviderRecord> = self.chain.list_providers().await?;
+        let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
         let mut providers = Vec::new();
         for rec in recs {
             match self.fetch_provider_info(&rec.endpoint).await {
@@ -114,7 +112,7 @@ impl Router {
             match g.last_refresh {
                 Some(t) => {
                     g.providers.is_empty()
-                        || t.elapsed() > Duration::from_secs(self.cfg.discovery.provider_cache_ttl_secs)
+                        || t.elapsed() > Duration::from_secs(self.cfg.provider_cache_ttl_secs)
                 }
                 None => true,
             }
@@ -141,10 +139,10 @@ impl Router {
             return Ok(None);
         }
         candidates.sort_by(|a, b| {
-            let pa = pricing::parse_fixed(&a.1.pricing.prompt, 12)
-                + pricing::parse_fixed(&a.1.pricing.completion, 12);
-            let pb = pricing::parse_fixed(&b.1.pricing.prompt, 12)
-                + pricing::parse_fixed(&b.1.pricing.completion, 12);
+            let pa = crate::pricing::parse_fixed(&a.1.pricing.prompt, 12)
+                + crate::pricing::parse_fixed(&a.1.pricing.completion, 12);
+            let pb = crate::pricing::parse_fixed(&b.1.pricing.prompt, 12)
+                + crate::pricing::parse_fixed(&b.1.pricing.completion, 12);
             pa.cmp(&pb)
         });
         Ok(Some(candidates.remove(0)))
@@ -156,11 +154,11 @@ impl Router {
         let mut out: HashMap<String, (ProviderInfo, ModelCard)> = HashMap::new();
         for p in &g.providers {
             for c in &p.catalog {
-                let pa = pricing::parse_fixed(&c.pricing.prompt, 12)
-                    + pricing::parse_fixed(&c.pricing.completion, 12);
+                let pa = crate::pricing::parse_fixed(&c.pricing.prompt, 12)
+                    + crate::pricing::parse_fixed(&c.pricing.completion, 12);
                 if let Some(existing) = out.get(&c.id) {
-                    let pe = pricing::parse_fixed(&existing.1.pricing.prompt, 12)
-                        + pricing::parse_fixed(&existing.1.pricing.completion, 12);
+                    let pe = crate::pricing::parse_fixed(&existing.1.pricing.prompt, 12)
+                        + crate::pricing::parse_fixed(&existing.1.pricing.completion, 12);
                     if pa < pe {
                         out.insert(c.id.clone(), (p.clone(), c.clone()));
                     }
@@ -186,15 +184,17 @@ impl Router {
         false
     }
 
+    /// Return an open channel to `provider` — reuse an existing one
+    /// if it has meaningful headroom, otherwise lazily open a new
+    /// on-chain channel.
     pub async fn ensure_channel(
         &self,
         provider: &ProviderInfo,
     ) -> anyhow::Result<Arc<tokio::sync::Mutex<ChannelSlot>>> {
-        if let Some(h) = self.store.read_pointer(&provider.address) {
-            if let Ok(chan) = self.chain.channel(&h).await {
-                if chan.status == crate::chain::types::ChannelStatus::Open {
-                    if let Some(slot) = self.store.slot(&h).await {
-                        // Reuse if there's still meaningful headroom (>$0.04 of slack).
+        if let Some(id) = self.store.read_pointer(&provider.address) {
+            if let Ok(chan) = self.chain.get(id).await {
+                if chan.close_requested_at_ms.is_none() {
+                    if let Some(slot) = self.store.slot(&id).await {
                         let g = slot.lock().await;
                         if g.state
                             .deposit_micros
@@ -208,25 +208,22 @@ impl Router {
                 }
             }
         }
-        // Open a fresh channel.
-        let expires_ms = now_ms() + self.cfg.wallet.channel_expires_secs * 1000;
-        let handle = self
+        // Lazy on-chain open.
+        let id = self
             .chain
-            .open_channel(OpenChannelParams {
-                client: self.client_address,
-                client_pubkey_hex: self.client_pubkey_hex.clone(),
-                provider: provider.address,
-                deposit_micros: self.cfg.wallet.default_deposit_micros,
-                expires_ms,
-            })
+            .open(
+                provider.address,
+                CoinType::Usdc,
+                self.cfg.default_deposit_micros,
+            )
             .await
             .context("open_channel")?;
-        let chan: ChannelState = self.chain.channel(&handle).await?;
+        let chan = self.chain.get(id).await.context("get_channel after open")?;
         let slot = self
             .store
-            .init_slot(&chan, &provider.pubkey_hex, &provider.endpoint)
+            .init_slot(id, provider.address, &provider.endpoint, chan.deposit)
             .await?;
-        self.store.write_pointer(&provider.address, &handle)?;
+        self.store.write_pointer(&provider.address, &id)?;
         Ok(slot)
     }
 }
