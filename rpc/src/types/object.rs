@@ -168,6 +168,8 @@ pub enum ObjectType {
     Coin(types::object::CoinType),
     StakedSoma,
     PendingWithdrawal,
+    /// Per-deposit on-chain audit record for an Eth→Soma USDC bridge transfer.
+    BridgeRecord,
     Clock,
     Channel,
     /// Stage 14a: per-(owner, coin_type) account-balance accumulator.

@@ -82,8 +82,11 @@ impl CheckpointWatcher {
                     id: *id,
                     nonce: pw.nonce,
                     sender: pw.sender,
+                    target_chain: types::bridge::BridgeChainId::EthCustom,
                     recipient_eth_address: pw.recipient_eth_address,
+                    token_type: types::bridge::USDC_TOKEN_TYPE,
                     amount: pw.amount,
+                    timestamp_ms: pw.created_at_ms,
                 };
                 info!(
                     nonce = pw.nonce,

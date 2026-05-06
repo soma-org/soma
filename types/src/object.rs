@@ -653,6 +653,16 @@ pub enum ObjectType {
     StakedSoma,
     /// Pending USDC withdrawal from Soma to Ethereum
     PendingWithdrawal,
+    /// Per-deposit on-chain record of an Eth→Soma USDC bridge transfer.
+    /// One [`crate::bridge::BridgeRecord`] object per `(source_chain, nonce)`,
+    /// deterministically addressed via `bridge::derive_bridge_record_id`.
+    /// Created atomically by `BridgeDeposit` together with the USDC mint;
+    /// owner is `Immutable` so the record is a permanent audit trail and
+    /// nothing can ever mutate it. Replay defense: the executor refuses to
+    /// process a deposit whose derived ID already exists in the object store
+    /// (mirrors Sui's `LinkedTable<MessageKey, BridgeRecord>` membership
+    /// check, but flat in Soma's object store rather than nested in `BridgeInner`).
+    BridgeRecord,
     /// Global wall-clock object updated every consensus commit. Single
     /// instance lives at CLOCK_OBJECT_ID. User transactions may declare it
     /// as an immutable shared input only — only the consensus commit
@@ -696,6 +706,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Coin(ct) => write!(f, "Coin({})", ct),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
             ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
+            ObjectType::BridgeRecord => write!(f, "BridgeRecord"),
             ObjectType::Clock => write!(f, "Clock"),
             ObjectType::Channel => write!(f, "Channel"),
             ObjectType::BalanceAccumulator => write!(f, "BalanceAccumulator"),
@@ -716,6 +727,7 @@ impl FromStr for ObjectType {
             "Coin(USDC)" => Ok(ObjectType::Coin(CoinType::Usdc)),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
             "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
+            "BridgeRecord" => Ok(ObjectType::BridgeRecord),
             "Clock" => Ok(ObjectType::Clock),
             "Channel" => Ok(ObjectType::Channel),
             "BalanceAccumulator" => Ok(ObjectType::BalanceAccumulator),

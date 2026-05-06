@@ -163,6 +163,9 @@ pub enum TransactionKind {
     BridgeWithdraw(BridgeWithdrawArgs),
     BridgeEmergencyPause(BridgeEmergencyPauseArgs),
     BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+    BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignaturesArgs),
+    BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklistArgs),
+    BridgeRegisterBridgeKey(BridgeRegisterBridgeKeyArgs),
 
     // Payment-channel transactions (Phase 1)
     OpenChannel(OpenChannelArgs),
@@ -206,14 +209,23 @@ pub struct SettlementTransaction {
 
 // Bridge arg types
 
+/// Labeled-pubkey signature envelope for bridge cert wire transit.
+/// `signer_pubkey` is a 33-byte compressed secp256k1 pubkey; `signature`
+/// is a 65-byte recoverable secp256k1 signature.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct PubkeySig {
+    pub signer_pubkey: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct BridgeDepositArgs {
     pub nonce: u64,
     pub eth_tx_hash: Vec<u8>,
     pub recipient: Address,
     pub amount: u64,
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    pub timestamp_ms: u64,
+    pub signatures: Vec<PubkeySig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -224,14 +236,34 @@ pub struct BridgeWithdrawArgs {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct BridgeEmergencyPauseArgs {
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct BridgeEmergencyUnpauseArgs {
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeAttachWithdrawalSignaturesArgs {
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeUpdateCommitteeBlocklistArgs {
+    pub nonce: u64,
+    pub is_blocklist: bool,
+    pub eth_addresses: Vec<Vec<u8>>,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeRegisterBridgeKeyArgs {
+    pub bridge_pubkey: Vec<u8>,
+    pub http_url: String,
 }
 
 // Payment-channel arg types (Phase 1)

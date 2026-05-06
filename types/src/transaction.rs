@@ -115,6 +115,21 @@ pub enum TransactionKind {
     BridgeDeposit(BridgeDepositArgs),
     BridgeEmergencyPause(BridgeEmergencyPauseArgs),
     BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+    /// Attach a quorum committee certificate to an existing
+    /// [`crate::bridge::PendingWithdrawal`]. After this tx commits, anyone
+    /// can read the cert from the on-chain object and submit it to the
+    /// Eth-side `SomaBridge` contract to release the locked USDC.
+    /// Idempotent: re-submitting after a cert is already attached is a no-op.
+    BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignaturesArgs),
+    /// Surgically blocklist or unblocklist committee members without rotating
+    /// the whole committee. Members are identified by their derived 20-byte
+    /// Eth address. Mirrors Sui's `committee::execute_blocklist`.
+    BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklistArgs),
+    /// A validator pre-registers their bridge keypair + endpoint URL.
+    /// Stored in `BridgeState.bridge_registrations`; consumed at the next
+    /// epoch boundary by `try_rotate_committee`. Mirrors Sui's
+    /// `bridge::committee_registration` flow.
+    BridgeRegisterBridgeKey(BridgeRegisterBridgeKeyArgs),
 
     // Bridge transaction (user — normal gas)
     BridgeWithdraw(BridgeWithdrawArgs),
@@ -243,8 +258,15 @@ pub struct BridgeDepositArgs {
     pub eth_tx_hash: [u8; 32],
     pub recipient: SomaAddress,
     pub amount: u64,
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    /// V2 token transfer: timestamp (Eth block time, in milliseconds)
+    /// at which the source-chain deposit was emitted. Mirrors Sui's
+    /// `TokenTransferPayloadV2.timestamp_ms`.
+    pub timestamp_ms: u64,
+    /// Independent 65-byte recoverable secp256k1 signatures from the
+    /// committee. Order doesn't matter — verifier ecrecovers each and
+    /// looks up the recovered pubkey in `BridgeState.bridge_committee.members`.
+    /// Mirrors Sui's `vector<vector<u8>> signatures`.
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Args for `BridgeWithdraw`. Stage 12: the withdrawn USDC is debited
@@ -258,8 +280,12 @@ pub struct BridgeWithdrawArgs {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeEmergencyPauseArgs {
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    /// Per-message-type sequence number. Must equal the chain's expected
+    /// next seq for `BridgeMessageType::EmergencyOp`; the executor rejects
+    /// otherwise. Mirrors Sui's `execute_system_message` per-type seq check.
+    /// Pause and unpause SHARE this counter (both have message_type byte 2).
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 // --- Payment-channel arg structs ---
@@ -387,8 +413,51 @@ pub struct UpdateProviderArgs {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeEmergencyUnpauseArgs {
-    pub aggregated_signature: Vec<u8>,
-    pub signer_bitmap: Vec<u8>,
+    /// Per-message-type sequence number. Shares the same counter as pause
+    /// (both have `BridgeMessageType::EmergencyOp` = byte 2).
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+}
+
+/// Args for `BridgeRegisterBridgeKey`. The signer (msg.sender) is the
+/// validator's Soma address; the executor verifies the signer is in the
+/// current active validator set before storing.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeRegisterBridgeKeyArgs {
+    /// 33-byte compressed secp256k1 pubkey.
+    pub bridge_pubkey: crate::bridge::BridgePubkey,
+    /// Public URL of the validator's bridge node sig-collection endpoint.
+    pub http_url: String,
+}
+
+/// Args for `BridgeUpdateCommitteeBlocklist`.
+///
+/// `eth_addresses` carries the 20-byte derived Eth addresses of the
+/// members whose `is_blocklisted` flag is being flipped (set if
+/// `is_blocklist == true`, cleared otherwise — `true` matches
+/// `BlocklistType::Blocklist`). Mirrors Sui's `Blocklist` payload.
+/// `nonce` is consumed from the per-message-type counter at
+/// `BridgeMessageType::UpdateCommitteeBlocklist`.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeUpdateCommitteeBlocklistArgs {
+    pub nonce: u64,
+    pub is_blocklist: bool,
+    pub eth_addresses: Vec<[u8; 20]>,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+}
+
+/// Args for `BridgeAttachWithdrawalSignatures`.
+///
+/// `nonce` selects the [`crate::bridge::PendingWithdrawal`] (the executor
+/// derives the object ID via `derive_bridge_record_id(SOMA_BRIDGE_CHAIN_ID,
+/// UsdcWithdraw, nonce)`). `signatures` carries the committee cert; the
+/// executor reconstructs the canonical message bytes from the on-chain
+/// object's fields and ecrecovers each sig — callers can't smuggle a
+/// cert for one withdrawal into another's slot.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeAttachWithdrawalSignaturesArgs {
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Stage 7: balance-mode value transfer.
@@ -419,6 +488,8 @@ impl TransactionKind {
                 | TransactionKind::BridgeDeposit(_)
                 | TransactionKind::BridgeEmergencyPause(_)
                 | TransactionKind::BridgeEmergencyUnpause(_)
+                | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+                | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
                 | TransactionKind::Settlement(_)
         )
     }
@@ -439,6 +510,9 @@ impl TransactionKind {
                 | TransactionKind::BridgeWithdraw(_)
                 | TransactionKind::BridgeEmergencyPause(_)
                 | TransactionKind::BridgeEmergencyUnpause(_)
+                | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+                | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
+                | TransactionKind::BridgeRegisterBridgeKey(_)
         )
     }
 
@@ -520,6 +594,28 @@ impl TransactionKind {
             }
             TransactionKind::WithdrawAfterTimeout(args) => {
                 Some(crate::provider_inbox::ProviderInbox::derive_id(args.payee))
+            }
+            _ => None,
+        }
+    }
+
+    /// Bridge ops that mutate an existing per-record shared object
+    /// (a `PendingWithdrawal` for cert attachment). The ID is derived
+    /// client-side via `bridge::derive_bridge_record_id` from the args'
+    /// nonce — anyone with `(chain, msg_type, nonce)` can compute it.
+    ///
+    /// `BridgeDeposit` is NOT here: replay defense is the bounded
+    /// `BridgeState.processed_deposit_nonces` set, not object existence.
+    /// The per-deposit `BridgeRecord` object is created as a *new* object
+    /// (no prior object to declare as input) — it's pure audit trail.
+    fn bridge_record_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::BridgeAttachWithdrawalSignatures(args) => {
+                Some(crate::bridge::derive_bridge_record_id(
+                    crate::bridge::SOMA_BRIDGE_CHAIN_ID,
+                    crate::bridge::BridgeMessageType::UsdcWithdraw,
+                    args.nonce,
+                ))
             }
             _ => None,
         }
@@ -678,6 +774,18 @@ impl TransactionKind {
             });
         }
 
+        // BridgeAttachWithdrawalSignatures mutates the existing
+        // PendingWithdrawal shared object to attach a quorum cert.
+        // Like ProviderInbox, the ID is deterministically derived
+        // client-side from the args.
+        if let Some(record_id) = self.bridge_record_id_input() {
+            objects.push(SharedInputObject {
+                id: record_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
         objects.into_iter()
     }
 
@@ -749,6 +857,16 @@ impl TransactionKind {
         if let Some(inbox_id) = self.provider_inbox_id_input() {
             input_objects.push(InputObjectKind::SharedObject {
                 id: inbox_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // BridgeAttachWithdrawalSignatures mutates the PendingWithdrawal
+        // shared object whose ID is derived from the args' nonce.
+        if let Some(record_id) = self.bridge_record_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: record_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
                 mutable: true,
             });

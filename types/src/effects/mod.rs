@@ -1093,6 +1093,45 @@ pub enum ExecutionFailureStatus {
     #[error("Bridge signature verification failed: insufficient stake.")]
     BridgeInsufficientSignatureStake,
 
+    /// A system-message tx (emergency op, blocklist update, etc.) carried
+    /// a sequence number that doesn't match the current expected value
+    /// for its message type. Mirrors Sui's `bridge::EMessageNotFromSequence`
+    /// abort in `execute_system_message` — replay defense for governance
+    /// quorum certs.
+    #[error(
+        "Bridge system-message seq num mismatch: expected {expected}, got {actual}"
+    )]
+    BridgeSystemMessageSeqMismatch { expected: u64, actual: u64 },
+
+    /// Pause requested when the bridge is already paused. Sui parity:
+    /// `bridge::EBridgeAlreadyPaused`. Forces every quorum-signed pause to
+    /// correspond to a real state transition, so an attacker can't burn
+    /// EmergencyOp seq nums with no-op pauses.
+    #[error("Bridge is already paused.")]
+    BridgeAlreadyPaused,
+
+    /// Unpause requested when the bridge is not paused. Sui parity:
+    /// `bridge::EBridgeNotPaused`.
+    #[error("Bridge is not paused.")]
+    BridgeNotPaused,
+
+    /// A bridge tx carried a zero amount where a positive value is required
+    /// (deposit / withdraw). Sui parity: `abi.rs::ZeroValueBridgeTransfer`
+    /// + `bridge.move::ETokenValueIsZero`.
+    #[error("Bridge transfer amount must be non-zero.")]
+    BridgeAmountZero,
+
+    /// A `BridgeUpdateCommitteeBlocklist` carried more than the per-tx cap
+    /// of `MAX_BLOCKLIST_ENTRIES_PER_TX` addresses. Sui parity: gRPC
+    /// `validate_list_size(255)` defense in depth.
+    #[error("Bridge blocklist payload too large: {got} entries (max {max})")]
+    BridgeBlocklistPayloadTooLarge { got: u64, max: u64 },
+
+    /// A `BridgeRegisterBridgeKey` carried an `http_url` that exceeded the
+    /// per-registration cap. Bounds SystemState bloat from validators.
+    #[error("Bridge http_url too long: {got} bytes (max {max})")]
+    BridgeUrlTooLong { got: u64, max: u64 },
+
     //
     // Payment-channel errors
     //

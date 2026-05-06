@@ -448,7 +448,10 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::BridgeDeposit(_)
         | TransactionKind::BridgeWithdraw(_)
         | TransactionKind::BridgeEmergencyPause(_)
-        | TransactionKind::BridgeEmergencyUnpause(_) => Box::new(BridgeExecutor::new()),
+        | TransactionKind::BridgeEmergencyUnpause(_)
+        | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+        | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
+        | TransactionKind::BridgeRegisterBridgeKey(_) => Box::new(BridgeExecutor::new()),
 
         // Payment-channel transactions
         TransactionKind::OpenChannel(_)

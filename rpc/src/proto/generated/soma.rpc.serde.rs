@@ -1276,6 +1276,124 @@ impl<'de> serde::Deserialize<'de> for BatchGetTransactionsResponse {
         deserializer.deserialize_struct("soma.rpc.BatchGetTransactionsResponse", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for BridgeAttachWithdrawalSignatures {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.nonce.is_some() {
+            len += 1;
+        }
+        if !self.signatures.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeAttachWithdrawalSignatures", len)?;
+        if let Some(v) = self.nonce.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nonce", ToString::to_string(&v).as_str())?;
+        }
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeAttachWithdrawalSignatures {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "nonce",
+            "signatures",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Nonce,
+            Signatures,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "nonce" => Ok(GeneratedField::Nonce),
+                            "signatures" => Ok(GeneratedField::Signatures),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeAttachWithdrawalSignatures;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeAttachWithdrawalSignatures")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeAttachWithdrawalSignatures, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut nonce__ = None;
+                let mut signatures__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Nonce => {
+                            if nonce__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nonce"));
+                            }
+                            nonce__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
+                            }
+                            signatures__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeAttachWithdrawalSignatures {
+                    nonce: nonce__,
+                    signatures: signatures__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeAttachWithdrawalSignatures", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for BridgeDeposit {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -1296,10 +1414,10 @@ impl serde::Serialize for BridgeDeposit {
         if self.amount.is_some() {
             len += 1;
         }
-        if self.aggregated_signature.is_some() {
+        if self.timestamp_ms.is_some() {
             len += 1;
         }
-        if self.signer_bitmap.is_some() {
+        if !self.signatures.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeDeposit", len)?;
@@ -1321,15 +1439,13 @@ impl serde::Serialize for BridgeDeposit {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("amount", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.aggregated_signature.as_ref() {
+        if let Some(v) = self.timestamp_ms.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("aggregatedSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
+            struct_ser.serialize_field("timestampMs", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.signer_bitmap.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("signerBitmap", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
         }
         struct_ser.end()
     }
@@ -1346,10 +1462,9 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
             "ethTxHash",
             "recipient",
             "amount",
-            "aggregated_signature",
-            "aggregatedSignature",
-            "signer_bitmap",
-            "signerBitmap",
+            "timestamp_ms",
+            "timestampMs",
+            "signatures",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -1358,8 +1473,8 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
             EthTxHash,
             Recipient,
             Amount,
-            AggregatedSignature,
-            SignerBitmap,
+            TimestampMs,
+            Signatures,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -1386,8 +1501,8 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                             "ethTxHash" | "eth_tx_hash" => Ok(GeneratedField::EthTxHash),
                             "recipient" => Ok(GeneratedField::Recipient),
                             "amount" => Ok(GeneratedField::Amount),
-                            "aggregatedSignature" | "aggregated_signature" => Ok(GeneratedField::AggregatedSignature),
-                            "signerBitmap" | "signer_bitmap" => Ok(GeneratedField::SignerBitmap),
+                            "timestampMs" | "timestamp_ms" => Ok(GeneratedField::TimestampMs),
+                            "signatures" => Ok(GeneratedField::Signatures),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -1413,8 +1528,8 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                 let mut eth_tx_hash__ = None;
                 let mut recipient__ = None;
                 let mut amount__ = None;
-                let mut aggregated_signature__ = None;
-                let mut signer_bitmap__ = None;
+                let mut timestamp_ms__ = None;
+                let mut signatures__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Nonce => {
@@ -1447,21 +1562,19 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::AggregatedSignature => {
-                            if aggregated_signature__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("aggregatedSignature"));
+                        GeneratedField::TimestampMs => {
+                            if timestamp_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("timestampMs"));
                             }
-                            aggregated_signature__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            timestamp_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::SignerBitmap => {
-                            if signer_bitmap__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("signerBitmap"));
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
                             }
-                            signer_bitmap__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            signatures__ = Some(map_.next_value()?);
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -1473,8 +1586,8 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                     eth_tx_hash: eth_tx_hash__,
                     recipient: recipient__,
                     amount: amount__,
-                    aggregated_signature: aggregated_signature__,
-                    signer_bitmap: signer_bitmap__,
+                    timestamp_ms: timestamp_ms__,
+                    signatures: signatures__.unwrap_or_default(),
                 })
             }
         }
@@ -1489,22 +1602,20 @@ impl serde::Serialize for BridgeEmergencyPause {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.aggregated_signature.is_some() {
+        if self.nonce.is_some() {
             len += 1;
         }
-        if self.signer_bitmap.is_some() {
+        if !self.signatures.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeEmergencyPause", len)?;
-        if let Some(v) = self.aggregated_signature.as_ref() {
+        if let Some(v) = self.nonce.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("aggregatedSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
+            struct_ser.serialize_field("nonce", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.signer_bitmap.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("signerBitmap", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
         }
         struct_ser.end()
     }
@@ -1516,16 +1627,14 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyPause {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "aggregated_signature",
-            "aggregatedSignature",
-            "signer_bitmap",
-            "signerBitmap",
+            "nonce",
+            "signatures",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            AggregatedSignature,
-            SignerBitmap,
+            Nonce,
+            Signatures,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -1548,8 +1657,8 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyPause {
                         E: serde::de::Error,
                     {
                         match value {
-                            "aggregatedSignature" | "aggregated_signature" => Ok(GeneratedField::AggregatedSignature),
-                            "signerBitmap" | "signer_bitmap" => Ok(GeneratedField::SignerBitmap),
+                            "nonce" => Ok(GeneratedField::Nonce),
+                            "signatures" => Ok(GeneratedField::Signatures),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -1571,25 +1680,23 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyPause {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut aggregated_signature__ = None;
-                let mut signer_bitmap__ = None;
+                let mut nonce__ = None;
+                let mut signatures__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::AggregatedSignature => {
-                            if aggregated_signature__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("aggregatedSignature"));
+                        GeneratedField::Nonce => {
+                            if nonce__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nonce"));
                             }
-                            aggregated_signature__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            nonce__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::SignerBitmap => {
-                            if signer_bitmap__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("signerBitmap"));
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
                             }
-                            signer_bitmap__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            signatures__ = Some(map_.next_value()?);
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -1597,8 +1704,8 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyPause {
                     }
                 }
                 Ok(BridgeEmergencyPause {
-                    aggregated_signature: aggregated_signature__,
-                    signer_bitmap: signer_bitmap__,
+                    nonce: nonce__,
+                    signatures: signatures__.unwrap_or_default(),
                 })
             }
         }
@@ -1613,22 +1720,20 @@ impl serde::Serialize for BridgeEmergencyUnpause {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.aggregated_signature.is_some() {
+        if self.nonce.is_some() {
             len += 1;
         }
-        if self.signer_bitmap.is_some() {
+        if !self.signatures.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeEmergencyUnpause", len)?;
-        if let Some(v) = self.aggregated_signature.as_ref() {
+        if let Some(v) = self.nonce.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("aggregatedSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
+            struct_ser.serialize_field("nonce", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.signer_bitmap.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("signerBitmap", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
         }
         struct_ser.end()
     }
@@ -1640,16 +1745,14 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyUnpause {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "aggregated_signature",
-            "aggregatedSignature",
-            "signer_bitmap",
-            "signerBitmap",
+            "nonce",
+            "signatures",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            AggregatedSignature,
-            SignerBitmap,
+            Nonce,
+            Signatures,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -1672,8 +1775,8 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyUnpause {
                         E: serde::de::Error,
                     {
                         match value {
-                            "aggregatedSignature" | "aggregated_signature" => Ok(GeneratedField::AggregatedSignature),
-                            "signerBitmap" | "signer_bitmap" => Ok(GeneratedField::SignerBitmap),
+                            "nonce" => Ok(GeneratedField::Nonce),
+                            "signatures" => Ok(GeneratedField::Signatures),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -1695,25 +1798,23 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyUnpause {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut aggregated_signature__ = None;
-                let mut signer_bitmap__ = None;
+                let mut nonce__ = None;
+                let mut signatures__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::AggregatedSignature => {
-                            if aggregated_signature__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("aggregatedSignature"));
+                        GeneratedField::Nonce => {
+                            if nonce__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nonce"));
                             }
-                            aggregated_signature__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            nonce__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::SignerBitmap => {
-                            if signer_bitmap__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("signerBitmap"));
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
                             }
-                            signer_bitmap__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            signatures__ = Some(map_.next_value()?);
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -1721,12 +1822,290 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyUnpause {
                     }
                 }
                 Ok(BridgeEmergencyUnpause {
-                    aggregated_signature: aggregated_signature__,
-                    signer_bitmap: signer_bitmap__,
+                    nonce: nonce__,
+                    signatures: signatures__.unwrap_or_default(),
                 })
             }
         }
         deserializer.deserialize_struct("soma.rpc.BridgeEmergencyUnpause", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BridgeRegisterBridgeKey {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.bridge_pubkey.is_some() {
+            len += 1;
+        }
+        if self.http_url.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeRegisterBridgeKey", len)?;
+        if let Some(v) = self.bridge_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("bridgePubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.http_url.as_ref() {
+            struct_ser.serialize_field("httpUrl", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeRegisterBridgeKey {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "bridge_pubkey",
+            "bridgePubkey",
+            "http_url",
+            "httpUrl",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            BridgePubkey,
+            HttpUrl,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "bridgePubkey" | "bridge_pubkey" => Ok(GeneratedField::BridgePubkey),
+                            "httpUrl" | "http_url" => Ok(GeneratedField::HttpUrl),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeRegisterBridgeKey;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeRegisterBridgeKey")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeRegisterBridgeKey, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut bridge_pubkey__ = None;
+                let mut http_url__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::BridgePubkey => {
+                            if bridge_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgePubkey"));
+                            }
+                            bridge_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::HttpUrl => {
+                            if http_url__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("httpUrl"));
+                            }
+                            http_url__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeRegisterBridgeKey {
+                    bridge_pubkey: bridge_pubkey__,
+                    http_url: http_url__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeRegisterBridgeKey", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BridgeUpdateCommitteeBlocklist {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.nonce.is_some() {
+            len += 1;
+        }
+        if self.is_blocklist.is_some() {
+            len += 1;
+        }
+        if self.eth_addresses.is_some() {
+            len += 1;
+        }
+        if !self.signatures.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeUpdateCommitteeBlocklist", len)?;
+        if let Some(v) = self.nonce.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nonce", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.is_blocklist.as_ref() {
+            struct_ser.serialize_field("isBlocklist", v)?;
+        }
+        if let Some(v) = self.eth_addresses.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("ethAddresses", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeUpdateCommitteeBlocklist {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "nonce",
+            "is_blocklist",
+            "isBlocklist",
+            "eth_addresses",
+            "ethAddresses",
+            "signatures",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Nonce,
+            IsBlocklist,
+            EthAddresses,
+            Signatures,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "nonce" => Ok(GeneratedField::Nonce),
+                            "isBlocklist" | "is_blocklist" => Ok(GeneratedField::IsBlocklist),
+                            "ethAddresses" | "eth_addresses" => Ok(GeneratedField::EthAddresses),
+                            "signatures" => Ok(GeneratedField::Signatures),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeUpdateCommitteeBlocklist;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeUpdateCommitteeBlocklist")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeUpdateCommitteeBlocklist, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut nonce__ = None;
+                let mut is_blocklist__ = None;
+                let mut eth_addresses__ = None;
+                let mut signatures__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Nonce => {
+                            if nonce__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nonce"));
+                            }
+                            nonce__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::IsBlocklist => {
+                            if is_blocklist__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("isBlocklist"));
+                            }
+                            is_blocklist__ = map_.next_value()?;
+                        }
+                        GeneratedField::EthAddresses => {
+                            if eth_addresses__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("ethAddresses"));
+                            }
+                            eth_addresses__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
+                            }
+                            signatures__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeUpdateCommitteeBlocklist {
+                    nonce: nonce__,
+                    is_blocklist: is_blocklist__,
+                    eth_addresses: eth_addresses__,
+                    signatures: signatures__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeUpdateCommitteeBlocklist", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for BridgeWithdraw {
@@ -12833,6 +13212,129 @@ impl<'de> serde::Deserialize<'de> for ProtocolConfig {
         deserializer.deserialize_struct("soma.rpc.ProtocolConfig", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for PubkeySig {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.signer_pubkey.is_some() {
+            len += 1;
+        }
+        if self.signature.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.PubkeySig", len)?;
+        if let Some(v) = self.signer_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("signerPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.signature.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("signature", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for PubkeySig {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "signer_pubkey",
+            "signerPubkey",
+            "signature",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SignerPubkey,
+            Signature,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "signerPubkey" | "signer_pubkey" => Ok(GeneratedField::SignerPubkey),
+                            "signature" => Ok(GeneratedField::Signature),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = PubkeySig;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.PubkeySig")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<PubkeySig, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut signer_pubkey__ = None;
+                let mut signature__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SignerPubkey => {
+                            if signer_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signerPubkey"));
+                            }
+                            signer_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Signature => {
+                            if signature__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signature"));
+                            }
+                            signature__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(PubkeySig {
+                    signer_pubkey: signer_pubkey__,
+                    signature: signature__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.PubkeySig", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for RateChannel {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -18030,6 +18532,15 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::BridgeEmergencyUnpause(v) => {
                     struct_ser.serialize_field("bridgeEmergencyUnpause", v)?;
                 }
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(v) => {
+                    struct_ser.serialize_field("bridgeAttachWithdrawalSignatures", v)?;
+                }
+                transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(v) => {
+                    struct_ser.serialize_field("bridgeUpdateCommitteeBlocklist", v)?;
+                }
+                transaction_kind::Kind::BridgeRegisterBridgeKey(v) => {
+                    struct_ser.serialize_field("bridgeRegisterBridgeKey", v)?;
+                }
                 transaction_kind::Kind::OpenChannel(v) => {
                     struct_ser.serialize_field("openChannel", v)?;
                 }
@@ -18139,6 +18650,12 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "bridgeEmergencyPause",
             "bridge_emergency_unpause",
             "bridgeEmergencyUnpause",
+            "bridge_attach_withdrawal_signatures",
+            "bridgeAttachWithdrawalSignatures",
+            "bridge_update_committee_blocklist",
+            "bridgeUpdateCommitteeBlocklist",
+            "bridge_register_bridge_key",
+            "bridgeRegisterBridgeKey",
             "open_channel",
             "openChannel",
             "settle",
@@ -18195,6 +18712,9 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             BridgeWithdraw,
             BridgeEmergencyPause,
             BridgeEmergencyUnpause,
+            BridgeAttachWithdrawalSignatures,
+            BridgeUpdateCommitteeBlocklist,
+            BridgeRegisterBridgeKey,
             OpenChannel,
             Settle,
             RequestClose,
@@ -18261,6 +18781,9 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "bridgeWithdraw" | "bridge_withdraw" => Ok(GeneratedField::BridgeWithdraw),
                             "bridgeEmergencyPause" | "bridge_emergency_pause" => Ok(GeneratedField::BridgeEmergencyPause),
                             "bridgeEmergencyUnpause" | "bridge_emergency_unpause" => Ok(GeneratedField::BridgeEmergencyUnpause),
+                            "bridgeAttachWithdrawalSignatures" | "bridge_attach_withdrawal_signatures" => Ok(GeneratedField::BridgeAttachWithdrawalSignatures),
+                            "bridgeUpdateCommitteeBlocklist" | "bridge_update_committee_blocklist" => Ok(GeneratedField::BridgeUpdateCommitteeBlocklist),
+                            "bridgeRegisterBridgeKey" | "bridge_register_bridge_key" => Ok(GeneratedField::BridgeRegisterBridgeKey),
                             "openChannel" | "open_channel" => Ok(GeneratedField::OpenChannel),
                             "settle" => Ok(GeneratedField::Settle),
                             "requestClose" | "request_close" => Ok(GeneratedField::RequestClose),
@@ -18531,6 +19054,27 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("bridgeEmergencyUnpause"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::BridgeEmergencyUnpause)
+;
+                        }
+                        GeneratedField::BridgeAttachWithdrawalSignatures => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeAttachWithdrawalSignatures"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::BridgeAttachWithdrawalSignatures)
+;
+                        }
+                        GeneratedField::BridgeUpdateCommitteeBlocklist => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeUpdateCommitteeBlocklist"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist)
+;
+                        }
+                        GeneratedField::BridgeRegisterBridgeKey => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeRegisterBridgeKey"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::BridgeRegisterBridgeKey)
 ;
                         }
                         GeneratedField::OpenChannel => {

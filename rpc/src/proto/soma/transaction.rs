@@ -346,21 +346,60 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 eth_tx_hash: Some(args.eth_tx_hash.clone().into()),
                 recipient: Some(args.recipient.to_string()),
                 amount: Some(args.amount),
-                aggregated_signature: Some(args.aggregated_signature.clone().into()),
-                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+                timestamp_ms: Some(args.timestamp_ms),
+                signatures: args.signatures.iter().map(|s| super::PubkeySig {
+                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                    signature: Some(s.signature.clone().into()),
+                }).collect(),
             }),
             BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.clone().into()),
             }),
             BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(super::BridgeEmergencyPause {
-                aggregated_signature: Some(args.aggregated_signature.clone().into()),
-                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+                nonce: Some(args.nonce),
+                signatures: args.signatures.iter().map(|s| super::PubkeySig {
+                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                    signature: Some(s.signature.clone().into()),
+                }).collect(),
             }),
             BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(super::BridgeEmergencyUnpause {
-                aggregated_signature: Some(args.aggregated_signature.clone().into()),
-                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+                nonce: Some(args.nonce),
+                signatures: args.signatures.iter().map(|s| super::PubkeySig {
+                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                    signature: Some(s.signature.clone().into()),
+                }).collect(),
             }),
+            BridgeAttachWithdrawalSignatures(args) => {
+                Kind::BridgeAttachWithdrawalSignatures(super::BridgeAttachWithdrawalSignatures {
+                    nonce: Some(args.nonce),
+                    signatures: args.signatures.iter().map(|s| super::PubkeySig {
+                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                    signature: Some(s.signature.clone().into()),
+                }).collect(),
+                })
+            }
+            BridgeUpdateCommitteeBlocklist(args) => {
+                let mut flat = Vec::with_capacity(args.eth_addresses.len() * 20);
+                for a in &args.eth_addresses {
+                    flat.extend_from_slice(a);
+                }
+                Kind::BridgeUpdateCommitteeBlocklist(super::BridgeUpdateCommitteeBlocklist {
+                    nonce: Some(args.nonce),
+                    is_blocklist: Some(args.is_blocklist),
+                    eth_addresses: Some(flat.into()),
+                    signatures: args.signatures.iter().map(|s| super::PubkeySig {
+                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                    signature: Some(s.signature.clone().into()),
+                }).collect(),
+                })
+            }
+            BridgeRegisterBridgeKey(args) => {
+                Kind::BridgeRegisterBridgeKey(super::BridgeRegisterBridgeKey {
+                    bridge_pubkey: Some(args.bridge_pubkey.clone().into()),
+                    http_url: Some(args.http_url.clone()),
+                })
+            }
 
             // Payment-channel transactions
             OpenChannel(args) => Kind::OpenChannel(super::OpenChannel {
@@ -717,21 +756,63 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
                 amount: args.amount.unwrap_or(0),
-                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
-                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+                timestamp_ms: args.timestamp_ms.unwrap_or(0),
+                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
+                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                }).collect(),
             }),
             Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
                 amount: args.amount.unwrap_or(0),
                 recipient_eth_address: args.recipient_eth_address.as_deref().unwrap_or_default().to_vec(),
             }),
             Kind::BridgeEmergencyPause(args) => Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
-                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
-                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+                nonce: args.nonce.unwrap_or(0),
+                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
+                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                }).collect(),
             }),
             Kind::BridgeEmergencyUnpause(args) => Self::BridgeEmergencyUnpause(crate::types::BridgeEmergencyUnpauseArgs {
-                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
-                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+                nonce: args.nonce.unwrap_or(0),
+                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
+                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                }).collect(),
             }),
+            Kind::BridgeAttachWithdrawalSignatures(args) => Self::BridgeAttachWithdrawalSignatures(
+                crate::types::BridgeAttachWithdrawalSignaturesArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
+                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                }).collect(),
+                },
+            ),
+            Kind::BridgeUpdateCommitteeBlocklist(args) => {
+                let flat = args.eth_addresses.as_deref().unwrap_or_default();
+                let eth_addresses = flat
+                    .chunks_exact(20)
+                    .map(|c| c.to_vec())
+                    .collect::<Vec<_>>();
+                Self::BridgeUpdateCommitteeBlocklist(
+                    crate::types::BridgeUpdateCommitteeBlocklistArgs {
+                        nonce: args.nonce.unwrap_or(0),
+                        is_blocklist: args.is_blocklist.unwrap_or(false),
+                        eth_addresses,
+                        signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
+                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                }).collect(),
+                    },
+                )
+            }
+            Kind::BridgeRegisterBridgeKey(args) => Self::BridgeRegisterBridgeKey(
+                crate::types::BridgeRegisterBridgeKeyArgs {
+                    bridge_pubkey: args.bridge_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    http_url: args.http_url.clone().unwrap_or_default(),
+                },
+            ),
 
             // Challenge variants removed — reject if received from proto
             Kind::InitiateChallenge(_)

@@ -283,13 +283,18 @@ mod tests {
             .await;
     }
 
-    /// Helper: build ABI-encoded deposit event data.
+    /// Helper: build ABI-encoded deposit event data — 7 words (224 bytes)
+    /// matching the Sui-parity `TokensDeposited` event layout. See
+    /// `parse_deposit_log` for the field-offset map.
     fn encode_deposit_data(nonce: u64, amount: u64) -> String {
-        let mut data = vec![0u8; 128];
+        let mut data = vec![0u8; 224];
         data[24..32].copy_from_slice(&nonce.to_be_bytes());
-        data[44..64].copy_from_slice(&[0xAA; 20]); // eth_sender
-        data[64..96].copy_from_slice(&[0xBB; 32]); // soma_recipient
-        data[120..128].copy_from_slice(&amount.to_be_bytes());
+        data[44..64].copy_from_slice(&[0xAA; 20]); // sender
+        data[95] = types::bridge::BridgeChainId::SomaCustom.as_u8(); // destChain
+        data[96..128].copy_from_slice(&[0xBB; 32]); // somaRecipient
+        data[159] = types::bridge::USDC_TOKEN_TYPE; // tokenType
+        data[184..192].copy_from_slice(&amount.to_be_bytes()); // amount
+        // word 6 (timestampMs) left zero.
         format!("0x{}", hex::encode(&data))
     }
 

@@ -1,0 +1,23 @@
+# Foundry
+out/
+cache/
+broadcast/*/dry-run/
+broadcast/**/*latest*
+build-info/
+
+# Deps
+lib/
+node_modules/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

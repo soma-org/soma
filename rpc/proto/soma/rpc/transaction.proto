@@ -117,6 +117,9 @@ message TransactionKind {
     BridgeWithdraw bridge_withdraw = 41;
     BridgeEmergencyPause bridge_emergency_pause = 42;
     BridgeEmergencyUnpause bridge_emergency_unpause = 43;
+    BridgeAttachWithdrawalSignatures bridge_attach_withdrawal_signatures = 44;
+    BridgeUpdateCommitteeBlocklist bridge_update_committee_blocklist = 45;
+    BridgeRegisterBridgeKey bridge_register_bridge_key = 46;
 
     // Payment-channel transactions (Phase 1)
     OpenChannel open_channel = 50;
@@ -156,13 +159,24 @@ message BalanceTransferEntry {
 
 // Bridge messages
 
+// Labeled-pubkey signature envelope. Each entry binds a 33-byte
+// compressed secp256k1 pubkey to its 65-byte recoverable signature.
+// On-chain verifier ecrecovers each `signature` and asserts the
+// recovered pubkey matches `signer_pubkey` before counting stake.
+message PubkeySig {
+  optional bytes signer_pubkey = 1;
+  optional bytes signature = 2;
+}
+
 message BridgeDeposit {
   optional uint64 nonce = 1;
   optional bytes eth_tx_hash = 2;
   optional string recipient = 3;
   optional uint64 amount = 4;
-  optional bytes aggregated_signature = 5;
-  optional bytes signer_bitmap = 6;
+  // V2 token transfer: Eth-side block timestamp.
+  optional uint64 timestamp_ms = 7;
+  // Labeled-pubkey signature envelope.
+  repeated PubkeySig signatures = 8;
 }
 
 message BridgeWithdraw {
@@ -173,13 +187,41 @@ message BridgeWithdraw {
 }
 
 message BridgeEmergencyPause {
-  optional bytes aggregated_signature = 1;
-  optional bytes signer_bitmap = 2;
+  // Per-message-type seq num (shared with unpause; both have type byte 2).
+  optional uint64 nonce = 3;
+  repeated PubkeySig signatures = 4;
 }
 
 message BridgeEmergencyUnpause {
-  optional bytes aggregated_signature = 1;
-  optional bytes signer_bitmap = 2;
+  optional uint64 nonce = 3;
+  repeated PubkeySig signatures = 4;
+}
+
+// Attach a quorum committee certificate to an existing PendingWithdrawal
+// shared object. After this commits, anyone can read the cert and submit
+// it to the Eth-side SomaBridge contract to release the locked USDC.
+message BridgeAttachWithdrawalSignatures {
+  optional uint64 nonce = 1;
+  repeated PubkeySig signatures = 4;
+}
+
+// Surgically blocklist or unblocklist committee members. Members are
+// identified by their derived 20-byte Eth address. is_blocklist == true
+// sets the flag, false clears it. Mirrors Sui's committee_blocklist.
+message BridgeUpdateCommitteeBlocklist {
+  optional uint64 nonce = 1;
+  optional bool is_blocklist = 2;
+  // 20-byte Eth addresses, concatenated.
+  optional bytes eth_addresses = 3;
+  repeated PubkeySig signatures = 6;
+}
+
+// A validator pre-registers their bridge keypair and HTTP endpoint URL
+// for the next committee rotation.
+message BridgeRegisterBridgeKey {
+  // 33-byte compressed secp256k1 pubkey.
+  optional bytes bridge_pubkey = 1;
+  optional string http_url = 2;
 }
 
 message AddValidator {

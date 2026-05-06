@@ -33,17 +33,6 @@ struct TransactionResult {
     txn_result: Result<SignedTransactionEffects, SomaError>,
 }
 
-/// Build a signer_bitmap where bit `i` is set for each index in `signer_indices`.
-fn make_signer_bitmap(signer_indices: &[usize]) -> Vec<u8> {
-    let max_index = signer_indices.iter().copied().max().unwrap_or(0);
-    let num_bytes = (max_index / 8) + 1;
-    let mut bitmap = vec![0u8; num_bytes];
-    for &i in signer_indices {
-        bitmap[i / 8] |= 1 << (i % 8);
-    }
-    bitmap
-}
-
 /// Get the bridge committee from the default test authority state.
 /// The default genesis creates one validator with default bridge committee.
 fn get_bridge_state(authority: &AuthorityState) -> BridgeState {
@@ -99,8 +88,8 @@ async fn test_bridge_deposit_mints_usdc() {
         eth_tx_hash: [0u8; 32],
         recipient,
         amount: 1_000_000,
-        aggregated_signature: vec![],
-        signer_bitmap: vec![],
+        timestamp_ms: 0,
+        signatures: Default::default(),
     });
 
     let result = execute_system_tx(&authority_state, kind).await;
@@ -133,8 +122,8 @@ async fn test_bridge_deposit_nonce_replay_rejected() {
         eth_tx_hash: [1u8; 32],
         recipient,
         amount: 500_000,
-        aggregated_signature: vec![],
-        signer_bitmap: vec![],
+        timestamp_ms: 0,
+        signatures: Default::default(),
     };
 
     // First attempt — fails at stake check
@@ -276,8 +265,8 @@ async fn test_bridge_emergency_pause_insufficient_stake() {
 
     // With empty committee, pause should fail (need threshold_pause = 450 stake)
     let kind = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
-        aggregated_signature: vec![],
-        signer_bitmap: vec![],
+        nonce: 0,
+        signatures: Default::default(),
     });
 
     let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
@@ -290,21 +279,24 @@ async fn test_bridge_emergency_pause_insufficient_stake() {
 }
 
 #[tokio::test]
-async fn test_bridge_emergency_unpause_insufficient_stake() {
+async fn test_bridge_emergency_unpause_when_not_paused() {
+    // H1: refuse unpause when bridge is not paused. The default authority
+    // boots unpaused, so an unpause attempt should bail with BridgeNotPaused
+    // BEFORE wasting effort on signature verification.
     let authority_state = TestAuthorityBuilder::new().build().await;
 
     let kind = TransactionKind::BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs {
-        aggregated_signature: vec![],
-        signer_bitmap: vec![],
+        nonce: 0,
+        signatures: Default::default(),
     });
 
     let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
     assert!(matches!(
         effects.status(),
         ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::BridgeInsufficientSignatureStake
+            error: ExecutionFailureStatus::BridgeNotPaused
         }
-    ));
+    ), "expected BridgeNotPaused, got {:?}", effects.status());
 }
 
 // =============================================================================
@@ -313,10 +305,8 @@ async fn test_bridge_emergency_unpause_insufficient_stake() {
 
 #[tokio::test]
 async fn test_bridge_deposit_with_real_ecdsa_signatures() {
-    use types::bridge::{
-        BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
-        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee,
-    };
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
     use types::config::genesis_config::GenesisConfig;
 
     // Generate a real committee with 4 members
@@ -336,27 +326,27 @@ async fn test_bridge_deposit_with_real_ecdsa_signatures() {
     let amount = 5_000_000u64;
 
     // Build the message that the executor will reconstruct
-    let payload = encode_deposit_payload(&recipient, amount);
+    let payload = encode_deposit_payload(&recipient, amount, 0);
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
         nonce,
         SOMA_BRIDGE_CHAIN_ID,
         &payload,
     );
 
     // Sign with members 0 and 1 (5000 > 3334 threshold)
-    let signers: Vec<(usize, &fastcrypto::secp256k1::Secp256k1KeyPair)> =
-        vec![(0, &keypairs[0]), (1, &keypairs[1])];
-    let (aggregated_signature, signer_bitmap) =
-        build_bridge_signatures(&signers, &message);
+    let signers: Vec<&fastcrypto::secp256k1::Secp256k1KeyPair> =
+        vec![&keypairs[0], &keypairs[1]];
+    let signatures = build_bridge_signatures(&signers, &message);
 
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash: [0xAAu8; 32],
         recipient,
         amount,
-        aggregated_signature,
-        signer_bitmap,
+        timestamp_ms: 0,
+        signatures,
     });
 
     let effects = execute_system_tx(&authority_state, kind)
@@ -391,13 +381,12 @@ async fn test_bridge_deposit_with_real_ecdsa_signatures() {
 
 #[tokio::test]
 async fn test_bridge_deposit_wrong_signature_rejected() {
-    use types::bridge::{
-        BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, encode_bridge_message,
-        encode_deposit_payload, generate_test_bridge_committee, sign_bridge_message,
-    };
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee,
+        BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
     use types::config::genesis_config::GenesisConfig;
 
-    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let (committee, _keypairs) = generate_test_bridge_committee(4);
 
     let mut genesis_config = GenesisConfig::for_local_testing();
     genesis_config.bridge_committee = Some(committee);
@@ -411,39 +400,37 @@ async fn test_bridge_deposit_wrong_signature_rejected() {
     let amount = 5_000_000u64;
 
     // Build the correct message
-    let payload = encode_deposit_payload(&recipient, amount);
+    let payload = encode_deposit_payload(&recipient, amount, 0);
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
         nonce,
         SOMA_BRIDGE_CHAIN_ID,
         &payload,
     );
 
-    // Sign with the WRONG keypair (use keypair[2] for member index 0)
-    // This means the ecrecovered key won't match member 0's registered key
-    let wrong_sig = sign_bridge_message(&keypairs[2], &message);
-    let mut aggregated_signature = Vec::new();
-    aggregated_signature.extend_from_slice(wrong_sig.as_ref());
-    // Also need a second sig for threshold — use keypair[3] for member index 1
-    let wrong_sig2 = sign_bridge_message(&keypairs[3], &message);
-    aggregated_signature.extend_from_slice(wrong_sig2.as_ref());
-
-    let signer_bitmap = vec![0b0000_0011u8]; // bits 0 and 1
+    // Sign with keypairs that aren't in the committee. With pubkey-keyed
+    // membership (Sui parity), the labeled pubkeys must hit the committee
+    // map; non-committee sigs are rejected at signature verification.
+    use fastcrypto::traits::KeyPair;
+    let outsider_a = fastcrypto::secp256k1::Secp256k1KeyPair::generate(&mut rand::thread_rng());
+    let outsider_b = fastcrypto::secp256k1::Secp256k1KeyPair::generate(&mut rand::thread_rng());
+    let signatures = build_bridge_signatures(&[&outsider_a, &outsider_b], &message);
 
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash: [0xBBu8; 32],
         recipient,
         amount,
-        aggregated_signature,
-        signer_bitmap,
+        timestamp_ms: 0,
+        signatures,
     });
 
     let effects = execute_system_tx(&authority_state, kind)
         .await
         .unwrap()
         .into_data();
-    // Should fail because recovered keys don't match committee members
+    // Should fail because recovered pubkeys aren't in the committee.
     assert!(
         matches!(
             effects.status(),
@@ -458,10 +445,8 @@ async fn test_bridge_deposit_wrong_signature_rejected() {
 
 #[tokio::test]
 async fn test_bridge_nonce_replay_with_real_ecdsa() {
-    use types::bridge::{
-        BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
-        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee,
-    };
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
     use types::config::genesis_config::GenesisConfig;
 
     let (committee, keypairs) = generate_test_bridge_committee(4);
@@ -477,18 +462,18 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
     let nonce = 42u64;
     let amount = 1_000_000u64;
 
-    let payload = encode_deposit_payload(&recipient, amount);
+    let payload = encode_deposit_payload(&recipient, amount, 0);
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
         nonce,
         SOMA_BRIDGE_CHAIN_ID,
         &payload,
     );
 
-    let signers: Vec<(usize, &fastcrypto::secp256k1::Secp256k1KeyPair)> =
-        vec![(0, &keypairs[0]), (1, &keypairs[1])];
-    let (aggregated_signature, signer_bitmap) =
-        build_bridge_signatures(&signers, &message);
+    let signers: Vec<&fastcrypto::secp256k1::Secp256k1KeyPair> =
+        vec![&keypairs[0], &keypairs[1]];
+    let signatures = build_bridge_signatures(&signers, &message);
 
     // First deposit succeeds
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
@@ -496,8 +481,8 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
         eth_tx_hash: [0xCCu8; 32],
         recipient,
         amount,
-        aggregated_signature: aggregated_signature.clone(),
-        signer_bitmap: signer_bitmap.clone(),
+        timestamp_ms: 0,
+        signatures: signatures.clone(),
     });
     let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -508,8 +493,8 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
         eth_tx_hash: [0xCCu8; 32],
         recipient,
         amount,
-        aggregated_signature,
-        signer_bitmap,
+        timestamp_ms: 0,
+        signatures,
     });
     let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
     assert!(
@@ -525,6 +510,522 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
 }
 
 // =============================================================================
+// Per-message-type seq num replay defense (governance actions)
+//
+// Mirrors Sui's `BridgeInner.sequence_nums: VecMap<u8, u64>` + the
+// `execute_system_message` per-type assert-and-increment. Pause and unpause
+// share the EmergencyOp counter (both have message_type byte 2).
+// =============================================================================
+
+#[tokio::test]
+async fn test_emergency_op_advances_seq_num_then_rejects_replay() {
+    use types::bridge::{BridgeMessageType, EmergencyOpCode, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_emergency_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // Pre-state: counter starts at 0.
+    let bridge = get_bridge_state(&authority_state);
+    assert_eq!(bridge.expected_system_message_seq(BridgeMessageType::EmergencyOp), 0);
+
+    // Pause with nonce=0 (the expected initial value).
+    let pause_payload = encode_emergency_payload(EmergencyOpCode::Freeze);
+    let pause_msg = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &pause_payload,
+    );
+    let pause_sig = build_bridge_signatures(&[&keypairs[0]], &pause_msg); // 2500 stake > 450 threshold
+
+    let pause = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: pause_sig.clone(),
+    });
+    let effects = execute_system_tx(&authority_state, pause).await.unwrap().into_data();
+    assert_eq!(*effects.status(), ExecutionStatus::Success);
+
+    // Counter advanced; bridge is paused.
+    let bridge = get_bridge_state(&authority_state);
+    assert_eq!(bridge.expected_system_message_seq(BridgeMessageType::EmergencyOp), 1);
+    assert!(bridge.paused);
+
+    // Replaying the SAME pause cert now hits the H1 state check first
+    // (bridge is already paused) — BridgeAlreadyPaused. The seq check is
+    // also armed; we verify it separately below by trying with a FUTURE
+    // nonce when bridge is not yet at that nonce + state mismatch.
+    let pause_replay = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: pause_sig,
+    });
+    let effects = execute_system_tx(&authority_state, pause_replay).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure {
+                error: ExecutionFailureStatus::BridgeAlreadyPaused,
+            },
+        ),
+        "Replayed pause when paused must fail with BridgeAlreadyPaused, got {:?}",
+        effects.status()
+    );
+
+    // Now verify the seq check: build a new pause cert at the next-expected
+    // nonce (=1) but the bridge is still paused, so the state check still
+    // fires first. To exercise the seq check, we'd need bridge to be
+    // unpausable, which requires a separate cert. The seq check coverage
+    // lives in test_emergency_op_nonce_too_high_rejected (sends a future
+    // nonce when bridge is unpaused — passes state check, hits seq check).
+}
+
+#[tokio::test]
+async fn test_pause_and_unpause_share_seq_counter() {
+    use types::bridge::{BridgeMessageType, EmergencyOpCode, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_emergency_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+
+    // Sui parity: pause and unpause both have message_type byte 2 and
+    // share the EmergencyOp counter. Each consumes one nonce.
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // Pause at nonce=0.
+    let pause_payload = encode_emergency_payload(EmergencyOpCode::Freeze);
+    let pause_msg = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &pause_payload,
+    );
+    let pause_sig = build_bridge_signatures(&[&keypairs[0]], &pause_msg);
+    let pause = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: pause_sig,
+    });
+    assert_eq!(
+        *execute_system_tx(&authority_state, pause).await.unwrap().into_data().status(),
+        ExecutionStatus::Success
+    );
+
+    // Unpause must use the NEXT nonce (1), not 0 — pause consumed 0.
+    let unpause_payload = encode_emergency_payload(EmergencyOpCode::Unfreeze);
+    let unpause_msg_n1 = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        1,
+        SOMA_BRIDGE_CHAIN_ID,
+        &unpause_payload,
+    );
+    // Need 6667 stake for unpause; sign with members 0, 1, 2 (7500).
+    let unpause_sig = build_bridge_signatures(
+        &[&keypairs[0], &keypairs[1], &keypairs[2]],
+        &unpause_msg_n1,
+    );
+    let unpause = TransactionKind::BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs {
+        nonce: 1,
+        signatures: unpause_sig,
+    });
+    let effects = execute_system_tx(&authority_state, unpause).await.unwrap().into_data();
+    assert_eq!(*effects.status(), ExecutionStatus::Success);
+
+    // Both pause+unpause consumed; counter at 2.
+    let bridge = get_bridge_state(&authority_state);
+    assert_eq!(bridge.expected_system_message_seq(BridgeMessageType::EmergencyOp), 2);
+    assert!(!bridge.paused);
+}
+
+#[tokio::test]
+async fn test_emergency_op_nonce_too_high_rejected() {
+    use types::bridge::{BridgeMessageType, EmergencyOpCode, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_emergency_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+
+    // System messages must be strictly in-order — a future nonce gets
+    // rejected just like a past one. (Token transfers can be out of
+    // order via the watermark; system messages cannot.)
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let payload = encode_emergency_payload(EmergencyOpCode::Freeze);
+    let msg = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        5, // skipping nonces 0-4
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+    let sig = build_bridge_signatures(&[&keypairs[0]], &msg);
+
+    let kind = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 5,
+        signatures: sig,
+    });
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure {
+                error: ExecutionFailureStatus::BridgeSystemMessageSeqMismatch {
+                    expected: 0,
+                    actual: 5,
+                },
+            },
+        ),
+        "Future nonce must be rejected: {:?}",
+        effects.status()
+    );
+}
+
+// =============================================================================
+// BridgeUpdateCommitteeBlocklist + 0-stake filter for blocklisted members
+//
+// Mirrors Sui's `committee::execute_blocklist` (member matching by derived
+// 20-byte Eth address) + `verify_signatures` (blocklisted members keep
+// their entry in the committee but contribute 0 voting power).
+// =============================================================================
+
+#[tokio::test]
+async fn test_blocklisted_member_signature_contributes_zero_stake() {
+    use types::bridge::{BridgeMessageType, EmergencyOpCode, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        derive_eth_address, encode_blocklist_payload, encode_bridge_message,
+        encode_emergency_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeUpdateCommitteeBlocklistArgs;
+
+    // 4 members × 2500 stake = 10000 total. threshold_pause = 450 (any
+    // single member can pause). After we blocklist member 0, their sigs
+    // count as 0 — they alone can no longer pause.
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // Step 1: blocklist member 0 (uses threshold_blocklist = 5001).
+    let kp0_pubkey = types::bridge::BridgePubkey::from_keypair(&keypairs[0]);
+    let target_eth = derive_eth_address(&kp0_pubkey);
+    let bl_payload = encode_blocklist_payload(
+        types::bridge::BlocklistType::Blocklist,
+        &[target_eth],
+    );
+    let bl_msg = encode_bridge_message(
+        BridgeMessageType::UpdateCommitteeBlocklist,
+        BRIDGE_MESSAGE_VERSION,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &bl_payload,
+    );
+    // Need 5001 stake — 3 members × 2500 = 7500.
+    let bl_sig = build_bridge_signatures(
+        &[&keypairs[1], &keypairs[2], &keypairs[3]],
+        &bl_msg,
+    );
+    let kind = TransactionKind::BridgeUpdateCommitteeBlocklist(
+        BridgeUpdateCommitteeBlocklistArgs {
+            nonce: 0,
+            is_blocklist: true,
+            eth_addresses: vec![target_eth],
+            signatures: bl_sig,
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert_eq!(*effects.status(), ExecutionStatus::Success);
+
+    // Member 0 is now blocklisted (verified via on-chain state).
+    let bridge = get_bridge_state(&authority_state);
+    let blocklisted_addr = bridge
+        .bridge_committee
+        .members
+        .get(&kp0_pubkey)
+        .expect("member 0 in committee")
+        .is_blocklisted;
+    assert!(blocklisted_addr, "member 0 must be blocklisted");
+
+    // Step 2: try to pause with ONLY member 0's sig. With member 0
+    // blocklisted, their stake counts as 0, so we fail the threshold.
+    let pause_payload = encode_emergency_payload(EmergencyOpCode::Freeze);
+    let pause_msg = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        0, // emergency op nonce starts at 0
+        SOMA_BRIDGE_CHAIN_ID,
+        &pause_payload,
+    );
+    let pause_sig = build_bridge_signatures(&[&keypairs[0]], &pause_msg);
+    let pause = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: pause_sig,
+    });
+    let effects = execute_system_tx(&authority_state, pause).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure {
+                error: ExecutionFailureStatus::BridgeInsufficientSignatureStake,
+            },
+        ),
+        "Blocklisted member's sig must contribute 0 stake: {:?}",
+        effects.status()
+    );
+
+    // Step 3: a non-blocklisted member (member 1) alone CAN pause —
+    // their 2500 stake exceeds the 450 pause threshold.
+    let pause_sig2 = build_bridge_signatures(&[&keypairs[1]], &pause_msg);
+    let pause2 = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: pause_sig2,
+    });
+    let effects = execute_system_tx(&authority_state, pause2).await.unwrap().into_data();
+    assert_eq!(
+        *effects.status(),
+        ExecutionStatus::Success,
+        "Non-blocklisted member can still reach the pause threshold"
+    );
+}
+
+#[tokio::test]
+async fn test_blocklist_unknown_address_rejected() {
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_blocklist_payload, encode_bridge_message, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeUpdateCommitteeBlocklistArgs;
+
+    // Sui parity: `committee::execute_blocklist` aborts with
+    // EValidatorBlocklistContainsUnknownKey if any address isn't in the
+    // committee — no silent ignores.
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let unknown_eth = [0xFFu8; 20];
+    let payload =
+        encode_blocklist_payload(types::bridge::BlocklistType::Blocklist, &[unknown_eth]);
+    let msg = encode_bridge_message(
+        BridgeMessageType::UpdateCommitteeBlocklist,
+        BRIDGE_MESSAGE_VERSION,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+    let sig = build_bridge_signatures(
+        &[&keypairs[0], &keypairs[1], &keypairs[2]],
+        &msg,
+    );
+    let kind = TransactionKind::BridgeUpdateCommitteeBlocklist(
+        BridgeUpdateCommitteeBlocklistArgs {
+            nonce: 0,
+            is_blocklist: true,
+            eth_addresses: vec![unknown_eth],
+            signatures: sig,
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(*effects.status(), ExecutionStatus::Failure { .. }),
+        "Unknown blocklist address must be rejected: {:?}",
+        effects.status()
+    );
+}
+
+// =============================================================================
+// Hardening fixes (post-review)
+// =============================================================================
+
+/// H1: pause-when-paused must fail with BridgeAlreadyPaused, not silently
+/// consume a seq num. Defends against committee collusion that would
+/// otherwise burn EmergencyOp nonces to invalidate pre-signed unpause certs.
+#[tokio::test]
+async fn test_pause_when_paused_rejected() {
+    use types::bridge::{BridgeMessageType, EmergencyOpCode, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_emergency_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // Pause once.
+    let pause_payload = encode_emergency_payload(EmergencyOpCode::Freeze);
+    let msg_n0 = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &pause_payload,
+    );
+    let sig0 = build_bridge_signatures(&[&keypairs[0]], &msg_n0);
+    let pause_n0 = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: sig0,
+    });
+    assert_eq!(
+        *execute_system_tx(&authority_state, pause_n0).await.unwrap().into_data().status(),
+        ExecutionStatus::Success,
+    );
+
+    // Now sign a fresh pause for the next-expected nonce (=1) — same
+    // committee, same threshold check passes, but state check rejects.
+    let msg_n1 = encode_bridge_message(
+        BridgeMessageType::EmergencyOp,
+        BRIDGE_MESSAGE_VERSION,
+        1,
+        SOMA_BRIDGE_CHAIN_ID,
+        &pause_payload,
+    );
+    let sig1 = build_bridge_signatures(&[&keypairs[0]], &msg_n1);
+    let pause_n1 = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 1,
+        signatures: sig1,
+    });
+    let effects = execute_system_tx(&authority_state, pause_n1).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure { error: ExecutionFailureStatus::BridgeAlreadyPaused },
+        ),
+        "fresh pause cert when paused must be rejected, got {:?}",
+        effects.status()
+    );
+
+    // Crucially: seq counter must NOT have advanced — the pre-signed
+    // pause-N1 cert effectively didn't happen. (If we'd burned N1, an
+    // attacker could continue: sign N2, etc., to grief the unpause path.)
+    let bridge = get_bridge_state(&authority_state);
+    assert_eq!(
+        bridge.expected_system_message_seq(BridgeMessageType::EmergencyOp),
+        1,
+        "rejected pause must not consume seq num"
+    );
+}
+
+/// L1: zero-amount deposit cert is rejected before consuming a nonce or
+/// creating a BridgeRecord. Sui parity (abi.rs::ZeroValueBridgeTransfer).
+#[tokio::test]
+async fn test_zero_amount_deposit_rejected() {
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_deposit_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let recipient = SomaAddress::random();
+    let payload = encode_deposit_payload(&recipient, 0, 0); // amount = 0
+    let msg = encode_bridge_message(
+        BridgeMessageType::UsdcDeposit,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+    let sig = build_bridge_signatures(&[&keypairs[0], &keypairs[1]], &msg);
+
+    let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
+        nonce: 0,
+        eth_tx_hash: [0; 32],
+        recipient,
+        amount: 0,
+        timestamp_ms: 0,
+        signatures: sig,
+    });
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure { error: ExecutionFailureStatus::BridgeAmountZero },
+        ),
+        "zero-amount deposit must be rejected, got {:?}",
+        effects.status()
+    );
+}
+
+/// M1: blocklist payload exceeding MAX_BLOCKLIST_ENTRIES_PER_TX rejected.
+#[tokio::test]
+async fn test_blocklist_payload_size_capped() {
+    use types::bridge::generate_test_bridge_committee;
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeUpdateCommitteeBlocklistArgs;
+
+    let (committee, _) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // 256 entries — over the 255 cap. Sigs/payload don't matter; cap fires first.
+    let too_many: Vec<[u8; 20]> = (0..256u32).map(|i| {
+        let mut b = [0u8; 20];
+        b[..4].copy_from_slice(&i.to_be_bytes());
+        b
+    }).collect();
+
+    let kind = TransactionKind::BridgeUpdateCommitteeBlocklist(
+        BridgeUpdateCommitteeBlocklistArgs {
+            nonce: 0,
+            is_blocklist: true,
+            eth_addresses: too_many,
+            signatures: Default::default(),
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure {
+                error: ExecutionFailureStatus::BridgeBlocklistPayloadTooLarge { got: 256, max: 255 },
+            },
+        ),
+        "oversized blocklist must be rejected, got {:?}",
+        effects.status()
+    );
+}
+
+// L2 (cap http_url): the executor enforces `args.http_url.len() <=
+// MAX_BRIDGE_HTTP_URL_LEN`. End-to-end test would require a fresh
+// validator-keyed tx through the full signing pipeline (substantial
+// plumbing); the executor branch is small + direct, and verifying the
+// constant via `assert_eq!(MAX_BRIDGE_HTTP_URL_LEN, 2048)` doesn't add
+// signal. Coverage is the inline check itself + the BridgeUrlTooLong
+// error variant being match-exhaustive in workspace.
+
+// =============================================================================
 // Bridge pause/unpause effect on withdraw
 // =============================================================================
 
@@ -533,3 +1034,464 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
 // test genesis, this test verifies the code path exists by checking that
 // a non-paused bridge allows withdrawal (covered by test_bridge_withdraw_burns_usdc).
 // Full pause/unpause integration tests belong in e2e-tests with a real committee.
+
+/// Stage 2 invariant: a successful BridgeDeposit creates an Immutable
+/// BridgeRecord object at the deterministic ID derived from
+/// (eth_chain, UsdcDeposit, nonce). This is the on-chain audit trail —
+/// anyone can compute the ID and read "did deposit X happen, with what
+/// Eth tx hash, to whom, for how much, at which epoch?".
+#[tokio::test]
+async fn test_bridge_deposit_creates_audit_record() {
+    use types::bridge::{BridgeMessageType, BridgeRecord, ETH_BRIDGE_CHAIN_ID, SOMA_BRIDGE_CHAIN_ID,
+        build_bridge_signatures, derive_bridge_record_id, encode_bridge_message,
+        encode_deposit_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::object::Owner;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let recipient = SomaAddress::random();
+    let nonce = 7u64;
+    let amount = 5_000_000u64;
+    let eth_tx_hash = [0xDEu8; 32];
+
+    let payload = encode_deposit_payload(&recipient, amount, 0);
+    let message = encode_bridge_message(
+        BridgeMessageType::UsdcDeposit,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        nonce,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+    let agg_sig = build_bridge_signatures(&[&keypairs[0], &keypairs[1]], &message);
+
+    let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
+        nonce,
+        eth_tx_hash,
+        recipient,
+        amount,
+        timestamp_ms: 0,
+        signatures: agg_sig,
+    });
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert_eq!(*effects.status(), ExecutionStatus::Success);
+
+    // The BridgeRecord object lives at the deterministic ID — anyone with
+    // (eth_chain, UsdcDeposit, nonce) can compute it and look it up.
+    let record_id =
+        derive_bridge_record_id(ETH_BRIDGE_CHAIN_ID, BridgeMessageType::UsdcDeposit, nonce);
+    let record_obj = authority_state
+        .get_object(&record_id)
+        .await
+        .expect("BridgeRecord must be created");
+    assert_eq!(*record_obj.type_(), ObjectType::BridgeRecord);
+    assert!(matches!(record_obj.owner, Owner::Immutable));
+
+    let record: BridgeRecord =
+        record_obj.deserialize_contents(ObjectType::BridgeRecord).unwrap();
+    assert_eq!(record.source_chain_id, ETH_BRIDGE_CHAIN_ID);
+    assert_eq!(record.nonce, nonce);
+    assert_eq!(record.eth_tx_hash, eth_tx_hash);
+    assert_eq!(record.recipient, recipient);
+    assert_eq!(record.amount, amount);
+}
+
+// =============================================================================
+// BridgeAttachWithdrawalSignatures
+//
+// Mirrors Sui's `bridge::approve_token_transfer` for outbound (Sui→Eth)
+// records: the BridgeRecord must already exist (created at withdraw time);
+// attaching is idempotent; verification uses `threshold_withdraw`.
+// =============================================================================
+
+/// Helper: drive a withdrawal end-to-end and return its on-chain
+/// `PendingWithdrawal` object id. Used as setup for attach-sigs tests.
+async fn create_pending_withdrawal(
+    authority_state: &Arc<AuthorityState>,
+    sender: SomaAddress,
+    sender_key: &SomaKeyPair,
+    amount: u64,
+    recipient_eth: [u8; 20],
+) -> ObjectID {
+    // Seed enough USDC to cover withdraw + gas.
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Usdc, amount * 2 + 100_000_000)
+        .unwrap();
+
+    let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
+        amount,
+        recipient_eth_address: recipient_eth,
+    });
+    let data = TransactionData::new(kind, sender, vec![]);
+    let tx = to_sender_signed_transaction(data, sender_key);
+    let (_, effects) = send_and_confirm_transaction_(authority_state, None, tx, true)
+        .await
+        .unwrap();
+    let effects_data = effects.into_data();
+    assert_eq!(*effects_data.status(), ExecutionStatus::Success);
+
+    // Find the PendingWithdrawal object that got created.
+    for (oref, _owner) in effects_data.created() {
+        let obj = authority_state.get_object(&oref.0).await.unwrap();
+        if obj.type_() == &ObjectType::PendingWithdrawal {
+            return oref.0;
+        }
+    }
+    panic!("No PendingWithdrawal created");
+}
+
+#[tokio::test]
+async fn test_attach_withdrawal_signatures_happy_path() {
+    use types::bridge::{BridgeMessageType, PendingWithdrawal, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        derive_bridge_record_id, encode_bridge_message, encode_withdraw_payload,
+        generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeAttachWithdrawalSignaturesArgs;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    // Each member has 2500 voting power; threshold_withdraw = 3334 → need 2.
+
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let sender_key = SomaKeyPair::Ed25519(key);
+    let amount = 1_000_000u64;
+    let recipient_eth = [0xCDu8; 20];
+
+    let withdrawal_id =
+        create_pending_withdrawal(&authority_state, sender, &sender_key, amount, recipient_eth)
+            .await;
+
+    // ID must match the deterministic derivation — anyone with (chain, type, nonce)
+    // can compute this off-chain.
+    let nonce = 0u64;
+    assert_eq!(
+        withdrawal_id,
+        derive_bridge_record_id(SOMA_BRIDGE_CHAIN_ID, BridgeMessageType::UsdcWithdraw, nonce)
+    );
+
+    // Object exists, has no cert yet.
+    let pre = authority_state.get_object(&withdrawal_id).await.unwrap();
+    let pending: PendingWithdrawal = pre.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
+    assert!(pending.verified_signatures.is_none());
+
+    // Build the canonical message bytes (executor will reconstruct identically).
+    // V2 token-transfer payload includes the on-chain timestamp_ms; we read
+    // it from the PendingWithdrawal so signed bytes match what the executor
+    // reconstructs from authoritative state.
+    let payload = encode_withdraw_payload(&recipient_eth, amount, pending.created_at_ms);
+    let message = encode_bridge_message(
+        BridgeMessageType::UsdcWithdraw,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        nonce,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+
+    // Quorum sign with members 0, 1 (5000 > 3334 threshold).
+    let signers: Vec<&fastcrypto::secp256k1::Secp256k1KeyPair> =
+        vec![&keypairs[0], &keypairs[1]];
+    let signatures = build_bridge_signatures(&signers, &message);
+
+    let kind = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce,
+            signatures: signatures.clone(),
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert_eq!(
+        *effects.status(),
+        ExecutionStatus::Success,
+        "Valid quorum cert should attach: {:?}",
+        effects.status()
+    );
+
+    // Object now carries the cert, with the same bytes the executor verified.
+    let post = authority_state.get_object(&withdrawal_id).await.unwrap();
+    let pending_post: PendingWithdrawal =
+        post.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
+    let cert = pending_post
+        .verified_signatures
+        .as_ref()
+        .expect("cert must be attached");
+    assert_eq!(cert.signatures, signatures);
+}
+
+#[tokio::test]
+async fn test_attach_withdrawal_signatures_idempotent() {
+    use types::bridge::{BridgeMessageType, PendingWithdrawal, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_withdraw_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeAttachWithdrawalSignaturesArgs;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let sender_key = SomaKeyPair::Ed25519(key);
+    let withdrawal_id = create_pending_withdrawal(
+        &authority_state,
+        sender,
+        &sender_key,
+        1_000_000,
+        [0xEEu8; 20],
+    )
+    .await;
+
+    let nonce = 0u64;
+    // V2 message bytes must include the on-chain `created_at_ms`.
+    let pre = authority_state.get_object(&withdrawal_id).await.unwrap();
+    let pending_pre: PendingWithdrawal = pre.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
+    let payload = encode_withdraw_payload(&[0xEEu8; 20], 1_000_000, pending_pre.created_at_ms);
+    let message = encode_bridge_message(
+        BridgeMessageType::UsdcWithdraw,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        nonce,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+
+    // Members 0, 1 sign first.
+    let sig01 = build_bridge_signatures(
+        &[&keypairs[0], &keypairs[1]],
+        &message,
+    );
+    let attach1 = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce,
+            signatures: sig01.clone(),
+        },
+    );
+    assert_eq!(
+        *execute_system_tx(&authority_state, attach1)
+            .await
+            .unwrap()
+            .into_data()
+            .status(),
+        ExecutionStatus::Success
+    );
+
+    // A racing relayer submits a *different* (but also valid) cert from
+    // members 2, 3. Sui's `approve_token_transfer` would emit
+    // `TokenTransferAlreadyApproved` and skip; we do the same — Ok(()),
+    // but the original cert is preserved.
+    let sig23 = build_bridge_signatures(
+        &[&keypairs[2], &keypairs[3]],
+        &message,
+    );
+    let attach2 = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce,
+            signatures: sig23,
+        },
+    );
+    assert_eq!(
+        *execute_system_tx(&authority_state, attach2)
+            .await
+            .unwrap()
+            .into_data()
+            .status(),
+        ExecutionStatus::Success,
+        "second attach must succeed as a no-op (idempotent)"
+    );
+
+    let post = authority_state.get_object(&withdrawal_id).await.unwrap();
+    let pending: PendingWithdrawal = post.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
+    let cert = pending.verified_signatures.expect("cert must still be attached");
+    assert_eq!(
+        cert.signatures, sig01,
+        "first cert wins; second submit is a no-op"
+    );
+}
+
+#[tokio::test]
+async fn test_attach_withdrawal_signatures_below_threshold_rejected() {
+    use types::bridge::{BridgeMessageType, PendingWithdrawal, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        derive_bridge_record_id, encode_bridge_message, encode_withdraw_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeAttachWithdrawalSignaturesArgs;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let sender_key = SomaKeyPair::Ed25519(key);
+    create_pending_withdrawal(&authority_state, sender, &sender_key, 1_000_000, [0xFFu8; 20])
+        .await;
+
+    let nonce = 0u64;
+    let withdrawal_id = derive_bridge_record_id(SOMA_BRIDGE_CHAIN_ID, BridgeMessageType::UsdcWithdraw, nonce);
+    let pre = authority_state.get_object(&withdrawal_id).await.unwrap();
+    let pending_pre: PendingWithdrawal = pre.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
+    let payload = encode_withdraw_payload(&[0xFFu8; 20], 1_000_000, pending_pre.created_at_ms);
+    let message = encode_bridge_message(
+        BridgeMessageType::UsdcWithdraw,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        nonce,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+
+    // Only one signer (2500 voting power < 3334 threshold).
+    let agg_sig = build_bridge_signatures(&[&keypairs[0]], &message);
+    let kind = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce,
+            signatures: agg_sig,
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(
+            effects.status(),
+            ExecutionStatus::Failure {
+                error: ExecutionFailureStatus::BridgeInsufficientSignatureStake,
+                ..
+            },
+        ),
+        "Below-threshold cert must be rejected, got {:?}",
+        effects.status()
+    );
+}
+
+#[tokio::test]
+async fn test_attach_withdrawal_signatures_wrong_message_rejected() {
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_withdraw_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeAttachWithdrawalSignaturesArgs;
+
+    // Defense-in-depth: even if a relayer submits a valid quorum cert for
+    // a *different* withdrawal (e.g. tries to repurpose a cert from
+    // nonce=1 onto nonce=0 to bypass amount checks), the executor must
+    // reject. This is enforced by reconstructing the message from the
+    // on-chain object's fields, not from caller input.
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let sender_key = SomaKeyPair::Ed25519(key);
+    create_pending_withdrawal(&authority_state, sender, &sender_key, 1_000_000, [0x11u8; 20])
+        .await;
+
+    // Sign a message for a DIFFERENT amount than the on-chain withdrawal.
+    let wrong_amount = 999_999u64;
+    let bad_payload = encode_withdraw_payload(&[0x11u8; 20], wrong_amount, 0);
+    let bad_message = encode_bridge_message(
+        BridgeMessageType::UsdcWithdraw,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        0,
+        SOMA_BRIDGE_CHAIN_ID,
+        &bad_payload,
+    );
+    let agg_sig = build_bridge_signatures(
+        &[&keypairs[0], &keypairs[1]],
+        &bad_message,
+    );
+
+    let kind = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce: 0,
+            signatures: agg_sig,
+        },
+    );
+    let effects = execute_system_tx(&authority_state, kind).await.unwrap().into_data();
+    assert!(
+        matches!(*effects.status(), ExecutionStatus::Failure { .. }),
+        "Cert signed over wrong message bytes must be rejected, got {:?}",
+        effects.status()
+    );
+}
+
+#[tokio::test]
+async fn test_attach_withdrawal_signatures_unknown_nonce_rejected() {
+    use types::bridge::{BridgeMessageType, SOMA_BRIDGE_CHAIN_ID, build_bridge_signatures,
+        encode_bridge_message, encode_withdraw_payload, generate_test_bridge_committee, BRIDGE_MESSAGE_VERSION, TOKEN_TRANSFER_MESSAGE_VERSION_V2};
+    use types::config::genesis_config::GenesisConfig;
+    use types::transaction::BridgeAttachWithdrawalSignaturesArgs;
+
+    let (committee, keypairs) = generate_test_bridge_committee(4);
+    let mut genesis_config = GenesisConfig::for_local_testing();
+    genesis_config.bridge_committee = Some(committee);
+    let authority_state = TestAuthorityBuilder::new()
+        .with_genesis_config(genesis_config)
+        .build()
+        .await;
+
+    // No PendingWithdrawal created. Attempting to attach to a nonce that
+    // doesn't exist must fail with ObjectNotFound — there's no on-chain
+    // record to attach to, and an attacker can't conjure one by signing.
+    let nonce = 42u64;
+    let payload = encode_withdraw_payload(&[0u8; 20], 0, 0);
+    let message = encode_bridge_message(
+        BridgeMessageType::UsdcWithdraw,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        nonce,
+        SOMA_BRIDGE_CHAIN_ID,
+        &payload,
+    );
+    let agg_sig = build_bridge_signatures(
+        &[&keypairs[0], &keypairs[1]],
+        &message,
+    );
+    let kind = TransactionKind::BridgeAttachWithdrawalSignatures(
+        BridgeAttachWithdrawalSignaturesArgs {
+            nonce,
+            signatures: agg_sig,
+        },
+    );
+    // The tx declares the (nonexistent) PendingWithdrawal as a shared
+    // input. The input-loading layer rejects before the executor runs
+    // — defense in depth: a bad relayer can't even submit a cert for a
+    // fabricated nonce, since the chain-level scheduler won't accept
+    // the tx in the first place. Either rejection point is acceptable
+    // (validator-layer SomaError or executor-layer ObjectNotFound).
+    let result = execute_system_tx(&authority_state, kind).await;
+    match result {
+        Err(_) => {
+            // Validator-layer rejection — input object doesn't exist.
+        }
+        Ok(effects) => {
+            let effects_data = effects.into_data();
+            assert!(
+                matches!(
+                    effects_data.status(),
+                    ExecutionStatus::Failure {
+                        error: ExecutionFailureStatus::ObjectNotFound { .. },
+                        ..
+                    },
+                ),
+                "Attach to nonexistent withdrawal must fail, got {:?}",
+                effects_data.status()
+            );
+        }
+    }
+}

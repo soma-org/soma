@@ -184,6 +184,21 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::BridgePaused => (ExecutionErrorKind::OtherError, Some("Bridge is paused".into())),
             E::BridgeNonceAlreadyProcessed => (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into())),
             E::BridgeInsufficientSignatureStake => (ExecutionErrorKind::OtherError, Some("Bridge: insufficient signature stake".into())),
+            E::BridgeSystemMessageSeqMismatch { expected, actual } => (
+                ExecutionErrorKind::OtherError,
+                Some(format!("Bridge: system-message seq mismatch (expected {expected}, got {actual})")),
+            ),
+            E::BridgeAlreadyPaused => (ExecutionErrorKind::OtherError, Some("Bridge already paused".into())),
+            E::BridgeNotPaused => (ExecutionErrorKind::OtherError, Some("Bridge not paused".into())),
+            E::BridgeAmountZero => (ExecutionErrorKind::OtherError, Some("Bridge amount must be non-zero".into())),
+            E::BridgeBlocklistPayloadTooLarge { got, max } => (
+                ExecutionErrorKind::OtherError,
+                Some(format!("Bridge blocklist payload too large ({got}/{max})")),
+            ),
+            E::BridgeUrlTooLong { got, max } => (
+                ExecutionErrorKind::OtherError,
+                Some(format!("Bridge http_url too long ({got}/{max})")),
+            ),
 
             // Payment-channel errors
             E::ChannelCallerNotPayee { expected, actual } => (
@@ -548,6 +563,18 @@ impl Merge<&types::object::Object> for Object {
 
 /// Stable string label for a CoinType — round-trips with
 /// `parse_coin_type` in `types_conversions.rs`.
+/// Convert a typed bridge cert envelope into the flat proto repeated list.
+fn envelope_to_proto(
+    sigs: std::collections::BTreeMap<types::bridge::BridgePubkey, types::bridge::BridgeSignature>,
+) -> Vec<PubkeySig> {
+    sigs.into_iter()
+        .map(|(pk, sig)| PubkeySig {
+            signer_pubkey: Some(pk.as_bytes().to_vec().into()),
+            signature: Some(sig.as_bytes().to_vec().into()),
+        })
+        .collect()
+}
+
 fn coin_type_label(t: types::object::CoinType) -> &'static str {
     match t {
         types::object::CoinType::Soma => "SOMA",
@@ -715,21 +742,45 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 eth_tx_hash: Some(args.eth_tx_hash.to_vec().into()),
                 recipient: Some(args.recipient.to_string()),
                 amount: Some(args.amount),
-                aggregated_signature: Some(args.aggregated_signature.into()),
-                signer_bitmap: Some(args.signer_bitmap.into()),
+                timestamp_ms: Some(args.timestamp_ms),
+                signatures: envelope_to_proto(args.signatures),
             }),
             K::BridgeWithdraw(args) => Kind::BridgeWithdraw(BridgeWithdraw {
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.to_vec().into()),
             }),
             K::BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(BridgeEmergencyPause {
-                aggregated_signature: Some(args.aggregated_signature.into()),
-                signer_bitmap: Some(args.signer_bitmap.into()),
+                nonce: Some(args.nonce),
+                signatures: envelope_to_proto(args.signatures),
             }),
             K::BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(BridgeEmergencyUnpause {
-                aggregated_signature: Some(args.aggregated_signature.into()),
-                signer_bitmap: Some(args.signer_bitmap.into()),
+                nonce: Some(args.nonce),
+                signatures: envelope_to_proto(args.signatures),
             }),
+            K::BridgeAttachWithdrawalSignatures(args) => {
+                Kind::BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignatures {
+                    nonce: Some(args.nonce),
+                    signatures: envelope_to_proto(args.signatures),
+                })
+            }
+            K::BridgeUpdateCommitteeBlocklist(args) => {
+                let mut flat = Vec::with_capacity(args.eth_addresses.len() * 20);
+                for a in &args.eth_addresses {
+                    flat.extend_from_slice(a);
+                }
+                Kind::BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklist {
+                    nonce: Some(args.nonce),
+                    is_blocklist: Some(args.is_blocklist),
+                    eth_addresses: Some(flat.into()),
+                    signatures: envelope_to_proto(args.signatures),
+                })
+            }
+            K::BridgeRegisterBridgeKey(args) => {
+                Kind::BridgeRegisterBridgeKey(BridgeRegisterBridgeKey {
+                    bridge_pubkey: Some(args.bridge_pubkey.as_bytes().to_vec().into()),
+                    http_url: Some(args.http_url),
+                })
+            }
 
             // Payment-channel tx kinds.
             K::OpenChannel(args) => Kind::OpenChannel(OpenChannel {

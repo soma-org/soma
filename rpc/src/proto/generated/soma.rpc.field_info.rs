@@ -5856,6 +5856,24 @@ mod _field_impls {
             number: 43i32,
             message_fields: Some(BridgeEmergencyUnpause::FIELDS),
         };
+        pub const BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_attach_withdrawal_signatures",
+            json_name: "bridgeAttachWithdrawalSignatures",
+            number: 44i32,
+            message_fields: Some(BridgeAttachWithdrawalSignatures::FIELDS),
+        };
+        pub const BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_update_committee_blocklist",
+            json_name: "bridgeUpdateCommitteeBlocklist",
+            number: 45i32,
+            message_fields: Some(BridgeUpdateCommitteeBlocklist::FIELDS),
+        };
+        pub const BRIDGE_REGISTER_BRIDGE_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_register_bridge_key",
+            json_name: "bridgeRegisterBridgeKey",
+            number: 46i32,
+            message_fields: Some(BridgeRegisterBridgeKey::FIELDS),
+        };
         pub const OPEN_CHANNEL_FIELD: &'static MessageField = &MessageField {
             name: "open_channel",
             json_name: "openChannel",
@@ -5953,6 +5971,9 @@ mod _field_impls {
             Self::BRIDGE_WITHDRAW_FIELD,
             Self::BRIDGE_EMERGENCY_PAUSE_FIELD,
             Self::BRIDGE_EMERGENCY_UNPAUSE_FIELD,
+            Self::BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD,
+            Self::BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD,
+            Self::BRIDGE_REGISTER_BRIDGE_KEY_FIELD,
             Self::OPEN_CHANNEL_FIELD,
             Self::SETTLE_FIELD,
             Self::REQUEST_CLOSE_FIELD,
@@ -6129,6 +6150,26 @@ mod _field_impls {
             self.path.push(TransactionKind::BRIDGE_EMERGENCY_UNPAUSE_FIELD.name);
             BridgeEmergencyUnpauseFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn bridge_attach_withdrawal_signatures(
+            mut self,
+        ) -> BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+            self.path
+                .push(TransactionKind::BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD.name);
+            BridgeAttachWithdrawalSignaturesFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_update_committee_blocklist(
+            mut self,
+        ) -> BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+            self.path
+                .push(TransactionKind::BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD.name);
+            BridgeUpdateCommitteeBlocklistFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_register_bridge_key(
+            mut self,
+        ) -> BridgeRegisterBridgeKeyFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_REGISTER_BRIDGE_KEY_FIELD.name);
+            BridgeRegisterBridgeKeyFieldPathBuilder::new_with_base(self.path)
+        }
         pub fn open_channel(mut self) -> OpenChannelFieldPathBuilder {
             self.path.push(TransactionKind::OPEN_CHANNEL_FIELD.name);
             OpenChannelFieldPathBuilder::new_with_base(self.path)
@@ -6268,6 +6309,55 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl PubkeySig {
+        pub const SIGNER_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "signer_pubkey",
+            json_name: "signerPubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const SIGNATURE_FIELD: &'static MessageField = &MessageField {
+            name: "signature",
+            json_name: "signature",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for PubkeySig {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SIGNER_PUBKEY_FIELD,
+            Self::SIGNATURE_FIELD,
+        ];
+    }
+    impl PubkeySig {
+        pub fn path_builder() -> PubkeySigFieldPathBuilder {
+            PubkeySigFieldPathBuilder::new()
+        }
+    }
+    pub struct PubkeySigFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl PubkeySigFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn signer_pubkey(mut self) -> String {
+            self.path.push(PubkeySig::SIGNER_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn signature(mut self) -> String {
+            self.path.push(PubkeySig::SIGNATURE_FIELD.name);
+            self.finish()
+        }
+    }
     impl BridgeDeposit {
         pub const NONCE_FIELD: &'static MessageField = &MessageField {
             name: "nonce",
@@ -6293,17 +6383,17 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
-        pub const AGGREGATED_SIGNATURE_FIELD: &'static MessageField = &MessageField {
-            name: "aggregated_signature",
-            json_name: "aggregatedSignature",
-            number: 5i32,
+        pub const TIMESTAMP_MS_FIELD: &'static MessageField = &MessageField {
+            name: "timestamp_ms",
+            json_name: "timestampMs",
+            number: 7i32,
             message_fields: None,
         };
-        pub const SIGNER_BITMAP_FIELD: &'static MessageField = &MessageField {
-            name: "signer_bitmap",
-            json_name: "signerBitmap",
-            number: 6i32,
-            message_fields: None,
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 8i32,
+            message_fields: Some(PubkeySig::FIELDS),
         };
     }
     impl MessageFields for BridgeDeposit {
@@ -6312,8 +6402,8 @@ mod _field_impls {
             Self::ETH_TX_HASH_FIELD,
             Self::RECIPIENT_FIELD,
             Self::AMOUNT_FIELD,
-            Self::AGGREGATED_SIGNATURE_FIELD,
-            Self::SIGNER_BITMAP_FIELD,
+            Self::TIMESTAMP_MS_FIELD,
+            Self::SIGNATURES_FIELD,
         ];
     }
     impl BridgeDeposit {
@@ -6352,13 +6442,13 @@ mod _field_impls {
             self.path.push(BridgeDeposit::AMOUNT_FIELD.name);
             self.finish()
         }
-        pub fn aggregated_signature(mut self) -> String {
-            self.path.push(BridgeDeposit::AGGREGATED_SIGNATURE_FIELD.name);
+        pub fn timestamp_ms(mut self) -> String {
+            self.path.push(BridgeDeposit::TIMESTAMP_MS_FIELD.name);
             self.finish()
         }
-        pub fn signer_bitmap(mut self) -> String {
-            self.path.push(BridgeDeposit::SIGNER_BITMAP_FIELD.name);
-            self.finish()
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeDeposit::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl BridgeWithdraw {
@@ -6411,23 +6501,23 @@ mod _field_impls {
         }
     }
     impl BridgeEmergencyPause {
-        pub const AGGREGATED_SIGNATURE_FIELD: &'static MessageField = &MessageField {
-            name: "aggregated_signature",
-            json_name: "aggregatedSignature",
-            number: 1i32,
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 3i32,
             message_fields: None,
         };
-        pub const SIGNER_BITMAP_FIELD: &'static MessageField = &MessageField {
-            name: "signer_bitmap",
-            json_name: "signerBitmap",
-            number: 2i32,
-            message_fields: None,
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
         };
     }
     impl MessageFields for BridgeEmergencyPause {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::AGGREGATED_SIGNATURE_FIELD,
-            Self::SIGNER_BITMAP_FIELD,
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
         ];
     }
     impl BridgeEmergencyPause {
@@ -6450,33 +6540,33 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn aggregated_signature(mut self) -> String {
-            self.path.push(BridgeEmergencyPause::AGGREGATED_SIGNATURE_FIELD.name);
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeEmergencyPause::NONCE_FIELD.name);
             self.finish()
         }
-        pub fn signer_bitmap(mut self) -> String {
-            self.path.push(BridgeEmergencyPause::SIGNER_BITMAP_FIELD.name);
-            self.finish()
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeEmergencyPause::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl BridgeEmergencyUnpause {
-        pub const AGGREGATED_SIGNATURE_FIELD: &'static MessageField = &MessageField {
-            name: "aggregated_signature",
-            json_name: "aggregatedSignature",
-            number: 1i32,
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 3i32,
             message_fields: None,
         };
-        pub const SIGNER_BITMAP_FIELD: &'static MessageField = &MessageField {
-            name: "signer_bitmap",
-            json_name: "signerBitmap",
-            number: 2i32,
-            message_fields: None,
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
         };
     }
     impl MessageFields for BridgeEmergencyUnpause {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::AGGREGATED_SIGNATURE_FIELD,
-            Self::SIGNER_BITMAP_FIELD,
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
         ];
     }
     impl BridgeEmergencyUnpause {
@@ -6499,12 +6589,181 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn aggregated_signature(mut self) -> String {
-            self.path.push(BridgeEmergencyUnpause::AGGREGATED_SIGNATURE_FIELD.name);
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeEmergencyUnpause::NONCE_FIELD.name);
             self.finish()
         }
-        pub fn signer_bitmap(mut self) -> String {
-            self.path.push(BridgeEmergencyUnpause::SIGNER_BITMAP_FIELD.name);
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeEmergencyUnpause::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeAttachWithdrawalSignatures {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub fn path_builder() -> BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+            BridgeAttachWithdrawalSignaturesFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeAttachWithdrawalSignatures::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeAttachWithdrawalSignatures::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const IS_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "is_blocklist",
+            json_name: "isBlocklist",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const ETH_ADDRESSES_FIELD: &'static MessageField = &MessageField {
+            name: "eth_addresses",
+            json_name: "ethAddresses",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 6i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeUpdateCommitteeBlocklist {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::IS_BLOCKLIST_FIELD,
+            Self::ETH_ADDRESSES_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub fn path_builder() -> BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+            BridgeUpdateCommitteeBlocklistFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn is_blocklist(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::IS_BLOCKLIST_FIELD.name);
+            self.finish()
+        }
+        pub fn eth_addresses(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::ETH_ADDRESSES_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeUpdateCommitteeBlocklist::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeRegisterBridgeKey {
+        pub const BRIDGE_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_pubkey",
+            json_name: "bridgePubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeRegisterBridgeKey {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::BRIDGE_PUBKEY_FIELD,
+            Self::HTTP_URL_FIELD,
+        ];
+    }
+    impl BridgeRegisterBridgeKey {
+        pub fn path_builder() -> BridgeRegisterBridgeKeyFieldPathBuilder {
+            BridgeRegisterBridgeKeyFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeRegisterBridgeKeyFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeRegisterBridgeKeyFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn bridge_pubkey(mut self) -> String {
+            self.path.push(BridgeRegisterBridgeKey::BRIDGE_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeRegisterBridgeKey::HTTP_URL_FIELD.name);
             self.finish()
         }
     }

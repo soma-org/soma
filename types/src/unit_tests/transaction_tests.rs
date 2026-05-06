@@ -350,20 +350,20 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             eth_tx_hash: [0u8; 32],
             recipient: SomaAddress::random(),
             amount: 1000,
-            aggregated_signature: vec![],
-            signer_bitmap: vec![],
+            timestamp_ms: 0,
+            signatures: Default::default(),
         }),
         TransactionKind::BridgeWithdraw(crate::transaction::BridgeWithdrawArgs {
             amount: 500,
             recipient_eth_address: [0u8; 20],
         }),
         TransactionKind::BridgeEmergencyPause(crate::transaction::BridgeEmergencyPauseArgs {
-            aggregated_signature: vec![],
-            signer_bitmap: vec![],
+            nonce: 0,
+            signatures: Default::default(),
         }),
         TransactionKind::BridgeEmergencyUnpause(crate::transaction::BridgeEmergencyUnpauseArgs {
-            aggregated_signature: vec![],
-            signer_bitmap: vec![],
+            nonce: 0,
+            signatures: Default::default(),
         }),
     ];
 

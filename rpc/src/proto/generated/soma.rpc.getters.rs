@@ -4680,6 +4680,169 @@ mod _getter_impls {
             );
             self
         }
+        pub fn bridge_attach_withdrawal_signatures(
+            &self,
+        ) -> &BridgeAttachWithdrawalSignatures {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &self.kind
+            {
+                field as _
+            } else {
+                BridgeAttachWithdrawalSignatures::default_instance() as _
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_opt(
+            &self,
+        ) -> Option<&BridgeAttachWithdrawalSignatures> {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeAttachWithdrawalSignatures> {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_mut(
+            &mut self,
+        ) -> &mut BridgeAttachWithdrawalSignatures {
+            if self.bridge_attach_withdrawal_signatures_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeAttachWithdrawalSignatures(
+                        BridgeAttachWithdrawalSignatures::default(),
+                    ),
+                );
+            }
+            self.bridge_attach_withdrawal_signatures_opt_mut().unwrap()
+        }
+        pub fn with_bridge_attach_withdrawal_signatures(
+            mut self,
+            field: BridgeAttachWithdrawalSignatures,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field.into()),
+            );
+            self
+        }
+        pub fn bridge_update_committee_blocklist(
+            &self,
+        ) -> &BridgeUpdateCommitteeBlocklist {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                BridgeUpdateCommitteeBlocklist::default_instance() as _
+            }
+        }
+        pub fn bridge_update_committee_blocklist_opt(
+            &self,
+        ) -> Option<&BridgeUpdateCommitteeBlocklist> {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_update_committee_blocklist_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeUpdateCommitteeBlocklist> {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_update_committee_blocklist_mut(
+            &mut self,
+        ) -> &mut BridgeUpdateCommitteeBlocklist {
+            if self.bridge_update_committee_blocklist_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(
+                        BridgeUpdateCommitteeBlocklist::default(),
+                    ),
+                );
+            }
+            self.bridge_update_committee_blocklist_opt_mut().unwrap()
+        }
+        pub fn with_bridge_update_committee_blocklist(
+            mut self,
+            field: BridgeUpdateCommitteeBlocklist,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field.into()),
+            );
+            self
+        }
+        pub fn bridge_register_bridge_key(&self) -> &BridgeRegisterBridgeKey {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                BridgeRegisterBridgeKey::default_instance() as _
+            }
+        }
+        pub fn bridge_register_bridge_key_opt(
+            &self,
+        ) -> Option<&BridgeRegisterBridgeKey> {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_register_bridge_key_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeRegisterBridgeKey> {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_register_bridge_key_mut(
+            &mut self,
+        ) -> &mut BridgeRegisterBridgeKey {
+            if self.bridge_register_bridge_key_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeRegisterBridgeKey(
+                        BridgeRegisterBridgeKey::default(),
+                    ),
+                );
+            }
+            self.bridge_register_bridge_key_opt_mut().unwrap()
+        }
+        pub fn with_bridge_register_bridge_key(
+            mut self,
+            field: BridgeRegisterBridgeKey,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeRegisterBridgeKey(field.into()),
+            );
+            self
+        }
         pub fn open_channel(&self) -> &OpenChannel {
             if let Some(transaction_kind::Kind::OpenChannel(field)) = &self.kind {
                 field as _
@@ -5068,6 +5231,27 @@ mod _getter_impls {
             self
         }
     }
+    impl PubkeySig {
+        pub const fn const_default() -> Self {
+            Self {
+                signer_pubkey: None,
+                signature: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: PubkeySig = PubkeySig::const_default();
+            &DEFAULT
+        }
+        pub fn with_signer_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signer_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signature = Some(field.into());
+            self
+        }
+    }
     impl BridgeDeposit {
         pub const fn const_default() -> Self {
             Self {
@@ -5075,8 +5259,8 @@ mod _getter_impls {
                 eth_tx_hash: None,
                 recipient: None,
                 amount: None,
-                aggregated_signature: None,
-                signer_bitmap: None,
+                timestamp_ms: None,
+                signatures: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5100,15 +5284,18 @@ mod _getter_impls {
             self.amount = Some(field.into());
             self
         }
-        pub fn with_aggregated_signature(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.aggregated_signature = Some(field.into());
+        pub fn with_timestamp_ms(mut self, field: u64) -> Self {
+            self.timestamp_ms = Some(field.into());
             self
         }
-        pub fn with_signer_bitmap(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.signer_bitmap = Some(field.into());
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
             self
         }
     }
@@ -5139,8 +5326,8 @@ mod _getter_impls {
     impl BridgeEmergencyPause {
         pub const fn const_default() -> Self {
             Self {
-                aggregated_signature: None,
-                signer_bitmap: None,
+                nonce: None,
+                signatures: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5148,23 +5335,26 @@ mod _getter_impls {
             static DEFAULT: BridgeEmergencyPause = BridgeEmergencyPause::const_default();
             &DEFAULT
         }
-        pub fn with_aggregated_signature(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.aggregated_signature = Some(field.into());
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
             self
         }
-        pub fn with_signer_bitmap(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.signer_bitmap = Some(field.into());
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
             self
         }
     }
     impl BridgeEmergencyUnpause {
         pub const fn const_default() -> Self {
             Self {
-                aggregated_signature: None,
-                signer_bitmap: None,
+                nonce: None,
+                signatures: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5172,15 +5362,103 @@ mod _getter_impls {
             static DEFAULT: BridgeEmergencyUnpause = BridgeEmergencyUnpause::const_default();
             &DEFAULT
         }
-        pub fn with_aggregated_signature(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.aggregated_signature = Some(field.into());
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
             self
         }
-        pub fn with_signer_bitmap(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.signer_bitmap = Some(field.into());
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeAttachWithdrawalSignatures = BridgeAttachWithdrawalSignatures::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                is_blocklist: None,
+                eth_addresses: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeUpdateCommitteeBlocklist = BridgeUpdateCommitteeBlocklist::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn with_is_blocklist(mut self, field: bool) -> Self {
+            self.is_blocklist = Some(field.into());
+            self
+        }
+        pub fn with_eth_addresses(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.eth_addresses = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeRegisterBridgeKey {
+        pub const fn const_default() -> Self {
+            Self {
+                bridge_pubkey: None,
+                http_url: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeRegisterBridgeKey = BridgeRegisterBridgeKey::const_default();
+            &DEFAULT
+        }
+        pub fn with_bridge_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.bridge_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_http_url(mut self, field: String) -> Self {
+            self.http_url = Some(field.into());
             self
         }
     }

@@ -577,6 +577,23 @@ impl SystemStateV1 {
                 self.emission_pool.balance.saturating_add(validator_reward_pool);
         }
 
+        // Bridge committee rotation. Build a (validator_addr -> voting_power)
+        // map from the freshly-advanced validator set, then attempt rotation.
+        // Mirrors Sui's `try_create_next_committee` — silent no-op if the
+        // sum of registered active stake is below `min_stake_participation_bps`.
+        // We use 5001 BPS (50.01%) to match Sui's `BRIDGE_COMMITTEE_MINIMAL_VOTING_POWER`.
+        let validator_voting_power: BTreeMap<SomaAddress, u64> = self
+            .validators
+            .validators
+            .iter()
+            .map(|v| (v.metadata.soma_address, v.voting_power))
+            .collect();
+        const MIN_BRIDGE_STAKE_PARTICIPATION_BPS: u64 = 5001;
+        self.bridge_state.try_rotate_committee(
+            &validator_voting_power,
+            MIN_BRIDGE_STAKE_PARTICIPATION_BPS,
+        );
+
         Ok(validator_rewards)
     }
 

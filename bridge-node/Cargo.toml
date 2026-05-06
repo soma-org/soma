@@ -10,13 +10,14 @@ workspace = true
 [dependencies]
 # Workspace crates
 types = { workspace = true }
+rpc = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
 
-# gRPC
+# gRPC client (used to talk to the Soma fullnode RPC, not for bridge
+# peer exchange — that uses HTTP via the `http_server` module).
 tonic = { workspace = true }
-prost = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -28,6 +29,9 @@ fastcrypto = { workspace = true }
 # Ethereum RPC (raw JSON-RPC via reqwest — avoids alloy serde compatibility issues)
 reqwest = { workspace = true }
 
+# HTTP REST surface for the bridge sig-exchange server (Sui parity).
+axum = { workspace = true }
+
 # Error handling
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -37,8 +41,21 @@ tracing = { workspace = true }
 backoff = { workspace = true }
 dashmap = { workspace = true }
 hex = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+arc-swap = { workspace = true }
+
+# RocksDB-backed WAL (Stage 6b: pending actions + Eth/Soma cursors persisted
+# across restarts so the bridge node doesn't re-scan from genesis on reboot).
+store = { workspace = true }
+bcs = { workspace = true }
+# Required by store-derive's `DBMapUtils` generated dump() impl.
+eyre = { workspace = true }
+# Required by store-derive's generated test scaffolding.
+tempfile = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 rand = { workspace = true }
 wiremock = { workspace = true }
+tower = { workspace = true }

@@ -4050,7 +4050,7 @@ pub struct ValidDuring {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 57, 55, 56, 60, 61"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 44, 45, 46, 50, 51, 52, 53, 54, 57, 55, 56, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4140,6 +4140,12 @@ pub mod transaction_kind {
         BridgeEmergencyPause(super::BridgeEmergencyPause),
         #[prost(message, tag = "43")]
         BridgeEmergencyUnpause(super::BridgeEmergencyUnpause),
+        #[prost(message, tag = "44")]
+        BridgeAttachWithdrawalSignatures(super::BridgeAttachWithdrawalSignatures),
+        #[prost(message, tag = "45")]
+        BridgeUpdateCommitteeBlocklist(super::BridgeUpdateCommitteeBlocklist),
+        #[prost(message, tag = "46")]
+        BridgeRegisterBridgeKey(super::BridgeRegisterBridgeKey),
         /// Payment-channel transactions (Phase 1)
         #[prost(message, tag = "50")]
         OpenChannel(super::OpenChannel),
@@ -4188,6 +4194,18 @@ pub struct BalanceTransferEntry {
     #[prost(uint64, optional, tag = "2")]
     pub amount: ::core::option::Option<u64>,
 }
+/// Labeled-pubkey signature envelope. Each entry binds a 33-byte
+/// compressed secp256k1 pubkey to its 65-byte recoverable signature.
+/// On-chain verifier ecrecovers each `signature` and asserts the
+/// recovered pubkey matches `signer_pubkey` before counting stake.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PubkeySig {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub signer_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub signature: ::core::option::Option<::prost::bytes::Bytes>,
+}
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BridgeDeposit {
@@ -4199,10 +4217,12 @@ pub struct BridgeDeposit {
     pub recipient: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint64, optional, tag = "4")]
     pub amount: ::core::option::Option<u64>,
-    #[prost(bytes = "bytes", optional, tag = "5")]
-    pub aggregated_signature: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "6")]
-    pub signer_bitmap: ::core::option::Option<::prost::bytes::Bytes>,
+    /// V2 token transfer: Eth-side block timestamp.
+    #[prost(uint64, optional, tag = "7")]
+    pub timestamp_ms: ::core::option::Option<u64>,
+    /// Labeled-pubkey signature envelope.
+    #[prost(message, repeated, tag = "8")]
+    pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4217,18 +4237,57 @@ pub struct BridgeWithdraw {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BridgeEmergencyPause {
-    #[prost(bytes = "bytes", optional, tag = "1")]
-    pub aggregated_signature: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub signer_bitmap: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Per-message-type seq num (shared with unpause; both have type byte 2).
+    #[prost(uint64, optional, tag = "3")]
+    pub nonce: ::core::option::Option<u64>,
+    #[prost(message, repeated, tag = "4")]
+    pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BridgeEmergencyUnpause {
+    #[prost(uint64, optional, tag = "3")]
+    pub nonce: ::core::option::Option<u64>,
+    #[prost(message, repeated, tag = "4")]
+    pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
+}
+/// Attach a quorum committee certificate to an existing PendingWithdrawal
+/// shared object. After this commits, anyone can read the cert and submit
+/// it to the Eth-side SomaBridge contract to release the locked USDC.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeAttachWithdrawalSignatures {
+    #[prost(uint64, optional, tag = "1")]
+    pub nonce: ::core::option::Option<u64>,
+    #[prost(message, repeated, tag = "4")]
+    pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
+}
+/// Surgically blocklist or unblocklist committee members. Members are
+/// identified by their derived 20-byte Eth address. is_blocklist == true
+/// sets the flag, false clears it. Mirrors Sui's committee_blocklist.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeUpdateCommitteeBlocklist {
+    #[prost(uint64, optional, tag = "1")]
+    pub nonce: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag = "2")]
+    pub is_blocklist: ::core::option::Option<bool>,
+    /// 20-byte Eth addresses, concatenated.
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub eth_addresses: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(message, repeated, tag = "6")]
+    pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
+}
+/// A validator pre-registers their bridge keypair and HTTP endpoint URL
+/// for the next committee rotation.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeRegisterBridgeKey {
+    /// 33-byte compressed secp256k1 pubkey.
     #[prost(bytes = "bytes", optional, tag = "1")]
-    pub aggregated_signature: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub signer_bitmap: ::core::option::Option<::prost::bytes::Bytes>,
+    pub bridge_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "2")]
+    pub http_url: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

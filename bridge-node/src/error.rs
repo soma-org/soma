@@ -50,6 +50,25 @@ pub enum BridgeError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
+    // --- Governance / server errors (Sui parity) ---
+    #[error("Action is not a governance action")]
+    ActionIsNotGovernanceAction,
+
+    #[error("Governance action is not in the operator-approved whitelist")]
+    GovernanceActionIsNotApproved,
+
+    #[error("Invalid bridge client request: {0}")]
+    InvalidBridgeClientRequest(String),
+
+    #[error("Bridge event found in unrecognized Eth contract")]
+    BridgeEventInUnrecognizedEthContract,
+
+    #[error("No bridge event at the claimed tx + index")]
+    NoBridgeEventsInTxPosition,
+
+    #[error("Mismatched action between request and signature")]
+    MismatchedAction,
+
     // --- Generic ---
     #[error("Internal bridge error: {0}")]
     Internal(String),

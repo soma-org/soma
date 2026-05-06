@@ -40,11 +40,13 @@ pub use fee::TransactionFee;
 pub use object::{AccumulatorKind, Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
-    AddValidatorArgs, BalanceTransferArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
-    BridgeEmergencyUnpauseArgs, BridgeWithdrawArgs, ChangeEpoch, ClaimRewardsArgs,
+    AddValidatorArgs, BalanceTransferArgs, BridgeAttachWithdrawalSignaturesArgs,
+    BridgeDepositArgs, BridgeEmergencyPauseArgs, BridgeEmergencyUnpauseArgs,
+    BridgeRegisterBridgeKeyArgs, BridgeUpdateCommitteeBlocklistArgs, BridgeWithdrawArgs,
+    ChangeEpoch, ClaimRewardsArgs,
     CommitModelArgs, ConsensusCommitPrologue, CreateModelArgs,
     GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
-    OpenChannelArgs, RateChannelArgs, RegisterProviderArgs, RemoveValidatorArgs,
+    OpenChannelArgs, PubkeySig, RateChannelArgs, RegisterProviderArgs, RemoveValidatorArgs,
     RequestCloseArgs, RevealModelArgs, SettleArgs, SettlementTransaction, SignedTransaction,
     SubmissionManifest, SubmitDataArgs, TopUpArgs, Transaction, TransactionKind,
     UpdateProviderArgs, UpdateValidatorMetadataArgs, WithdrawAfterTimeoutArgs,

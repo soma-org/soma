@@ -18,8 +18,11 @@ message SignatureRequest {
     bytes action_digest = 1;
     // 65-byte recoverable ECDSA signature
     bytes signature = 2;
-    // Index of the signer in the bridge committee (BTreeMap iteration order)
-    uint32 signer_index = 3;
+    // Canonical message bytes that were signed. The server re-hashes this to
+    // verify it matches `action_digest`, then ecrecovers the signature.
+    // The recovered pubkey identifies the signer (looked up in the committee
+    // map keyed by pubkey, mirroring Sui's `members: VecMap<vector<u8>, ...>`).
+    bytes message_bytes = 3;
 }
 
 message SignatureResponse {
@@ -39,6 +42,7 @@ message GetSignaturesResponse {
 }
 
 message CollectedSignature {
-    uint32 signer_index = 1;
+    // 33-byte compressed secp256k1 pubkey of the signer.
+    bytes signer_pubkey = 1;
     bytes signature = 2;
 }

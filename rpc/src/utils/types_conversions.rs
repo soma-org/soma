@@ -28,6 +28,26 @@ impl std::fmt::Display for SdkTypeConversionError {
 
 impl std::error::Error for SdkTypeConversionError {}
 
+/// Convert a flat list of `PubkeySig` rpc-domain entries into the typed,
+/// pubkey-keyed envelope the on-chain executor expects. Validates each
+/// pubkey is a real secp256k1 point and each signature is exactly 65 bytes.
+fn rpc_sigs_to_envelope(
+    sigs: Vec<PubkeySig>,
+) -> Result<
+    BTreeMap<types::bridge::BridgePubkey, types::bridge::BridgeSignature>,
+    SdkTypeConversionError,
+> {
+    let mut out = BTreeMap::new();
+    for sig in sigs {
+        let pk = types::bridge::BridgePubkey::from_bytes(&sig.signer_pubkey)
+            .map_err(|e| SdkTypeConversionError(format!("invalid bridge pubkey: {e}")))?;
+        let s = types::bridge::BridgeSignature::from_bytes(&sig.signature)
+            .map_err(|e| SdkTypeConversionError(format!("invalid bridge signature: {e}")))?;
+        out.insert(pk, s);
+    }
+    Ok(out)
+}
+
 impl From<anyhow::Error> for SdkTypeConversionError {
     fn from(value: anyhow::Error) -> Self {
         Self(value.to_string())
@@ -60,6 +80,7 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::Coin(ct) => ObjectType::Coin(*ct),
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
             types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
+            types::object::ObjectType::BridgeRecord => ObjectType::BridgeRecord,
             types::object::ObjectType::Clock => ObjectType::Clock,
             types::object::ObjectType::Channel => ObjectType::Channel,
             types::object::ObjectType::BalanceAccumulator => ObjectType::BalanceAccumulator,
@@ -92,6 +113,7 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::Coin(ct) => types::object::ObjectType::Coin(ct),
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
             ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
+            ObjectType::BridgeRecord => types::object::ObjectType::BridgeRecord,
             ObjectType::Clock => types::object::ObjectType::Clock,
             ObjectType::Channel => types::object::ObjectType::Channel,
             ObjectType::BalanceAccumulator => types::object::ObjectType::BalanceAccumulator,
@@ -524,8 +546,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     eth_tx_hash: args.eth_tx_hash.try_into().unwrap_or([0u8; 32]),
                     recipient: args.recipient.into(),
                     amount: args.amount,
-                    aggregated_signature: args.aggregated_signature,
-                    signer_bitmap: args.signer_bitmap,
+                    timestamp_ms: args.timestamp_ms,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
                 })
             }
             TransactionKind::BridgeWithdraw(args) => {
@@ -536,14 +558,47 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
             TransactionKind::BridgeEmergencyPause(args) => {
                 TK::BridgeEmergencyPause(types::transaction::BridgeEmergencyPauseArgs {
-                    aggregated_signature: args.aggregated_signature,
-                    signer_bitmap: args.signer_bitmap,
+                    nonce: args.nonce,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
                 })
             }
             TransactionKind::BridgeEmergencyUnpause(args) => {
                 TK::BridgeEmergencyUnpause(types::transaction::BridgeEmergencyUnpauseArgs {
-                    aggregated_signature: args.aggregated_signature,
-                    signer_bitmap: args.signer_bitmap,
+                    nonce: args.nonce,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
+                })
+            }
+            TransactionKind::BridgeAttachWithdrawalSignatures(args) => {
+                TK::BridgeAttachWithdrawalSignatures(
+                    types::transaction::BridgeAttachWithdrawalSignaturesArgs {
+                        nonce: args.nonce,
+                        signatures: rpc_sigs_to_envelope(args.signatures)?,
+                    },
+                )
+            }
+            TransactionKind::BridgeUpdateCommitteeBlocklist(args) => {
+                let eth_addresses: Vec<[u8; 20]> = args
+                    .eth_addresses
+                    .into_iter()
+                    .filter_map(|v| <[u8; 20]>::try_from(v.as_slice()).ok())
+                    .collect();
+                TK::BridgeUpdateCommitteeBlocklist(
+                    types::transaction::BridgeUpdateCommitteeBlocklistArgs {
+                        nonce: args.nonce,
+                        is_blocklist: args.is_blocklist,
+                        eth_addresses,
+                        signatures: rpc_sigs_to_envelope(args.signatures)?,
+                    },
+                )
+            }
+            TransactionKind::BridgeRegisterBridgeKey(args) => {
+                let bridge_pubkey = types::bridge::BridgePubkey::from_bytes(&args.bridge_pubkey)
+                    .map_err(|e| {
+                        SdkTypeConversionError(format!("invalid bridge_pubkey: {e}"))
+                    })?;
+                TK::BridgeRegisterBridgeKey(types::transaction::BridgeRegisterBridgeKeyArgs {
+                    bridge_pubkey,
+                    http_url: args.http_url,
                 })
             }
 
@@ -1387,7 +1442,13 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             // Bridge errors
             types::effects::ExecutionFailureStatus::BridgePaused
             | types::effects::ExecutionFailureStatus::BridgeNonceAlreadyProcessed
-            | types::effects::ExecutionFailureStatus::BridgeInsufficientSignatureStake => {
+            | types::effects::ExecutionFailureStatus::BridgeInsufficientSignatureStake
+            | types::effects::ExecutionFailureStatus::BridgeSystemMessageSeqMismatch { .. }
+            | types::effects::ExecutionFailureStatus::BridgeAlreadyPaused
+            | types::effects::ExecutionFailureStatus::BridgeNotPaused
+            | types::effects::ExecutionFailureStatus::BridgeAmountZero
+            | types::effects::ExecutionFailureStatus::BridgeBlocklistPayloadTooLarge { .. }
+            | types::effects::ExecutionFailureStatus::BridgeUrlTooLong { .. } => {
                 Self::OtherError(value.to_string())
             }
 

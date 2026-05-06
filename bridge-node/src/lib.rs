@@ -1,16 +1,22 @@
+pub mod action_executor;
+pub mod aggregator;
+pub mod bridge_client;
 pub mod checkpoint_watcher;
 pub mod config;
 pub mod error;
 pub mod eth_client;
 pub mod eth_syncer;
+pub mod governance_verifier;
+pub mod handler;
+pub mod http_server;
+pub mod monitor;
 pub mod node;
+pub mod outbound_relayer;
+pub mod peer_aggregator;
 pub mod retry;
-pub mod server;
+pub mod soma_client;
+pub mod soma_syncer;
+pub mod storage;
+pub mod tx_builder;
 pub mod types;
-
-/// Proto types for bridge gRPC service.
-/// Hand-written to avoid protoc dependency. Matches proto/bridge.proto.
-pub mod proto {
-    pub use crate::proto_generated::*;
-}
-mod proto_generated;
+pub mod watchdog;
