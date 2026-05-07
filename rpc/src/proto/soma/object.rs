@@ -175,6 +175,7 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::BalanceAccumulator => "BalanceAccumulator".to_string(),
             crate::types::ObjectType::DelegationAccumulator => "DelegationAccumulator".to_string(),
             crate::types::ObjectType::Provider => "Provider".to_string(),
+            crate::types::ObjectType::ProviderInbox => "ProviderInbox".to_string(),
         }
     }
 }
@@ -194,6 +195,7 @@ impl FromStr for crate::types::ObjectType {
             "BalanceAccumulator" => Ok(Self::BalanceAccumulator),
             "DelegationAccumulator" => Ok(Self::DelegationAccumulator),
             "Provider" => Ok(Self::Provider),
+            "ProviderInbox" => Ok(Self::ProviderInbox),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

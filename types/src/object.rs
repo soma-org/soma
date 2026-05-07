@@ -679,6 +679,14 @@ pub enum ObjectType {
     /// by `RegisterProvider`, mutated by `UpdateProvider`. See
     /// [`crate::provider::Provider`].
     Provider,
+    /// Per-payee inbox tracking how many open payment channels each
+    /// payer holds against this payee. One object per payee,
+    /// deterministically addressed via `ProviderInbox::derive_id`.
+    /// Mutated atomically with `OpenChannel` (increment) and
+    /// `WithdrawAfterTimeout` (decrement) — bounds the per-(payer,
+    /// payee) channel count to prevent open-loop state-bloat
+    /// griefing. See [`crate::provider_inbox::ProviderInbox`].
+    ProviderInbox,
 }
 
 impl fmt::Display for ObjectType {
@@ -693,6 +701,7 @@ impl fmt::Display for ObjectType {
             ObjectType::BalanceAccumulator => write!(f, "BalanceAccumulator"),
             ObjectType::DelegationAccumulator => write!(f, "DelegationAccumulator"),
             ObjectType::Provider => write!(f, "Provider"),
+            ObjectType::ProviderInbox => write!(f, "ProviderInbox"),
         }
     }
 }
@@ -712,6 +721,7 @@ impl FromStr for ObjectType {
             "BalanceAccumulator" => Ok(ObjectType::BalanceAccumulator),
             "DelegationAccumulator" => Ok(ObjectType::DelegationAccumulator),
             "Provider" => Ok(ObjectType::Provider),
+            "ProviderInbox" => Ok(ObjectType::ProviderInbox),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

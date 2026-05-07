@@ -177,4 +177,7 @@ pub enum ObjectType {
     DelegationAccumulator,
     /// Provider registry record. One object per provider address.
     Provider,
+    /// Per-payee inbox tracking the per-payer open-channel count
+    /// — see `types::provider_inbox::ProviderInbox`.
+    ProviderInbox,
 }

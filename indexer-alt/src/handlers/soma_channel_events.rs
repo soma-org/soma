@@ -54,22 +54,22 @@ impl Processor for SomaChannelEvents {
             let (channel_id, kind_label, delta) = match kind {
                 TransactionKind::OpenChannel(_) => {
                     let Some((id, chan)) = post_chan else { continue };
-                    (id, "open", chan.deposit as i64)
+                    (id, "open", chan.deposit() as i64)
                 }
                 TransactionKind::Settle(_) => {
                     let Some((id, post_c)) = post_chan else { continue };
                     let pre_settled = pre_chan
                         .as_ref()
-                        .map(|(_, c)| c.settled_amount)
+                        .map(|(_, c)| c.settled_amount())
                         .unwrap_or(0);
-                    let delta = post_c.settled_amount.saturating_sub(pre_settled) as i64;
+                    let delta = post_c.settled_amount().saturating_sub(pre_settled) as i64;
                     (id, "settle", delta)
                 }
                 TransactionKind::TopUp(args) => {
                     let id = args.channel_id;
                     let pre_dep =
-                        pre_chan.as_ref().map(|(_, c)| c.deposit).unwrap_or(0);
-                    let post_dep = post_chan.as_ref().map(|(_, c)| c.deposit).unwrap_or(0);
+                        pre_chan.as_ref().map(|(_, c)| c.deposit()).unwrap_or(0);
+                    let post_dep = post_chan.as_ref().map(|(_, c)| c.deposit()).unwrap_or(0);
                     let delta = post_dep.saturating_sub(pre_dep) as i64;
                     (id, "top_up", delta)
                 }

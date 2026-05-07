@@ -6041,6 +6041,9 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::ProviderCallerMismatch => "PROVIDER_CALLER_MISMATCH",
             Self::ProviderInvalidEndpoint => "PROVIDER_INVALID_ENDPOINT",
             Self::ProviderClockMissing => "PROVIDER_CLOCK_MISSING",
+            Self::ChannelTooManyOpenForPair => "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
+            Self::ChannelInboxPayeeMismatch => "CHANNEL_INBOX_PAYEE_MISMATCH",
+            Self::NotAProviderInbox => "NOT_A_PROVIDER_INBOX",
         };
         serializer.serialize_str(variant)
     }
@@ -6128,6 +6131,9 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "PROVIDER_CALLER_MISMATCH",
             "PROVIDER_INVALID_ENDPOINT",
             "PROVIDER_CLOCK_MISSING",
+            "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
+            "CHANNEL_INBOX_PAYEE_MISMATCH",
+            "NOT_A_PROVIDER_INBOX",
         ];
 
         struct GeneratedVisitor;
@@ -6244,6 +6250,9 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "PROVIDER_CALLER_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ProviderCallerMismatch),
                     "PROVIDER_INVALID_ENDPOINT" => Ok(execution_error::ExecutionErrorKind::ProviderInvalidEndpoint),
                     "PROVIDER_CLOCK_MISSING" => Ok(execution_error::ExecutionErrorKind::ProviderClockMissing),
+                    "CHANNEL_TOO_MANY_OPEN_FOR_PAIR" => Ok(execution_error::ExecutionErrorKind::ChannelTooManyOpenForPair),
+                    "CHANNEL_INBOX_PAYEE_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ChannelInboxPayeeMismatch),
+                    "NOT_A_PROVIDER_INBOX" => Ok(execution_error::ExecutionErrorKind::NotAProviderInbox),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }

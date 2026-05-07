@@ -1,6 +1,5 @@
 ---
 source: protocol-config/src/lib.rs
-assertion_line: 536
 expression: config.attr_map()
 ---
 buffer_stake_for_protocol_upgrade_bps:
@@ -23,6 +22,8 @@ epoch_duration_ms:
   u64: 86400000
 execution_version:
   u64: 2
+max_channels_per_pair:
+  u32: 8
 max_checkpoint_size_bytes:
   u64: 31457280
 max_transactions_per_checkpoint:

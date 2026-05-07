@@ -38,6 +38,7 @@ pub mod object;
 pub mod parameters;
 pub mod peer_id;
 pub mod provider;
+pub mod provider_inbox;
 pub mod quorum_driver;
 pub(crate) mod serde;
 pub mod signature_verification;

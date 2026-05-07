@@ -222,6 +222,24 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 Some(ErrorDetails::OtherError(reason)),
             ),
             E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
+            E::ChannelTooManyOpenForPair { current, max } => (
+                ExecutionErrorKind::ChannelTooManyOpenForPair,
+                Some(ErrorDetails::OtherError(format!(
+                    "current={}, max={}",
+                    current, max
+                ))),
+            ),
+            E::ChannelInboxPayeeMismatch { declared, actual } => (
+                ExecutionErrorKind::ChannelInboxPayeeMismatch,
+                Some(ErrorDetails::OtherError(format!(
+                    "declared={}, actual={}",
+                    declared, actual
+                ))),
+            ),
+            E::NotAProviderInbox { object_id } => (
+                ExecutionErrorKind::NotAProviderInbox,
+                Some(ErrorDetails::ObjectId(object_id.to_string())),
+            ),
         };
 
         Self { description, kind: Some(kind.into()), error_details }
@@ -557,6 +575,30 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::ProviderInvalidEndpoint { reason })
             }
             K::ProviderClockMissing => Ok(Self::ProviderClockMissing),
+            K::ChannelTooManyOpenForPair => {
+                let (current, max) =
+                    parse_two_u64s(&value.error_details, "current", "max");
+                Ok(Self::ChannelTooManyOpenForPair {
+                    current: current as u32,
+                    max: max as u32,
+                })
+            }
+            K::ChannelInboxPayeeMismatch => {
+                let (declared, actual) =
+                    parse_two_addresses(&value.error_details, "declared", "actual");
+                Ok(Self::ChannelInboxPayeeMismatch { declared, actual })
+            }
+            K::NotAProviderInbox => {
+                if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
+                    Ok(Self::NotAProviderInbox {
+                        object_id: object_id
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else {
+                    Err(TryFromProtoError::missing("object_id for NotAProviderInbox"))
+                }
+            }
         }
     }
 }

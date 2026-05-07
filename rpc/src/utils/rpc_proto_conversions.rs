@@ -242,6 +242,18 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Some(reason),
             ),
             E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
+            E::ChannelTooManyOpenForPair { current, max } => (
+                ExecutionErrorKind::ChannelTooManyOpenForPair,
+                Some(format!("current={}, max={}", current, max)),
+            ),
+            E::ChannelInboxPayeeMismatch { declared, actual } => (
+                ExecutionErrorKind::ChannelInboxPayeeMismatch,
+                Some(format!("declared={}, actual={}", declared, actual)),
+            ),
+            E::NotAProviderInbox { object_id } => (
+                ExecutionErrorKind::NotAProviderInbox,
+                Some(object_id.to_hex()),
+            ),
         };
 
         message.set_kind(kind);
@@ -1120,6 +1132,13 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             channel_grace_period_ms: proto_params
                 .channel_grace_period_ms
                 .unwrap_or(10 * 60 * 1000),
+            // Per-(payer, payee) channel cap: not yet wired through
+            // the SystemParameters proto schema; older RPC clients
+            // default to the genesis value (8). Real on-chain
+            // SystemParameters always carry a value (set in
+            // `build_system_parameters`); the proto schema gets
+            // updated in a follow-up.
+            max_channels_per_pair: types::provider_inbox::DEFAULT_MAX_CHANNELS_PER_PAIR,
         })
     }
 }

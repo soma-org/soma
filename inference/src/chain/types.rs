@@ -46,7 +46,7 @@ impl ChannelStatus {
         ch: &types::channel::Channel,
         grace_period_ms: u64,
     ) -> Self {
-        match ch.close_requested_at_ms {
+        match ch.close_requested_at_ms() {
             None => Self::Open,
             Some(at_ms) => Self::Closing {
                 earliest_withdrawable_ms: at_ms.saturating_add(grace_period_ms),

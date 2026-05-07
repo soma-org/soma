@@ -59,13 +59,13 @@ fn channel_to_stored(
 ) -> StoredChannel {
     StoredChannel {
         channel_id: id.to_vec(),
-        payer: chan.payer.to_vec(),
-        payee: chan.payee.to_vec(),
-        authorized_signer: chan.authorized_signer.to_vec(),
-        token: coin_type_label(chan.token).to_string(),
-        deposit: chan.deposit as i64,
-        settled_amount: chan.settled_amount as i64,
-        close_requested_at_ms: chan.close_requested_at_ms.map(|v| v as i64),
+        payer: chan.payer().to_vec(),
+        payee: chan.payee().to_vec(),
+        authorized_signer: chan.authorized_signer().to_vec(),
+        token: coin_type_label(chan.token()).to_string(),
+        deposit: chan.deposit() as i64,
+        settled_amount: chan.settled_amount() as i64,
+        close_requested_at_ms: chan.close_requested_at_ms().map(|v| v as i64),
         status,
         opened_at_cp,
         opened_tx_digest,
@@ -124,7 +124,7 @@ impl Processor for SomaChannels {
                         // (impossible) first-row INSERT. Use the
                         // current checkpoint as a fallback to keep
                         // the column NOT NULL.
-                        let status = if chan.close_requested_at_ms.is_some() {
+                        let status = if chan.close_requested_at_ms().is_some() {
                             STATUS_CLOSING
                         } else {
                             STATUS_OPEN
@@ -170,14 +170,14 @@ impl Processor for SomaChannels {
                         // ran out — useful for "when did this end").
                         out.push(StoredChannel {
                             channel_id: id.to_vec(),
-                            payer: chan.payer.to_vec(),
-                            payee: chan.payee.to_vec(),
-                            authorized_signer: chan.authorized_signer.to_vec(),
-                            token: coin_type_label(chan.token).to_string(),
+                            payer: chan.payer().to_vec(),
+                            payee: chan.payee().to_vec(),
+                            authorized_signer: chan.authorized_signer().to_vec(),
+                            token: coin_type_label(chan.token()).to_string(),
                             deposit: 0,
-                            settled_amount: chan.settled_amount as i64,
+                            settled_amount: chan.settled_amount() as i64,
                             close_requested_at_ms: chan
-                                .close_requested_at_ms
+                                .close_requested_at_ms()
                                 .map(|v| v as i64),
                             status: STATUS_WITHDRAWN,
                             opened_at_cp: cp,

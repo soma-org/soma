@@ -303,9 +303,17 @@ pub struct RequestCloseArgs {
 /// SystemState (for `channel_grace_period_ms`) and pays the
 /// remainder of the deposit back to the payer if the grace period
 /// has elapsed since `RequestClose`.
+///
+/// `payee` is carried in args so the scheduler can declare the
+/// `ProviderInbox(payee)` shared input from the kind alone — without
+/// it the validator would have to read the channel object first to
+/// learn the payee, which the input-declaration phase can't do. The
+/// executor verifies `args.payee == channel.payee` and rejects with
+/// `ChannelInboxPayeeMismatch` on a forged value.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct WithdrawAfterTimeoutArgs {
     pub channel_id: ObjectID,
+    pub payee: SomaAddress,
 }
 
 /// Args for `TopUp`. Payer-only. Increments `channel.deposit` by
@@ -466,6 +474,26 @@ impl TransactionKind {
         }
     }
 
+    /// `ProviderInbox(payee)` for kinds that increment or decrement
+    /// the per-(payer, payee) channel-count cap. The id is derived
+    /// client-side from the payee carried in args; the executor
+    /// verifies it matches the loaded channel for `WithdrawAfterTimeout`.
+    /// The inbox may not yet exist on chain — `OpenChannel` creates it
+    /// lazily. The shared-object scheduler treats a declared input
+    /// whose object doesn't exist as "starts at the declared
+    /// initial_shared_version", which is exactly what we want.
+    fn provider_inbox_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::OpenChannel(args) => {
+                Some(crate::provider_inbox::ProviderInbox::derive_id(args.payee))
+            }
+            TransactionKind::WithdrawAfterTimeout(args) => {
+                Some(crate::provider_inbox::ProviderInbox::derive_id(args.payee))
+            }
+            _ => None,
+        }
+    }
+
     /// True for txs that need to read the current Clock timestamp.
     /// Used by both `shared_input_objects()` and `input_objects()` to
     /// declare Clock as a *read-only* shared input — letting the
@@ -483,9 +511,13 @@ impl TransactionKind {
 
     /// True for txs that need to read SystemState (e.g., for protocol
     /// parameters) without mutating it. `WithdrawAfterTimeout` reads
-    /// `channel_grace_period_ms`.
+    /// `channel_grace_period_ms`; `OpenChannel` reads
+    /// `max_channels_per_pair` to enforce the per-pair cap.
     pub fn requires_system_state_read(&self) -> bool {
-        matches!(self, TransactionKind::WithdrawAfterTimeout(_))
+        matches!(
+            self,
+            TransactionKind::WithdrawAfterTimeout(_) | TransactionKind::OpenChannel(_)
+        )
     }
 
     pub fn is_end_of_epoch_tx(&self) -> bool {
@@ -602,6 +634,21 @@ impl TransactionKind {
             });
         }
 
+        // OpenChannel / WithdrawAfterTimeout mutate the per-payee
+        // ProviderInbox (increment or decrement the open-channel
+        // count for the signer/payer). The inbox is created lazily
+        // by OpenChannel, so the validator may declare an input
+        // whose object doesn't yet exist — the scheduler resolves
+        // that to the declared initial_shared_version and the
+        // executor handles the create-on-write.
+        if let Some(inbox_id) = self.provider_inbox_id_input() {
+            objects.push(SharedInputObject {
+                id: inbox_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
         objects.into_iter()
     }
 
@@ -660,6 +707,17 @@ impl TransactionKind {
         if let Some(provider_id) = self.provider_id_input() {
             input_objects.push(InputObjectKind::SharedObject {
                 id: provider_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // OpenChannel / WithdrawAfterTimeout mutate the per-payee
+        // ProviderInbox; see `shared_input_objects()` for the
+        // create-on-write rationale.
+        if let Some(inbox_id) = self.provider_inbox_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: inbox_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
                 mutable: true,
             });

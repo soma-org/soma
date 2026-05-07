@@ -270,6 +270,16 @@ message ExecutionError {
     PROVIDER_INVALID_ENDPOINT = 83;
     // Clock not declared as a shared input by a Provider op.
     PROVIDER_CLOCK_MISSING = 84;
+
+    //
+    // Per-(payer, payee) cap (ProviderInbox) errors
+    //
+    // (payer, payee) already holds the maximum allowed open channels.
+    CHANNEL_TOO_MANY_OPEN_FOR_PAIR = 90;
+    // Declared ProviderInbox payee != channel.payee on Withdraw.
+    CHANNEL_INBOX_PAYEE_MISMATCH = 91;
+    // Object at ProviderInbox::derive_id(payee) was not a ProviderInbox.
+    NOT_A_PROVIDER_INBOX = 92;
   }
 
   optional ExecutionErrorKind kind = 2;

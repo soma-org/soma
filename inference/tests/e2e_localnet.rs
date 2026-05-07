@@ -156,6 +156,7 @@ async fn proxy_provider_full_stack_against_real_chain() {
         },
         auth: Default::default(),
         offerings: vec![card.clone()],
+        auto_settle: Default::default(),
     };
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();
@@ -228,11 +229,11 @@ async fn proxy_provider_full_stack_against_real_chain() {
         .cloned()
         .expect("provider ledger has at least one channel after one request");
     let chan_before = provider_chain.get(channel_id).await.unwrap();
-    assert_eq!(chan_before.payer, payer);
-    assert_eq!(chan_before.payee, provider_addr);
-    assert_eq!(chan_before.deposit, 1_000_000);
+    assert_eq!(chan_before.payer(), payer);
+    assert_eq!(chan_before.payee(), provider_addr);
+    assert_eq!(chan_before.deposit(), 1_000_000);
     assert_eq!(
-        chan_before.settled_amount, 0,
+        chan_before.settled_amount(), 0,
         "no Settle has been submitted yet"
     );
 
@@ -256,13 +257,13 @@ async fn proxy_provider_full_stack_against_real_chain() {
 
     let chan_after = provider_chain.get(channel_id).await.unwrap();
     assert!(
-        chan_after.settled_amount > 0,
+        chan_after.settled_amount() > 0,
         "settled_amount must increase after Settle (got {})",
-        chan_after.settled_amount,
+        chan_after.settled_amount(),
     );
     assert_eq!(
-        chan_after.deposit + chan_after.settled_amount,
-        chan_before.deposit,
+        chan_after.deposit() + chan_after.settled_amount(),
+        chan_before.deposit(),
         "deposit + settled must conserve the original deposit",
     );
 
@@ -411,6 +412,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         },
         auth: Default::default(),
         offerings: vec![card.clone()],
+        auto_settle: Default::default(),
     };
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();
@@ -503,7 +505,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
     // settle has run yet — the provider's signature is in the ledger).
     let chan_before = provider_chain.get(channel_id).await.unwrap();
     assert_eq!(
-        chan_before.settled_amount, 0,
+        chan_before.settled_amount(), 0,
         "no settle yet — proxy hasn't shut down, so the held voucher is still off-chain"
     );
 

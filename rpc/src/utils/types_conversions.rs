@@ -65,6 +65,7 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::BalanceAccumulator => ObjectType::BalanceAccumulator,
             types::object::ObjectType::DelegationAccumulator => ObjectType::DelegationAccumulator,
             types::object::ObjectType::Provider => ObjectType::Provider,
+            types::object::ObjectType::ProviderInbox => ObjectType::ProviderInbox,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -96,6 +97,7 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::BalanceAccumulator => types::object::ObjectType::BalanceAccumulator,
             ObjectType::DelegationAccumulator => types::object::ObjectType::DelegationAccumulator,
             ObjectType::Provider => types::object::ObjectType::Provider,
+            ObjectType::ProviderInbox => types::object::ObjectType::ProviderInbox,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -585,6 +587,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
                         args.channel_id,
                     )),
+                    payee: types::base::SomaAddress::from(args.payee),
                 })
             }
             TransactionKind::TopUp(args) => {
@@ -1450,6 +1453,20 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             }
             types::effects::ExecutionFailureStatus::ProviderClockMissing => {
                 Self::ProviderClockMissing
+            }
+            types::effects::ExecutionFailureStatus::ChannelTooManyOpenForPair {
+                current,
+                max,
+            } => Self::ChannelTooManyOpenForPair { current, max },
+            types::effects::ExecutionFailureStatus::ChannelInboxPayeeMismatch {
+                declared,
+                actual,
+            } => Self::ChannelInboxPayeeMismatch {
+                declared: declared.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::NotAProviderInbox { object_id } => {
+                Self::NotAProviderInbox { object_id: object_id.into() }
             }
         }
     }

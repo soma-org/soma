@@ -259,10 +259,18 @@ async fn submit_withdraw(
     payer: SomaAddress,
     channel_id: ObjectID,
 ) -> Result<ExecutionStatus, anyhow::Error> {
+    // Look up the channel's payee — needed to declare the
+    // per-payee `ProviderInbox` as a shared input on the tx.
+    let payee = read_channel(test_cluster, channel_id)
+        .ok_or_else(|| anyhow::anyhow!("channel {channel_id} missing for withdraw"))?
+        .payee();
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id }),
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
+            channel_id,
+            payee,
+        }),
     );
     let signed = test_cluster.wallet.sign_transaction(&tx_data).await;
     let r = test_cluster
@@ -323,9 +331,9 @@ async fn proxy_provider_long_running_session() {
     let channel_id = open_channel(&test_cluster, payer, payee, initial_deposit).await;
     info!(?channel_id, "channel opened");
     let ch = read_channel(&test_cluster, channel_id).expect("channel exists post-open");
-    assert_eq!(ch.deposit, initial_deposit);
-    assert_eq!(ch.settled_amount, 0);
-    assert!(ch.close_requested_at_ms.is_none());
+    assert_eq!(ch.deposit(), initial_deposit);
+    assert_eq!(ch.settled_amount(), 0);
+    assert!(ch.close_requested_at_ms().is_none());
 
     // 2. Run 5 simulated requests; provider settles after each.
     let request_costs: [u64; 5] = [3_000, 7_500, 4_200, 12_000, 8_300];
@@ -346,8 +354,8 @@ async fn proxy_provider_long_running_session() {
         total_settled = session.cumulative;
 
         let updated = read_channel(&test_cluster, channel_id).unwrap();
-        assert_eq!(updated.settled_amount, total_settled);
-        assert_eq!(updated.deposit, initial_deposit - total_settled);
+        assert_eq!(updated.settled_amount(), total_settled);
+        assert_eq!(updated.deposit(), initial_deposit - total_settled);
     }
     assert_eq!(total_settled, request_costs.iter().sum::<u64>());
     info!(total_settled, "after first round of settles");
@@ -363,7 +371,7 @@ async fn proxy_provider_long_running_session() {
     assert!(status.is_ok(), "TopUp must succeed: {status:?}");
     let after_topup = read_channel(&test_cluster, channel_id).unwrap();
     assert_eq!(
-        after_topup.deposit,
+        after_topup.deposit(),
         initial_deposit - total_settled + topup_amount,
         "deposit must grow by the top-up amount",
     );
@@ -385,7 +393,7 @@ async fn proxy_provider_long_running_session() {
     let status = submit_request_close(&test_cluster, payer, channel_id).await.unwrap();
     assert!(status.is_ok(), "RequestClose must succeed: {status:?}");
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    let close_at = ch.close_requested_at_ms.expect("close_requested_at_ms set");
+    let close_at = ch.close_requested_at_ms().expect("close_requested_at_ms set");
     assert!(close_at >= pre_close_ts);
 
     // Withdraw too early — must fail with ChannelGraceNotElapsed.
@@ -623,7 +631,7 @@ async fn channel_typed_error_sweep() {
         assert!(status.is_ok(), "TopUp must succeed even with close pending");
         let ch = read_channel(&test_cluster, channel_id).unwrap();
         assert!(
-            ch.close_requested_at_ms.is_none(),
+            ch.close_requested_at_ms().is_none(),
             "TopUp must clear pending close_requested_at_ms",
         );
     }
@@ -712,8 +720,8 @@ async fn settle_credits_payee_immediately_no_close_needed() {
 
     // Channel still alive — no Close needed.
     let ch = read_channel(&test_cluster, channel_id).expect("channel still present after Settle");
-    assert_eq!(ch.settled_amount, 25_000);
-    assert_eq!(ch.deposit, 100_000 - 25_000);
+    assert_eq!(ch.settled_amount(), 25_000);
+    assert_eq!(ch.deposit(), 100_000 - 25_000);
 }
 
 /// Cross-epoch lifecycle. Verifies the three properties that matter
@@ -775,8 +783,8 @@ async fn channel_survives_reconfiguration() {
         .expect("settle tx executes post-reconfig");
     assert!(status.is_ok(), "Settle in new epoch must succeed: {status:?}");
     let updated = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(updated.settled_amount, cum1);
-    assert_eq!(updated.deposit, deposit - cum1);
+    assert_eq!(updated.settled_amount(), cum1);
+    assert_eq!(updated.deposit(), deposit - cum1);
 
     // 5. Sign + settle a NEW voucher entirely within the new epoch
     //    (proves the signing path also still works post-reconfig).
@@ -800,7 +808,7 @@ async fn channel_survives_reconfiguration() {
     assert!(
         read_channel(&test_cluster, channel_id)
             .unwrap()
-            .close_requested_at_ms
+            .close_requested_at_ms()
             .is_some(),
         "close timer must be armed",
     );
@@ -811,7 +819,7 @@ async fn channel_survives_reconfiguration() {
     assert!(
         read_channel(&test_cluster, channel_id)
             .unwrap()
-            .close_requested_at_ms
+            .close_requested_at_ms()
             .is_some(),
         "close timer must survive reconfig",
     );
@@ -820,7 +828,7 @@ async fn channel_survives_reconfiguration() {
     // already consumed wall-clock time; pump a few commits to be sure.
     let close_ts = read_channel(&test_cluster, channel_id)
         .unwrap()
-        .close_requested_at_ms
+        .close_requested_at_ms()
         .unwrap();
     // 5_000ms = test protocol-config grace period.
     while read_clock_ts(&test_cluster) < close_ts + 5_000 {

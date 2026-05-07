@@ -263,6 +263,7 @@ pub struct RequestCloseArgs {
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct WithdrawAfterTimeoutArgs {
     pub channel_id: Address,
+    pub payee: Address,
 }
 
 /// Args for `TopUp` (rpc::types layer). Coin type is parsed from the

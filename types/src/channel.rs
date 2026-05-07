@@ -19,6 +19,21 @@
 //!   - Channel ID derived from the open-tx digest, so clients can predict
 //!     it client-side without a salt parameter.
 //!
+//! ## Schema versioning
+//!
+//! [`Channel`], [`Voucher`], and [`HttpVoucher`] are encoded as Rust
+//! enums whose only variant today is `V1(...)`. BCS encodes an enum as
+//! a `uleb128` discriminant followed by the variant payload — so the
+//! leading byte of every Channel/Voucher/HttpVoucher BCS payload is
+//! the variant index, identical to a `version: u8` field but with
+//! compile-time exhaustivity. When a v2 layout is introduced, we add a
+//! `V2(ChannelV2)` arm; every read site is forced to match exhaustively
+//! and stale readers cannot accidentally interpret v2 bytes as v1.
+//!
+//! Code paths that need to mutate fields destructure to the inner
+//! versioned struct (`let Channel::V1(c) = channel`); code paths that
+//! only need to read use the accessor methods on the outer enum.
+//!
 //! See `authority::execution::channel` for the executor side.
 
 use serde::{Deserialize, Serialize};
@@ -29,25 +44,29 @@ use crate::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, V
 
 /// On-chain payment channel.
 ///
-/// Created by `OpenChannel`, mutated by `Settle` / `RequestClose`,
-/// and **deleted** (not just flagged closed) on `WithdrawAfterTimeout`.
-/// The object's existence is the channel's liveness signal — there is
-/// no `closed: bool` field. (A payee-initiated `Close` op and a
-/// `TopUp` op are planned for Phase 2; today only the four ops listed
-/// above are implemented.)
+/// Created by `OpenChannel`, mutated by `Settle` / `RequestClose` /
+/// `TopUp`, and **deleted** (not just flagged closed) on
+/// `WithdrawAfterTimeout`. The object's existence is the channel's
+/// liveness signal — there is no `closed: bool` field.
+///
+/// Versioned via the enum tag — see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Channel {
+pub enum Channel {
+    V1(ChannelV1),
+}
+
+/// V1 layout of [`Channel`]. See [`Channel`] for the wrapper.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelV1 {
     /// Address that opened the channel and owns the deposit (gets
-    /// remainder back on close). Authorized to call `RequestClose`
-    /// and `WithdrawAfterTimeout` (Phase 1); future `TopUp` (Phase 2)
-    /// will also require this address.
+    /// remainder back on close). Authorized to call `RequestClose`,
+    /// `WithdrawAfterTimeout`, and `TopUp`.
     pub payer: SomaAddress,
 
     /// Address that receives settlements. Authorized to call `Settle`.
     /// Restricting voucher-driven ops to the payee prevents the payer
     /// from short-paying with stale vouchers (see Tempo's
-    /// access-control rules). Phase 2 will add a payee-initiated
-    /// `Close`.
+    /// access-control rules).
     pub payee: SomaAddress,
 
     /// Address whose key signs off-chain vouchers. Typically equal to
@@ -62,9 +81,9 @@ pub struct Channel {
     /// can be added without a Channel layout change.
     pub token: CoinType,
 
-    /// Current escrow balance. Decreases by `delta` on each `Settle`.
-    /// (Phase 2 `TopUp` will also increase it.) Funds flow back to
-    /// `payer` on `WithdrawAfterTimeout`.
+    /// Current escrow balance. Decreases by `delta` on each `Settle`,
+    /// increases on `TopUp`. Funds flow back to `payer` on
+    /// `WithdrawAfterTimeout`.
     pub deposit: u64,
 
     /// Highest `cumulative_amount` paid out so far. Strictly
@@ -73,17 +92,16 @@ pub struct Channel {
     pub settled_amount: u64,
 
     /// `Some(ts)` once `RequestClose` has been called by the payer;
-    /// `None` while the channel is in normal operation. Phase 2's
-    /// `TopUp` will clear this so a renewing payer can withdraw their
-    /// close request. The grace period elapses when
+    /// `None` while the channel is in normal operation. `TopUp`
+    /// clears this so a renewing payer can withdraw their close
+    /// request. The grace period elapses when
     /// `current_clock_ts - ts >= channel_grace_period_ms`.
     pub close_requested_at_ms: Option<TimestampMs>,
 }
 
 /// Off-chain payment voucher signed by the channel's
 /// `authorized_signer`. The voucher commits the signer to letting the
-/// payee claim up to `cumulative_amount` on-chain via `Settle` or
-/// `Close`.
+/// payee claim up to `cumulative_amount` on-chain via `Settle`.
 ///
 /// **Cumulative semantics**: each new voucher supersedes the previous
 /// — the payee submits the highest one they hold, and the channel pays
@@ -95,15 +113,38 @@ pub struct Channel {
 /// [`crate::intent::IntentScope::PaymentVoucher`]. `channel_id` scopes
 /// the signature so the same key signing for multiple channels can't
 /// have its vouchers cross-replayed.
+///
+/// Versioned via the enum tag — see the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Voucher {
+pub enum Voucher {
+    V1(VoucherV1),
+}
+
+/// V1 layout of [`Voucher`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct VoucherV1 {
     pub channel_id: ObjectID,
     pub cumulative_amount: u64,
 }
 
 impl Voucher {
+    /// Construct a fresh v1 voucher.
     pub const fn new(channel_id: ObjectID, cumulative_amount: u64) -> Self {
-        Self { channel_id, cumulative_amount }
+        Self::V1(VoucherV1 { channel_id, cumulative_amount })
+    }
+
+    /// `channel_id` of the voucher, regardless of variant.
+    pub fn channel_id(&self) -> ObjectID {
+        match self {
+            Self::V1(v) => v.channel_id,
+        }
+    }
+
+    /// `cumulative_amount` of the voucher, regardless of variant.
+    pub fn cumulative_amount(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_amount,
+        }
     }
 }
 
@@ -119,7 +160,15 @@ impl Voucher {
 /// it builds an ordinary `Voucher` with the same `(channel_id,
 /// cumulative_amount)` and uses that signature instead.
 ///
-/// **Field rationale**:
+/// Versioned via the enum tag — see the module docs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HttpVoucher {
+    V1(HttpVoucherV1),
+}
+
+/// V1 layout of [`HttpVoucher`].
+///
+/// Field rationale:
 ///   - `channel_id` + `cumulative_amount`: matches `Voucher`, so a
 ///     payer signing both layers commits to the same monetary intent.
 ///   - `expires_ms`: per-request expiry so a provider can't sit on a
@@ -132,7 +181,7 @@ impl Voucher {
 ///   - `method_path_sha256`: binds to method+path (precomputed by the
 ///     signer so the on-the-wire struct stays fixed-size).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct HttpVoucher {
+pub struct HttpVoucherV1 {
     pub channel_id: ObjectID,
     pub cumulative_amount: u64,
     pub expires_ms: TimestampMs,
@@ -150,14 +199,14 @@ impl HttpVoucher {
         request_id_sha256: [u8; 32],
         method_path_sha256: [u8; 32],
     ) -> Self {
-        Self {
+        Self::V1(HttpVoucherV1 {
             channel_id,
             cumulative_amount,
             expires_ms,
             body_sha256,
             request_id_sha256,
             method_path_sha256,
-        }
+        })
     }
 
     /// Convenience constructor that hashes the per-request strings so
@@ -193,12 +242,48 @@ impl HttpVoucher {
     /// equivalent — the same `(channel_id, cumulative_amount)` pair
     /// the provider would settle with on the chain.
     pub fn to_voucher(&self) -> Voucher {
-        Voucher::new(self.channel_id, self.cumulative_amount)
+        Voucher::new(self.channel_id(), self.cumulative_amount())
+    }
+
+    pub fn channel_id(&self) -> ObjectID {
+        match self {
+            Self::V1(v) => v.channel_id,
+        }
+    }
+
+    pub fn cumulative_amount(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_amount,
+        }
+    }
+
+    pub fn expires_ms(&self) -> TimestampMs {
+        match self {
+            Self::V1(v) => v.expires_ms,
+        }
+    }
+
+    pub fn body_sha256(&self) -> [u8; 32] {
+        match self {
+            Self::V1(v) => v.body_sha256,
+        }
+    }
+
+    pub fn request_id_sha256(&self) -> [u8; 32] {
+        match self {
+            Self::V1(v) => v.request_id_sha256,
+        }
+    }
+
+    pub fn method_path_sha256(&self) -> [u8; 32] {
+        match self {
+            Self::V1(v) => v.method_path_sha256,
+        }
     }
 }
 
 impl Channel {
-    /// Construct a fresh channel for `OpenChannel` execution.
+    /// Construct a fresh v1 channel for `OpenChannel` execution.
     /// `settled_amount` starts at 0 and `close_requested_at_ms` at None.
     pub fn new(
         payer: SomaAddress,
@@ -207,7 +292,7 @@ impl Channel {
         token: CoinType,
         deposit: u64,
     ) -> Self {
-        Self {
+        Self::V1(ChannelV1 {
             payer,
             payee,
             authorized_signer,
@@ -215,6 +300,48 @@ impl Channel {
             deposit,
             settled_amount: 0,
             close_requested_at_ms: None,
+        })
+    }
+
+    pub fn payer(&self) -> SomaAddress {
+        match self {
+            Self::V1(c) => c.payer,
+        }
+    }
+
+    pub fn payee(&self) -> SomaAddress {
+        match self {
+            Self::V1(c) => c.payee,
+        }
+    }
+
+    pub fn authorized_signer(&self) -> SomaAddress {
+        match self {
+            Self::V1(c) => c.authorized_signer,
+        }
+    }
+
+    pub fn token(&self) -> CoinType {
+        match self {
+            Self::V1(c) => c.token,
+        }
+    }
+
+    pub fn deposit(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.deposit,
+        }
+    }
+
+    pub fn settled_amount(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.settled_amount,
+        }
+    }
+
+    pub fn close_requested_at_ms(&self) -> Option<TimestampMs> {
+        match self {
+            Self::V1(c) => c.close_requested_at_ms,
         }
     }
 
@@ -222,14 +349,14 @@ impl Channel {
     /// a voucher could carry. Anything beyond this implies overspending
     /// the escrow.
     pub fn max_cumulative_amount(&self) -> u64 {
-        self.deposit.saturating_add(self.settled_amount)
+        self.deposit().saturating_add(self.settled_amount())
     }
 
     /// Remainder that would flow back to the payer on a close right
-    /// now (i.e., the live deposit). Equal to `self.deposit`. Named
+    /// now (i.e., the live deposit). Equal to `self.deposit()`. Named
     /// for clarity at call sites.
     pub fn remainder_to_payer(&self) -> u64 {
-        self.deposit
+        self.deposit()
     }
 }
 
@@ -278,12 +405,17 @@ impl Object {
     }
 
     /// If this object is a Channel, deserialize and return it.
+    ///
+    /// BCS auto-dispatches on the leading variant tag — readers built
+    /// against a future `Channel::V2(...)` will accept v2 payloads,
+    /// and stale readers built against v1 only will return `None` for
+    /// any unknown variant tag (BCS errors on unknown enum
+    /// discriminants).
     pub fn as_channel(&self) -> Option<Channel> {
-        if *self.data.object_type() == ObjectType::Channel {
-            bcs::from_bytes::<Channel>(self.data.contents()).ok()
-        } else {
-            None
+        if *self.data.object_type() != ObjectType::Channel {
+            return None;
         }
+        bcs::from_bytes::<Channel>(self.data.contents()).ok()
     }
 
     /// Overwrite a Channel object's contents. Caller must ensure this
@@ -307,7 +439,15 @@ mod tests {
     use crate::crypto::{Signature, SomaSignature, get_key_pair};
     use crate::intent::{Intent, IntentMessage, IntentScope};
 
-    /// Channel BCS round-trip: serialize → deserialize → equal.
+    /// BCS encodes an enum as `uleb128(variant_index) || payload`. For
+    /// the V1-only Channel/Voucher/HttpVoucher today, the leading byte
+    /// is always 0 (the V1 tag). Pinning this makes the wire format
+    /// auditable and gives us a bright-line check for the day a v2
+    /// arm lands.
+    const ENUM_V1_TAG: u8 = 0;
+
+    /// Channel BCS round-trip: serialize → deserialize → equal, and
+    /// the leading byte is the V1 enum tag.
     #[test]
     fn channel_bcs_round_trip() {
         let ch = Channel::new(
@@ -318,10 +458,35 @@ mod tests {
             1_000_000,
         );
         let bytes = bcs::to_bytes(&ch).expect("Channel serializes");
+        assert_eq!(bytes[0], ENUM_V1_TAG, "leading byte must be the V1 tag");
         let decoded: Channel = bcs::from_bytes(&bytes).expect("Channel deserializes");
         assert_eq!(decoded, ch);
-        assert_eq!(decoded.settled_amount, 0);
-        assert_eq!(decoded.close_requested_at_ms, None);
+        assert_eq!(decoded.settled_amount(), 0);
+        assert_eq!(decoded.close_requested_at_ms(), None);
+    }
+
+    /// `as_channel` defers to BCS, which errors on an unknown enum
+    /// discriminant. A reader built against V1 only must return None
+    /// rather than misinterpreting future variants as v1.
+    #[test]
+    fn as_channel_rejects_unknown_variant() {
+        let id = ObjectID::random();
+        let ch = Channel::new(
+            SomaAddress::random(),
+            SomaAddress::random(),
+            SomaAddress::random(),
+            CoinType::Usdc,
+            100,
+        );
+        let mut obj = Object::new_channel_for_testing(id, ch);
+        // Tamper the leading variant byte to an unknown value.
+        let mut bytes = obj.data.contents().to_vec();
+        bytes[0] = 0xFF;
+        obj.data.update_contents(bytes);
+        assert!(
+            obj.as_channel().is_none(),
+            "as_channel must reject unknown variant"
+        );
     }
 
     /// Voucher BCS round-trip — the on-the-wire representation must
@@ -330,8 +495,31 @@ mod tests {
     fn voucher_bcs_round_trip() {
         let v = Voucher::new(ObjectID::random(), 12_345);
         let bytes = bcs::to_bytes(&v).expect("Voucher serializes");
+        assert_eq!(bytes[0], ENUM_V1_TAG, "leading byte must be the V1 tag");
         let decoded: Voucher = bcs::from_bytes(&bytes).expect("Voucher deserializes");
         assert_eq!(decoded, v);
+        assert_eq!(decoded.cumulative_amount(), 12_345);
+    }
+
+    /// HttpVoucher BCS round-trip — same wire-format pinning as
+    /// `voucher_bcs_round_trip`.
+    #[test]
+    fn http_voucher_bcs_round_trip() {
+        let v = HttpVoucher::from_request(
+            ObjectID::random(),
+            42,
+            1_700_000_000_000,
+            b"body bytes",
+            "request-id-abc",
+            "POST",
+            "/v1/chat/completions",
+        );
+        let bytes = bcs::to_bytes(&v).expect("HttpVoucher serializes");
+        assert_eq!(bytes[0], ENUM_V1_TAG, "leading byte must be the V1 tag");
+        let decoded: HttpVoucher = bcs::from_bytes(&bytes).expect("HttpVoucher deserializes");
+        assert_eq!(decoded, v);
+        assert_eq!(decoded.cumulative_amount(), 42);
+        assert_eq!(decoded.expires_ms(), 1_700_000_000_000);
     }
 
     /// Object<->Channel helpers: type, ownership, contents survive
@@ -366,16 +554,20 @@ mod tests {
         );
         let mut obj = Object::new_channel_for_testing(id, ch1);
 
-        let mut ch2 = obj.as_channel().unwrap();
-        ch2.deposit = 80;
-        ch2.settled_amount = 20;
-        obj.set_channel_data(&ch2);
+        // Mutate via destructuring — the V1-only enum gives an
+        // irrefutable pattern today; future v2 forces this site to
+        // match exhaustively.
+        let mut updated = obj.as_channel().unwrap();
+        let Channel::V1(inner) = &mut updated;
+        inner.deposit = 80;
+        inner.settled_amount = 20;
+        obj.set_channel_data(&updated);
 
         assert_eq!(obj.id(), id, "id must not change");
         assert_eq!(*obj.type_(), ObjectType::Channel, "type must not change");
         let read_back = obj.as_channel().unwrap();
-        assert_eq!(read_back.deposit, 80);
-        assert_eq!(read_back.settled_amount, 20);
+        assert_eq!(read_back.deposit(), 80);
+        assert_eq!(read_back.settled_amount(), 20);
     }
 
     /// `as_channel` returns None for non-Channel objects.
@@ -427,7 +619,7 @@ mod tests {
         let sig = Signature::new_secure(&intent_msg, &kp);
 
         // Forge a higher amount but use the same signature — must reject.
-        let tampered = Voucher::new(original.channel_id, 9999);
+        let tampered = Voucher::new(original.channel_id(), 9999);
         let tampered_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), tampered);
         sig.verify_secure(&tampered_msg, signer_addr, sig.scheme())

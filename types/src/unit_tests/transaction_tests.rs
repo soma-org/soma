@@ -821,18 +821,31 @@ fn test_input_objects_user_txs() {
 #[test]
 fn test_input_objects_open_channel() {
     // Stage 8: OpenChannel debits the deposit from the sender's
-    // accumulator balance, not a coin object. Input set is empty —
-    // funds-availability is enforced by the reservation pre-pass via
-    // `TransactionData::reservations()`, not by reading a coin input.
+    // accumulator balance, not a coin object. Owned-input set is
+    // empty; declared shared inputs are the per-payee
+    // `ProviderInbox` (mutated to enforce the per-pair cap) and
+    // `SystemState` (read-only, for `max_channels_per_pair`).
+    let payee = SomaAddress::random();
     let kind = TransactionKind::OpenChannel(OpenChannelArgs {
-        payee: SomaAddress::random(),
+        payee,
         authorized_signer: SomaAddress::random(),
         token: crate::object::CoinType::Usdc,
         deposit_amount: 1_000,
     });
     let inputs = kind.input_objects().expect("OpenChannel inputs build");
-    assert!(inputs.is_empty(), "OpenChannel has no owned inputs in balance-mode");
-    assert_eq!(kind.shared_input_objects().count(), 0);
+    let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
+    assert_eq!(inputs.len(), 2);
+
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&inbox_id));
+    assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
+
+    // ProviderInbox mutable; SystemState read-only.
+    for input in &inputs {
+        let id = input.object_id();
+        let expected_mut = id == inbox_id;
+        assert_eq!(input.is_mutable(), expected_mut);
+    }
 }
 
 #[test]
@@ -877,22 +890,28 @@ fn test_input_objects_request_close() {
 
 #[test]
 fn test_input_objects_withdraw_after_timeout() {
-    // WithdrawAfterTimeout: Channel (mutable) + Clock (read) + SystemState (read).
+    // WithdrawAfterTimeout: Channel (mutable) + Clock (read) +
+    // SystemState (read) + ProviderInbox(payee) (mutable, decremented).
     let channel_id = ObjectID::random();
-    let kind =
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id });
+    let payee = SomaAddress::random();
+    let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
+    let kind = TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
+        channel_id,
+        payee,
+    });
     let inputs = kind.input_objects().expect("WithdrawAfterTimeout inputs build");
-    assert_eq!(inputs.len(), 3);
+    assert_eq!(inputs.len(), 4);
 
     let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
     assert!(ids.contains(&channel_id));
     assert!(ids.contains(&crate::CLOCK_OBJECT_ID));
     assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
+    assert!(ids.contains(&inbox_id));
 
-    // Channel mutable, Clock read-only, SystemState read-only.
+    // Channel + ProviderInbox mutable; Clock + SystemState read-only.
     for input in &inputs {
         let id = input.object_id();
-        let expected_mut = id == channel_id;
+        let expected_mut = id == channel_id || id == inbox_id;
         assert_eq!(
             input.is_mutable(),
             expected_mut,

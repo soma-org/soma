@@ -140,7 +140,7 @@ pub async fn auth_middleware(
             };
             // Reject channels addressed to a different payee.
             let our_addr = state.chain.signer_address();
-            if chan.payee != our_addr {
+            if chan.payee() != our_addr {
                 return err_response(
                     StatusCode::UNAUTHORIZED,
                     "wrong_payee",

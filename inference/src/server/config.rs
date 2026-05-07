@@ -13,12 +13,41 @@ pub struct Config {
     pub auth: Auth,
     #[serde(default, rename = "offerings")]
     pub offerings: Vec<ModelCard>,
+    #[serde(default)]
+    pub auto_settle: AutoSettle,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Server {
     pub listen: String,
     pub public_endpoint: String,
+}
+
+/// Background ticker that periodically settles every channel with
+/// new progress since the last submitted `Settle`. Insurance against
+/// provider crashes (k8s pod restarts, OOMs, panics): every minute
+/// of unsettled drift is earnings the provider would lose if the
+/// process exits without running the SIGTERM hook.
+///
+/// Default 5 minutes — short enough to bound loss to roughly the
+/// inter-tick interval, long enough that a healthy provider with
+/// graceful-shutdown working still settles ~once per tick. Set
+/// `interval_secs = 0` to disable (e.g. in tests where you want to
+/// drive settles manually).
+#[derive(Debug, Deserialize)]
+pub struct AutoSettle {
+    #[serde(default = "default_auto_settle_interval")]
+    pub interval_secs: u64,
+}
+
+impl Default for AutoSettle {
+    fn default() -> Self {
+        Self { interval_secs: default_auto_settle_interval() }
+    }
+}
+
+fn default_auto_settle_interval() -> u64 {
+    5 * 60
 }
 
 #[derive(Debug, Deserialize)]

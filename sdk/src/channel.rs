@@ -66,7 +66,7 @@ pub fn verify_voucher(
 ) -> anyhow::Result<()> {
     let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
     signature
-        .verify_authenticator(&intent_msg, channel.authorized_signer)
+        .verify_authenticator(&intent_msg, channel.authorized_signer())
         .map_err(|e| anyhow::anyhow!("voucher signature verification failed: {}", e))
 }
 
@@ -122,7 +122,7 @@ pub fn verify_http_voucher(
         *http_voucher,
     );
     signature
-        .verify_authenticator(&intent_msg, channel.authorized_signer)
+        .verify_authenticator(&intent_msg, channel.authorized_signer())
         .map_err(|e| anyhow::anyhow!("HTTP voucher signature verification failed: {}", e))
 }
 
@@ -164,8 +164,8 @@ pub async fn settle(
     voucher_signature: GenericSignature,
 ) -> anyhow::Result<()> {
     let kind = TransactionKind::Settle(SettleArgs {
-        channel_id: voucher.channel_id,
-        cumulative_amount: voucher.cumulative_amount,
+        channel_id: voucher.channel_id(),
+        cumulative_amount: voucher.cumulative_amount(),
         voucher_signature,
     });
     let tx = build_signed(ctx, sender, kind).await?;
@@ -200,13 +200,45 @@ pub async fn request_close(
 }
 
 /// Withdraw remainder after the grace period elapses. Payer-only.
+///
+/// Fetches the channel first to read its `payee` — required because
+/// the transaction declares the `ProviderInbox(payee)` shared input,
+/// and the validator can't read the channel during input declaration.
+/// One extra RPC for the convenience of a single-arg helper; callers
+/// that already hold the payee can use [`withdraw_after_timeout_with_payee`]
+/// to skip the lookup.
 pub async fn withdraw_after_timeout(
     ctx: &WalletContext,
     sender: SomaAddress,
     channel_id: ObjectID,
 ) -> anyhow::Result<()> {
-    let kind =
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id });
+    let client = ctx
+        .get_client()
+        .await
+        .map_err(|e| anyhow::anyhow!("get_client: {e}"))?;
+    let obj = client
+        .get_object(channel_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("get_object {channel_id}: {e}"))?;
+    let chan = obj
+        .as_channel()
+        .ok_or_else(|| anyhow::anyhow!("{channel_id} is not a Channel"))?;
+    withdraw_after_timeout_with_payee(ctx, sender, channel_id, chan.payee()).await
+}
+
+/// Pre-resolved-payee variant — for callers that already know the
+/// channel's payee (e.g. they just opened it, or they're driving a
+/// scripted test). Skips the chain read.
+pub async fn withdraw_after_timeout_with_payee(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    channel_id: ObjectID,
+    payee: SomaAddress,
+) -> anyhow::Result<()> {
+    let kind = TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
+        channel_id,
+        payee,
+    });
     let tx = build_signed(ctx, sender, kind).await?;
     let _ = ctx.execute_transaction_must_succeed(tx).await;
     Ok(())

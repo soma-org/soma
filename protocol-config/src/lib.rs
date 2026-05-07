@@ -219,6 +219,14 @@ pub struct ProtocolConfig {
     /// the payee a window to submit any final `Settle` before the
     /// channel deletes. Defaults to 10 minutes.
     channel_grace_period_ms: Option<u64>,
+
+    /// Maximum simultaneously-open channels permitted for any single
+    /// (payer, payee) pair. Bounds adversarial state-bloat —
+    /// `OpenChannel` rejects with `ChannelTooManyOpenForPair` when
+    /// the per-payer count in the per-payee `ProviderInbox` is
+    /// already at this value. Tuned per-network so testnet can
+    /// loosen / tighten without a binary upgrade. Defaults to 8.
+    max_channels_per_pair: Option<u32>,
 }
 
 // Instantiations for each protocol version.
@@ -308,6 +316,11 @@ impl ProtocolConfig {
             // has after `RequestClose` to submit any final voucher via
             // `Settle`/`Close` before the payer can `WithdrawAfterTimeout`.
             channel_grace_period_ms: Some(10 * 60 * 1000),
+
+            // Per-(payer, payee) channel cap. Generous enough for
+            // legitimate hot/cold-key splits or per-SKU separation,
+            // tight enough to make spam unprofitable.
+            max_channels_per_pair: Some(8),
 
             // When adding a new constant, set it to None in the earliest version, like this:
             // new_constant: None,
@@ -411,6 +424,7 @@ impl ProtocolConfig {
             epoch_duration_ms: self.epoch_duration_ms(),
             unit_fee: self.unit_fee(),
             channel_grace_period_ms: self.channel_grace_period_ms(),
+            max_channels_per_pair: self.max_channels_per_pair(),
         }
     }
 }
@@ -427,6 +441,10 @@ pub struct SystemParameters {
     /// `RequestClose`, the payer must wait this long before
     /// `WithdrawAfterTimeout` succeeds.
     pub channel_grace_period_ms: u64,
+
+    /// Maximum simultaneously-open channels permitted per
+    /// (payer, payee) pair. See [`ProtocolConfig::max_channels_per_pair`].
+    pub max_channels_per_pair: u32,
 }
 
 // =============================================================================

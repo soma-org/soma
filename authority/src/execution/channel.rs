@@ -23,12 +23,13 @@
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::balance::BalanceEvent;
 use types::base::{SomaAddress, TimestampMs};
-use types::channel::{Channel, Voucher};
+use types::channel::{Channel, ChannelV1, Voucher};
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{Object, ObjectID};
+use types::provider_inbox::ProviderInbox;
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
@@ -49,7 +50,7 @@ impl ChannelExecutor {
     /// signer. Returns Ok(()) iff `voucher_signature` is a valid
     /// `IntentMessage<Voucher>` signed by `authorized_signer`.
     fn verify_voucher_signature(
-        channel: &Channel,
+        channel: &ChannelV1,
         voucher: Voucher,
         signature: &types::crypto::GenericSignature,
     ) -> ExecutionResult<()> {
@@ -63,12 +64,15 @@ impl ChannelExecutor {
         Ok(())
     }
 
-    /// Read the on-chain Channel by id. Errors with `ObjectNotFound`
-    /// if the channel was already closed (deleted) or never opened.
+    /// Read the on-chain Channel by id and project to its v1 inner
+    /// struct. Errors with `ObjectNotFound` if the channel was already
+    /// closed (deleted) or never opened. The executor only knows how
+    /// to mutate v1 today; future v2 layouts get their own match arm
+    /// here.
     fn load_channel(
         store: &TemporaryStore,
         channel_id: ObjectID,
-    ) -> ExecutionResult<(Object, Channel)> {
+    ) -> ExecutionResult<(Object, ChannelV1)> {
         let object = store
             .read_object(&channel_id)
             .ok_or(ExecutionFailureStatus::ObjectNotFound { object_id: channel_id })?
@@ -76,7 +80,74 @@ impl ChannelExecutor {
         let channel = object
             .as_channel()
             .ok_or(ExecutionFailureStatus::NotAChannel { object_id: channel_id })?;
+        let Channel::V1(channel) = channel;
         Ok((object, channel))
+    }
+
+    /// Persist a v1 channel back into a Channel-typed object,
+    /// re-wrapping in the outer enum so the on-chain bytes carry the
+    /// version tag.
+    fn write_channel_v1(channel_object: Object, channel: ChannelV1) -> Object {
+        let wrapped = Channel::V1(channel);
+        let mut updated = channel_object;
+        updated.set_channel_data(&wrapped);
+        updated
+    }
+
+    /// Load the per-payee `ProviderInbox` from the temporary store, or
+    /// return `Ok(None)` if the inbox doesn't yet exist on chain
+    /// (first OpenChannel for this payee). The tx declares the inbox
+    /// as a mutable shared input either way; the scheduler resolves
+    /// missing-input to the declared `initial_shared_version` so the
+    /// executor can lazily create the object below.
+    fn load_or_default_inbox(
+        store: &TemporaryStore,
+        payee: SomaAddress,
+    ) -> ExecutionResult<(Option<Object>, ProviderInbox)> {
+        let id = ProviderInbox::derive_id(payee);
+        match store.read_object(&id) {
+            Some(obj) => {
+                let cloned = obj.clone();
+                let inbox = cloned
+                    .as_provider_inbox()
+                    .ok_or(ExecutionFailureStatus::NotAProviderInbox { object_id: id })?;
+                Ok((Some(cloned), inbox))
+            }
+            None => Ok((None, ProviderInbox::new(payee))),
+        }
+    }
+
+    /// Persist the inbox: if `existing` is `Some` we mutate the
+    /// loaded object in place; otherwise we create a fresh shared
+    /// object. If the post-mutation inbox is empty the object is
+    /// deleted (or never created), so dead rows don't accumulate.
+    fn write_inbox(
+        store: &mut TemporaryStore,
+        existing: Option<Object>,
+        inbox: ProviderInbox,
+        tx_digest: TransactionDigest,
+    ) {
+        match existing {
+            Some(obj) => {
+                if inbox.is_empty() {
+                    // No more outstanding channels for this payee —
+                    // delete the inbox to keep state bounded.
+                    store.delete_input_object(&obj.id());
+                } else {
+                    let mut updated = obj;
+                    updated.set_provider_inbox_data(&inbox);
+                    store.mutate_input_object(updated);
+                }
+            }
+            None => {
+                if !inbox.is_empty() {
+                    let inbox_obj = Object::new_provider_inbox(inbox, tx_digest);
+                    store.create_object(inbox_obj);
+                }
+                // If the inbox would be created empty, skip — the
+                // increment failed before any state was touched.
+            }
+        }
     }
 
     /// Read the agreed wall-clock timestamp from the Clock object —
@@ -86,6 +157,27 @@ impl ChannelExecutor {
         store
             .read_clock_timestamp_ms()
             .ok_or(ExecutionFailureStatus::ChannelClockMissing)
+    }
+
+    /// Read the live `SystemParameters` from the declared SystemState
+    /// shared input. Used by ops that need protocol parameters
+    /// (`channel_grace_period_ms`, `max_channels_per_pair`).
+    fn read_system_parameters(
+        store: &TemporaryStore,
+    ) -> ExecutionResult<protocol_config::SystemParameters> {
+        let state_object = store
+            .read_object(&SYSTEM_STATE_OBJECT_ID)
+            .ok_or(ExecutionFailureStatus::ObjectNotFound {
+                object_id: SYSTEM_STATE_OBJECT_ID,
+            })?;
+        let state = SystemState::deserialize(state_object.as_inner().data.contents())
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize SystemState: {}",
+                    e
+                )))
+            })?;
+        Ok(state.parameters().clone())
     }
 
     /// Execute `OpenChannel`. Signer becomes the payer; deposit is
@@ -122,7 +214,27 @@ impl ChannelExecutor {
             .into());
         }
 
-        // Build the new Channel with payer = signer. The Channel's
+        // Per-(payer, payee) cap. Load the inbox (or default to a
+        // fresh empty one if this is the first OpenChannel against
+        // this payee), reject if the signer is already at the cap,
+        // and increment otherwise. The increment is committed below
+        // alongside the channel creation — both writes ride the same
+        // tx, so the cap is enforced atomically with the new Channel
+        // object. The cap itself is a protocol parameter
+        // (`max_channels_per_pair`) read from SystemState — declared
+        // as a read-only shared input by `OpenChannel`.
+        let max_per_pair = Self::read_system_parameters(store)?.max_channels_per_pair;
+        let (inbox_obj, mut inbox) =
+            Self::load_or_default_inbox(store, args.payee)?;
+        if let Err(current) = inbox.try_increment(signer, max_per_pair) {
+            return Err(ExecutionFailureStatus::ChannelTooManyOpenForPair {
+                current,
+                max: max_per_pair,
+            }
+            .into());
+        }
+
+        // Build the new v1 Channel with payer = signer. The Channel's
         // internal `deposit` field is the canonical record of locked
         // funds; the accumulator no longer holds them.
         let channel = Channel::new(
@@ -132,6 +244,9 @@ impl ChannelExecutor {
             args.token,
             args.deposit_amount,
         );
+        // Re-wrapping not required here — `Channel::new` already
+        // returns a `Channel::V1(...)` and we serialize the outer
+        // enum below.
 
         // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
         store.emit_accumulator_event(
@@ -139,6 +254,12 @@ impl ChannelExecutor {
             types::effects::object_change::AccumulatorOperation::Split,
             args.deposit_amount,
         );
+
+        // Persist the inbox first so a subsequent panic in channel
+        // creation (which can't actually happen, but defense in
+        // depth) doesn't leave the count incremented without a
+        // corresponding channel.
+        Self::write_inbox(store, inbox_obj, inbox, tx_digest);
 
         // Create the Channel shared object.
         let channel_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
@@ -184,7 +305,7 @@ impl ChannelExecutor {
 
         // 5. Overspend check: cumulative_amount must not exceed the
         //    total funds ever escrowed (deposit + already-settled).
-        let max_cumulative = channel.max_cumulative_amount();
+        let max_cumulative = channel.deposit.saturating_add(channel.settled_amount);
         if args.cumulative_amount > max_cumulative {
             return Err(ExecutionFailureStatus::ChannelOverspend {
                 cumulative: args.cumulative_amount,
@@ -198,9 +319,7 @@ impl ChannelExecutor {
         channel.deposit = checked_sub(channel.deposit, delta)?;
         channel.settled_amount = args.cumulative_amount;
 
-        let mut updated_channel_object = channel_object;
-        updated_channel_object.set_channel_data(&channel);
-        store.mutate_input_object(updated_channel_object);
+        store.mutate_input_object(Self::write_channel_v1(channel_object, channel.clone()));
 
         // 7. Credit the payee's accumulator with the delta. The
         // Channel object's internal `deposit` field already
@@ -252,9 +371,7 @@ impl ChannelExecutor {
         let now_ms = Self::read_clock_ts(store)?;
         channel.close_requested_at_ms = Some(now_ms);
 
-        let mut updated_channel_object = channel_object;
-        updated_channel_object.set_channel_data(&channel);
-        store.mutate_input_object(updated_channel_object);
+        store.mutate_input_object(Self::write_channel_v1(channel_object, channel));
 
         Ok(())
     }
@@ -267,7 +384,7 @@ impl ChannelExecutor {
         store: &mut TemporaryStore,
         signer: SomaAddress,
         args: WithdrawAfterTimeoutArgs,
-        _tx_digest: TransactionDigest,
+        tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         let (_channel_object, channel) = Self::load_channel(store, args.channel_id)?;
 
@@ -279,24 +396,27 @@ impl ChannelExecutor {
             .into());
         }
 
+        // The tx declared `ProviderInbox(args.payee)` as a shared
+        // input — verify the declared payee matches the channel's
+        // actual payee before mutating the inbox. Without this check
+        // a malicious caller could decrement an unrelated payee's
+        // counter (or worse: a payee with no inbox at all, racing a
+        // legitimate OpenChannel against the same key).
+        if args.payee != channel.payee {
+            return Err(ExecutionFailureStatus::ChannelInboxPayeeMismatch {
+                declared: args.payee,
+                actual: channel.payee,
+            }
+            .into());
+        }
+
         let close_requested_at_ms = channel
             .close_requested_at_ms
             .ok_or(ExecutionFailureStatus::ChannelNoCloseRequest)?;
 
         // Read protocol grace period from SystemState (declared as
         // read-only shared input by this tx kind).
-        let state_object =
-            store.read_object(&SYSTEM_STATE_OBJECT_ID).ok_or(ExecutionFailureStatus::ObjectNotFound {
-                object_id: SYSTEM_STATE_OBJECT_ID,
-            })?;
-        let state = SystemState::deserialize(state_object.as_inner().data.contents())
-            .map_err(|e| {
-                ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                    "Failed to deserialize SystemState: {}",
-                    e
-                )))
-            })?;
-        let grace_ms = state.parameters().channel_grace_period_ms;
+        let grace_ms = Self::read_system_parameters(store)?.channel_grace_period_ms;
 
         let now_ms = Self::read_clock_ts(store)?;
         let earliest_withdrawable = checked_add(close_requested_at_ms, grace_ms)?;
@@ -308,12 +428,21 @@ impl ChannelExecutor {
             .into());
         }
 
+        // Decrement the per-(payer, payee) inbox count. The inbox
+        // *must* exist at this point: every Channel was created
+        // alongside an inbox increment for its (payer, payee) pair,
+        // so a missing inbox is an invariant violation rather than
+        // an expected case.
+        let (inbox_obj, mut inbox) = Self::load_or_default_inbox(store, channel.payee)?;
+        inbox.decrement(channel.payer);
+        Self::write_inbox(store, inbox_obj, inbox, tx_digest);
+
         // Credit the remainder back to the payer's accumulator and
         // delete the channel object. Mirrors execute_settle's payout
         // path — the channel's internal `deposit` field reaches zero
         // when remainder lands in the accumulator, conserving total
         // supply.
-        let remainder = channel.remainder_to_payer();
+        let remainder = channel.deposit;
         if remainder > 0 {
             // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
             store.emit_accumulator_event(
@@ -374,13 +503,13 @@ impl ChannelExecutor {
         channel.deposit = checked_add(channel.deposit, args.amount)?;
         channel.close_requested_at_ms = None;
 
-        let mut updated_channel_object = channel_object;
-        updated_channel_object.set_channel_data(&channel);
-        store.mutate_input_object(updated_channel_object);
+        let payer = channel.payer;
+        let token = channel.token;
+        store.mutate_input_object(Self::write_channel_v1(channel_object, channel));
 
         // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
         store.emit_accumulator_event(
-            types::effects::object_change::AccumulatorAddress::balance(channel.payer, channel.token),
+            types::effects::object_change::AccumulatorAddress::balance(payer, token),
             types::effects::object_change::AccumulatorOperation::Split,
             args.amount,
         );
@@ -478,20 +607,37 @@ mod tests {
             Signature::new_secure(&intent_msg, &self.signer_kp).into()
         }
 
-        fn channel_with_deposit(&self, deposit: u64) -> Channel {
-            Channel::new(self.payer, self.payee, self.signer_addr, CoinType::Usdc, deposit)
+        /// Returns a v1 inner struct so tests can mutate fields
+        /// directly (e.g., `channel.close_requested_at_ms = Some(t)`)
+        /// before handing the wrapped `Channel::V1(...)` to
+        /// `make_store`.
+        fn channel_with_deposit(&self, deposit: u64) -> ChannelV1 {
+            let Channel::V1(c) = Channel::new(
+                self.payer,
+                self.payee,
+                self.signer_addr,
+                CoinType::Usdc,
+                deposit,
+            );
+            c
         }
     }
 
     /// Helper: TemporaryStore preloaded with the inputs a channel-op tx
-    /// would have declared. Pass `with_channel: Some(channel)` to
-    /// preload the channel. Stage 8: no coin parameter — the deposit
-    /// is balance-mode (Withdraw event), so the executor never reads
-    /// an owned coin.
+    /// would have declared. Pass `with_channel: Some((id, channel_v1))`
+    /// to preload the channel — the v1 inner gets wrapped in
+    /// `Channel::V1(...)` for the on-chain object. Stage 8: no coin
+    /// parameter — the deposit is balance-mode (Withdraw event), so
+    /// the executor never reads an owned coin.
+    ///
+    /// `inbox` lets the test preload the per-payee `ProviderInbox`.
+    /// `None` simulates "first OpenChannel for this payee" (executor
+    /// creates one); `Some(...)` simulates an inbox already on chain.
     fn make_store(
         clock_ts: u64,
         grace_ms: u64,
-        channel: Option<(ObjectID, Channel)>,
+        channel: Option<(ObjectID, ChannelV1)>,
+        inbox: Option<types::provider_inbox::ProviderInbox>,
     ) -> TemporaryStore {
         let mut inputs: Vec<ObjectReadResult> = Vec::new();
 
@@ -549,8 +695,8 @@ mod tests {
         ));
 
         // Channel (mutable shared) if requested.
-        if let Some((id, channel)) = channel {
-            let channel_obj = Object::new_channel_for_testing(id, channel);
+        if let Some((id, channel_v1)) = channel {
+            let channel_obj = Object::new_channel_for_testing(id, Channel::V1(channel_v1));
             inputs.push(ObjectReadResult::new(
                 InputObjectKind::SharedObject {
                     id,
@@ -558,6 +704,25 @@ mod tests {
                     mutable: true,
                 },
                 ObjectReadResultKind::Object(channel_obj),
+            ));
+        }
+
+        // Per-payee ProviderInbox (mutable shared). Tests preload it
+        // when the executor is expected to mutate an existing inbox
+        // (Withdraw decrements; second-OpenChannel-against-the-same-
+        // pair tests increments). For the first-OpenChannel case the
+        // inbox doesn't exist on chain — pass `None`, and the
+        // executor will create one.
+        if let Some(inbox) = inbox {
+            let id = types::provider_inbox::ProviderInbox::derive_id(inbox.payee());
+            let obj = Object::new_provider_inbox_for_testing(inbox);
+            inputs.push(ObjectReadResult::new(
+                InputObjectKind::SharedObject {
+                    id,
+                    initial_shared_version: types::object::OBJECT_START_VERSION,
+                    mutable: true,
+                },
+                ObjectReadResultKind::Object(obj),
             ));
         }
 
@@ -584,7 +749,7 @@ mod tests {
     #[test]
     fn open_channel_happy_path() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
 
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
@@ -621,12 +786,12 @@ mod tests {
             .find(|o| matches!(o.type_(), ObjectType::Channel))
             .expect("channel created");
         let ch = channel_obj.as_channel().unwrap();
-        assert_eq!(ch.payer, f.payer);
-        assert_eq!(ch.payee, f.payee);
-        assert_eq!(ch.authorized_signer, f.signer_addr);
-        assert_eq!(ch.deposit, 100_000);
-        assert_eq!(ch.settled_amount, 0);
-        assert_eq!(ch.close_requested_at_ms, None);
+        assert_eq!(ch.payer(), f.payer);
+        assert_eq!(ch.payee(), f.payee);
+        assert_eq!(ch.authorized_signer(), f.signer_addr);
+        assert_eq!(ch.deposit(), 100_000);
+        assert_eq!(ch.settled_amount(), 0);
+        assert_eq!(ch.close_requested_at_ms(), None);
     }
 
     /// Self-channels (payer == payee) are rejected at the executor.
@@ -635,7 +800,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_self_channel() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -656,7 +821,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_authorized_signer() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -678,7 +843,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_deposit() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -710,7 +875,7 @@ mod tests {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
         let mut store =
-            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())));
+            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
 
         let voucher_sig = f.sign_voucher(300);
         let mut exec = ChannelExecutor::new();
@@ -727,8 +892,8 @@ mod tests {
         .expect("Settle succeeds");
 
         let updated_channel = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
-        assert_eq!(updated_channel.deposit, 700);
-        assert_eq!(updated_channel.settled_amount, 300);
+        assert_eq!(updated_channel.deposit(), 700);
+        assert_eq!(updated_channel.settled_amount(), 300);
 
         // Stage 14c.6: payee's accumulator is credited via an
         // AccumulatorWriteV1::Merge of `delta`.
@@ -749,7 +914,7 @@ mod tests {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
         let mut store =
-            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())));
+            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
         let mut exec = ChannelExecutor::new();
 
         // First settle at 100.
@@ -764,7 +929,7 @@ mod tests {
             TransactionDigest::default(),
         )
         .unwrap();
-        assert_eq!(store.read_object(&f.channel_id).unwrap().as_channel().unwrap().deposit, 900);
+        assert_eq!(store.read_object(&f.channel_id).unwrap().as_channel().unwrap().deposit(), 900);
 
         // Second settle at 250 — delta = 150.
         exec.execute_settle(
@@ -779,8 +944,8 @@ mod tests {
         )
         .unwrap();
         let ch = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
-        assert_eq!(ch.deposit, 750);
-        assert_eq!(ch.settled_amount, 250);
+        assert_eq!(ch.deposit(), 750);
+        assert_eq!(ch.settled_amount(), 250);
     }
 
     /// Replay protection: re-submitting the same cumulative_amount
@@ -789,7 +954,7 @@ mod tests {
     fn settle_rejects_replayed_voucher() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_settle(
             &mut store,
@@ -824,7 +989,7 @@ mod tests {
         let mut channel = f.channel_with_deposit(1_000);
         channel.settled_amount = 500; // pretend prior settle happened
         channel.deposit = 500;
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_settle(
             &mut store,
@@ -844,7 +1009,7 @@ mod tests {
     fn settle_rejects_overspend() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(100);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_settle(
             &mut store,
@@ -864,7 +1029,7 @@ mod tests {
     fn settle_rejects_non_payee_caller() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
 
         // Payer (not payee) tries to submit Settle.
@@ -888,7 +1053,7 @@ mod tests {
     fn settle_rejects_invalid_signature() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
 
         // Sign with a wrong key.
         let (_, wrong_kp): (_, Ed25519KeyPair) = get_key_pair();
@@ -911,11 +1076,50 @@ mod tests {
         .expect_err("voucher signed by wrong key must be rejected");
     }
 
+    /// Settle while a close is pending: the payee can still claim
+    /// against an outstanding voucher, but their settle MUST NOT
+    /// clear the payer's `close_requested_at_ms` (that would let
+    /// the payee indefinitely hold off the payer's withdrawal by
+    /// driving fresh settles). Locks in the current behavior so a
+    /// future "clear-on-settle" refactor can't sneak in unflagged.
+    #[test]
+    fn settle_does_not_clear_close_request() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(1_000);
+        // Payer requested close at t=100.
+        channel.close_requested_at_ms = Some(100);
+        // Settle happens at t=200 (still inside the grace window).
+        let mut store = make_store(200, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_settle(
+            &mut store,
+            f.payee,
+            SettleArgs {
+                channel_id: f.channel_id,
+                cumulative_amount: 300,
+                voucher_signature: f.sign_voucher(300),
+            },
+            TransactionDigest::default(),
+        )
+        .expect("settle while pending close must succeed");
+
+        let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
+        // Close timer untouched — it was set at t=100 and remains so.
+        assert_eq!(
+            updated.close_requested_at_ms(),
+            Some(100),
+            "Settle must NOT clear or extend the payer's close timer",
+        );
+        // Settle accounting still applied.
+        assert_eq!(updated.settled_amount(), 300);
+        assert_eq!(updated.deposit(), 700);
+    }
+
     /// Channel-not-found: the channel was deleted (or never existed).
     #[test]
     fn settle_rejects_missing_channel() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
         let mut exec = ChannelExecutor::new();
         exec.execute_settle(
             &mut store,
@@ -939,7 +1143,7 @@ mod tests {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
         let mut store =
-            make_store(1_700_000_000_000, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+            make_store(1_700_000_000_000, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_request_close(
             &mut store,
@@ -949,14 +1153,14 @@ mod tests {
         )
         .expect("RequestClose succeeds");
         let ch = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
-        assert_eq!(ch.close_requested_at_ms, Some(1_700_000_000_000));
+        assert_eq!(ch.close_requested_at_ms(), Some(1_700_000_000_000));
     }
 
     #[test]
     fn request_close_rejects_non_payer() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_request_close(
             &mut store,
@@ -974,7 +1178,7 @@ mod tests {
         let f = Fixture::new();
         let mut channel = f.channel_with_deposit(1_000);
         channel.close_requested_at_ms = Some(50);
-        let mut store = make_store(100, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(100, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_request_close(
             &mut store,
@@ -996,12 +1200,12 @@ mod tests {
         channel.close_requested_at_ms = Some(0);
         // Clock at exactly grace boundary.
         let mut store =
-            make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+            make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_withdraw_after_timeout(
             &mut store,
             f.payer,
-            WithdrawAfterTimeoutArgs { channel_id: f.channel_id },
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
             TransactionDigest::default(),
         )
         .expect("Withdraw at exactly grace boundary succeeds");
@@ -1035,12 +1239,13 @@ mod tests {
             1_000 + GRACE_PERIOD_MS - 1,
             GRACE_PERIOD_MS,
             Some((f.channel_id, channel)),
+            None,
         );
         let mut exec = ChannelExecutor::new();
         exec.execute_withdraw_after_timeout(
             &mut store,
             f.payer,
-            WithdrawAfterTimeoutArgs { channel_id: f.channel_id },
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
             TransactionDigest::default(),
         )
         .expect_err("Withdraw before grace must be rejected");
@@ -1051,12 +1256,12 @@ mod tests {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(700);
         // No close_requested_at_ms set.
-        let mut store = make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_withdraw_after_timeout(
             &mut store,
             f.payer,
-            WithdrawAfterTimeoutArgs { channel_id: f.channel_id },
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
             TransactionDigest::default(),
         )
         .expect_err("Withdraw without prior RequestClose must be rejected");
@@ -1068,12 +1273,12 @@ mod tests {
         let mut channel = f.channel_with_deposit(700);
         channel.close_requested_at_ms = Some(0);
         let mut store =
-            make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+            make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_withdraw_after_timeout(
             &mut store,
             f.payee, // not the payer
-            WithdrawAfterTimeoutArgs { channel_id: f.channel_id },
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
             TransactionDigest::default(),
         )
         .expect_err("non-payer must be rejected");
@@ -1089,7 +1294,7 @@ mod tests {
     fn top_up_happy_path() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1100,9 +1305,9 @@ mod tests {
         .expect("TopUp succeeds");
 
         let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
-        assert_eq!(updated.deposit, 1_500);
-        assert_eq!(updated.settled_amount, 0);
-        assert_eq!(updated.close_requested_at_ms, None);
+        assert_eq!(updated.deposit(), 1_500);
+        assert_eq!(updated.settled_amount(), 0);
+        assert_eq!(updated.close_requested_at_ms(), None);
 
         use types::accumulator::BalanceAccumulator;
         use types::effects::object_change::AccumulatorOperation;
@@ -1120,7 +1325,7 @@ mod tests {
         let f = Fixture::new();
         let mut channel = f.channel_with_deposit(1_000);
         channel.close_requested_at_ms = Some(42_000);
-        let mut store = make_store(50_000, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(50_000, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1131,9 +1336,9 @@ mod tests {
         .expect("TopUp succeeds even when close was pending");
 
         let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
-        assert_eq!(updated.deposit, 1_100);
+        assert_eq!(updated.deposit(), 1_100);
         assert!(
-            updated.close_requested_at_ms.is_none(),
+            updated.close_requested_at_ms().is_none(),
             "TopUp must clear pending close timer"
         );
     }
@@ -1143,7 +1348,7 @@ mod tests {
     fn top_up_rejects_zero_amount() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1159,7 +1364,7 @@ mod tests {
     fn top_up_rejects_non_payer_caller() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1178,7 +1383,7 @@ mod tests {
     fn top_up_rejects_coin_type_mismatch() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)));
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1193,7 +1398,7 @@ mod tests {
     #[test]
     fn top_up_rejects_missing_channel() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
         let mut exec = ChannelExecutor::new();
         exec.execute_top_up(
             &mut store,
@@ -1202,5 +1407,223 @@ mod tests {
             TransactionDigest::default(),
         )
         .expect_err("missing channel must be rejected");
+    }
+
+    // ---------------------------------------------------------------
+    // Per-(payer, payee) cap tests — exercise ProviderInbox plumbing
+    // ---------------------------------------------------------------
+
+    /// Helper: cap from the protocol-config default. Lets the cap
+    /// tests stay aligned with the genesis SystemParameters that
+    /// `make_store` populates.
+    const PROTOCOL_DEFAULT_CAP: u32 = 8;
+
+    /// Build a v1 ProviderInbox with `count` entries already booked
+    /// for `payer`, keyed on `payee` — used by cap tests to start
+    /// near or at the limit.
+    fn inbox_with_count(
+        payee: SomaAddress,
+        payer: SomaAddress,
+        count: u32,
+    ) -> types::provider_inbox::ProviderInbox {
+        let mut inbox = types::provider_inbox::ProviderInbox::new(payee);
+        for _ in 0..count {
+            inbox.try_increment(payer, u32::MAX).expect("seeding shouldn't hit cap");
+        }
+        inbox
+    }
+
+    /// 8 sequential opens against the same payee from the same payer
+    /// all succeed (cap is the protocol-config default = 8).
+    #[test]
+    fn open_channel_under_cap_succeeds() {
+        let f = Fixture::new();
+        // Pre-seed an inbox with cap-1 entries; one more should land.
+        let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP - 1);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut exec = ChannelExecutor::new();
+        exec.execute_open(
+            &mut store,
+            f.payer,
+            OpenChannelArgs {
+                payee: f.payee,
+                authorized_signer: f.signer_addr,
+                token: CoinType::Usdc,
+                deposit_amount: 1_000,
+            },
+            TransactionDigest::default(),
+        )
+        .expect("8th OpenChannel against same payee must succeed");
+
+        // Inbox now reflects the new count.
+        let inbox_id = types::provider_inbox::ProviderInbox::derive_id(f.payee);
+        let updated = store
+            .read_object(&inbox_id)
+            .expect("inbox persisted")
+            .as_provider_inbox()
+            .expect("decode");
+        assert_eq!(updated.count_for(f.payer), PROTOCOL_DEFAULT_CAP);
+    }
+
+    /// 9th open against the same payee from the same payer is
+    /// rejected with `ChannelTooManyOpenForPair`.
+    #[test]
+    fn open_channel_rejects_at_cap() {
+        let f = Fixture::new();
+        let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut exec = ChannelExecutor::new();
+        let status = exec
+            .execute_open(
+                &mut store,
+                f.payer,
+                OpenChannelArgs {
+                    payee: f.payee,
+                    authorized_signer: f.signer_addr,
+                    token: CoinType::Usdc,
+                    deposit_amount: 1_000,
+                },
+                TransactionDigest::default(),
+            )
+            .expect_err("9th OpenChannel must be rejected");
+        match status {
+            ExecutionFailureStatus::ChannelTooManyOpenForPair { current, max } => {
+                assert_eq!(current, PROTOCOL_DEFAULT_CAP);
+                assert_eq!(max, PROTOCOL_DEFAULT_CAP);
+            }
+            other => panic!("unexpected failure status: {:?}", other),
+        }
+        // No accumulator side effects — the rejection happens before
+        // we emit the deposit Withdraw.
+        assert!(store.accumulator_writes().is_empty());
+    }
+
+    /// A different payer hitting the same payee gets their own bucket
+    /// — one payer at the cap doesn't lock another out.
+    #[test]
+    fn open_channel_cap_independent_per_payer() {
+        let f = Fixture::new();
+        // alice = f.payer, already at the cap.
+        let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
+        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut exec = ChannelExecutor::new();
+
+        // Different payer: fresh signer + address.
+        let (bob, _bob_kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
+        exec.execute_open(
+            &mut store,
+            bob,
+            OpenChannelArgs {
+                payee: f.payee,
+                authorized_signer: bob,
+                token: CoinType::Usdc,
+                deposit_amount: 1_000,
+            },
+            TransactionDigest::default(),
+        )
+        .expect("a different payer must not be blocked");
+    }
+
+    /// `WithdrawAfterTimeout` decrements the per-payer count; a
+    /// post-withdrawal OpenChannel from the same payer succeeds
+    /// because the freed slot is back below the cap.
+    #[test]
+    fn withdraw_decrements_inbox_freeing_slot() {
+        let f = Fixture::new();
+        // Pre-seed: payer at the cap. Channel pending close.
+        let mut channel = f.channel_with_deposit(100);
+        channel.close_requested_at_ms = Some(0);
+        let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
+        let mut store = make_store(
+            GRACE_PERIOD_MS,
+            GRACE_PERIOD_MS,
+            Some((f.channel_id, channel)),
+            Some(inbox),
+        );
+        let mut exec = ChannelExecutor::new();
+        exec.execute_withdraw_after_timeout(
+            &mut store,
+            f.payer,
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
+            TransactionDigest::default(),
+        )
+        .expect("Withdraw must succeed");
+
+        // Inbox now at cap-1.
+        let inbox_id = types::provider_inbox::ProviderInbox::derive_id(f.payee);
+        let updated = store
+            .read_object(&inbox_id)
+            .expect("inbox still present")
+            .as_provider_inbox()
+            .expect("decode");
+        assert_eq!(updated.count_for(f.payer), PROTOCOL_DEFAULT_CAP - 1);
+    }
+
+    /// When the last open channel for a (payer, payee) is withdrawn,
+    /// the inbox count drops to 0 and the inbox object is deleted —
+    /// state stays bounded.
+    #[test]
+    fn withdraw_deletes_empty_inbox() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(50);
+        channel.close_requested_at_ms = Some(0);
+        let inbox = inbox_with_count(f.payee, f.payer, 1);
+        let mut store = make_store(
+            GRACE_PERIOD_MS,
+            GRACE_PERIOD_MS,
+            Some((f.channel_id, channel)),
+            Some(inbox),
+        );
+        let mut exec = ChannelExecutor::new();
+        exec.execute_withdraw_after_timeout(
+            &mut store,
+            f.payer,
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: f.payee },
+            TransactionDigest::default(),
+        )
+        .expect("Withdraw must succeed");
+
+        let inbox_id = types::provider_inbox::ProviderInbox::derive_id(f.payee);
+        assert!(
+            store
+                .execution_results
+                .deleted_object_ids
+                .contains(&inbox_id),
+            "empty inbox must be deleted on the last withdraw"
+        );
+    }
+
+    /// `WithdrawAfterTimeoutArgs.payee` must equal the channel's
+    /// actual payee — defense against a caller who forges a payee in
+    /// args to decrement the wrong inbox.
+    #[test]
+    fn withdraw_rejects_payee_mismatch() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(50);
+        channel.close_requested_at_ms = Some(0);
+        let inbox = inbox_with_count(f.payee, f.payer, 1);
+        let mut store = make_store(
+            GRACE_PERIOD_MS,
+            GRACE_PERIOD_MS,
+            Some((f.channel_id, channel)),
+            Some(inbox),
+        );
+        let mut exec = ChannelExecutor::new();
+        let bogus_payee = SomaAddress::random();
+        exec.execute_withdraw_after_timeout(
+            &mut store,
+            f.payer,
+            WithdrawAfterTimeoutArgs { channel_id: f.channel_id, payee: bogus_payee },
+            TransactionDigest::default(),
+        )
+        .expect_err("payee mismatch must be rejected");
+        // Inbox unchanged — no side effects on a rejected tx.
+        let inbox_id = types::provider_inbox::ProviderInbox::derive_id(f.payee);
+        let inbox = store
+            .read_object(&inbox_id)
+            .expect("inbox still present")
+            .as_provider_inbox()
+            .expect("decode");
+        assert_eq!(inbox.count_for(f.payer), 1);
     }
 }

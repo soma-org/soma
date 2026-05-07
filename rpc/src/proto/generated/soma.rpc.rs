@@ -780,6 +780,15 @@ pub mod execution_error {
         ProviderInvalidEndpoint = 83,
         /// Clock not declared as a shared input by a Provider op.
         ProviderClockMissing = 84,
+        ///
+        /// Per-(payer, payee) cap (ProviderInbox) errors
+        ///
+        /// (payer, payee) already holds the maximum allowed open channels.
+        ChannelTooManyOpenForPair = 90,
+        /// Declared ProviderInbox payee != channel.payee on Withdraw.
+        ChannelInboxPayeeMismatch = 91,
+        /// Object at ProviderInbox::derive_id(payee) was not a ProviderInbox.
+        NotAProviderInbox = 92,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -872,6 +881,9 @@ pub mod execution_error {
                 Self::ProviderCallerMismatch => "PROVIDER_CALLER_MISMATCH",
                 Self::ProviderInvalidEndpoint => "PROVIDER_INVALID_ENDPOINT",
                 Self::ProviderClockMissing => "PROVIDER_CLOCK_MISSING",
+                Self::ChannelTooManyOpenForPair => "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
+                Self::ChannelInboxPayeeMismatch => "CHANNEL_INBOX_PAYEE_MISMATCH",
+                Self::NotAProviderInbox => "NOT_A_PROVIDER_INBOX",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -965,6 +977,9 @@ pub mod execution_error {
                 "PROVIDER_CALLER_MISMATCH" => Some(Self::ProviderCallerMismatch),
                 "PROVIDER_INVALID_ENDPOINT" => Some(Self::ProviderInvalidEndpoint),
                 "PROVIDER_CLOCK_MISSING" => Some(Self::ProviderClockMissing),
+                "CHANNEL_TOO_MANY_OPEN_FOR_PAIR" => Some(Self::ChannelTooManyOpenForPair),
+                "CHANNEL_INBOX_PAYEE_MISMATCH" => Some(Self::ChannelInboxPayeeMismatch),
+                "NOT_A_PROVIDER_INBOX" => Some(Self::NotAProviderInbox),
                 _ => None,
             }
         }

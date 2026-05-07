@@ -98,6 +98,19 @@ pub struct TabProviderState {
     /// `Settle` carries this. Empty until the first request lands.
     #[serde(default, with = "onchain_sig_serde")]
     pub last_onchain_sig: Option<GenericSignature>,
+    /// Cumulative amount that has actually been settled on-chain so
+    /// far — i.e., the highest `cumulative_amount` we've successfully
+    /// submitted via `Settle`. The background ticker compares
+    /// `cumulative_authorized_micros` against this value to skip
+    /// channels with no progress, avoiding wasteful gas. Initialized
+    /// to the on-chain `Channel.settled_amount` at slot install so a
+    /// freshly-rehydrated slot doesn't double-settle.
+    ///
+    /// `#[serde(default)]` lets older persisted ledgers (without this
+    /// field) deserialize: 0 is a safe default — the ticker just sees
+    /// "no progress recorded" and waits for the next live update.
+    #[serde(default)]
+    pub last_settled_at_amount: u64,
 }
 
 mod onchain_sig_serde {
@@ -137,14 +150,18 @@ mod onchain_sig_serde {
 
 impl TabProviderState {
     pub fn new(channel_id: ObjectID, chan: &Channel) -> Self {
+        let on_chain_settled = chan.settled_amount();
         Self {
             channel_id,
-            authorized_signer: chan.authorized_signer,
-            deposit_micros: chan.deposit,
-            cumulative_authorized_micros: chan.settled_amount,
-            total_consumed_micros: chan.settled_amount,
+            authorized_signer: chan.authorized_signer(),
+            deposit_micros: chan.deposit(),
+            cumulative_authorized_micros: on_chain_settled,
+            total_consumed_micros: on_chain_settled,
             last_request_id: None,
             last_onchain_sig: None,
+            // Match the chain's view — anything below this would
+            // be rejected by the executor as non-monotonic anyway.
+            last_settled_at_amount: on_chain_settled,
         }
     }
 }
@@ -303,7 +320,7 @@ impl PaymentChannel for RunningTab {
         // Expiry (with clock-skew tolerance).
         let now = now_ms();
         let tol_ms = self.clock_skew_tolerance_secs * 1000;
-        if header.http_voucher.expires_ms + tol_ms < now {
+        if header.http_voucher.expires_ms() + tol_ms < now {
             return Err(ChannelError::Expired);
         }
         if header.channel_id != state.channel_id {
@@ -312,13 +329,13 @@ impl PaymentChannel for RunningTab {
 
         // HttpVoucher binding fields must match the actual request.
         let body_sha256 = Self::body_sha256_from_hex(meta.body_sha256_hex)?;
-        if header.http_voucher.body_sha256 != body_sha256 {
+        if header.http_voucher.body_sha256() != body_sha256 {
             return Err(ChannelError::BadSignature);
         }
-        if header.http_voucher.request_id_sha256 != Self::request_id_sha(meta.request_id) {
+        if header.http_voucher.request_id_sha256() != Self::request_id_sha(meta.request_id) {
             return Err(ChannelError::BadSignature);
         }
-        if header.http_voucher.method_path_sha256 != Self::method_path_sha(meta.method, meta.path) {
+        if header.http_voucher.method_path_sha256() != Self::method_path_sha(meta.method, meta.path) {
             return Err(ChannelError::BadSignature);
         }
 
@@ -335,7 +352,7 @@ impl PaymentChannel for RunningTab {
             .as_deref()
             .map(|r| r == meta.request_id)
             .unwrap_or(false);
-        let cum = header.http_voucher.cumulative_amount;
+        let cum = header.http_voucher.cumulative_amount();
         if cum < state.cumulative_authorized_micros {
             return Err(ChannelError::NonMonotonic);
         }
@@ -400,15 +417,13 @@ impl PaymentChannel for RunningTab {
 /// `authorized_signer` is read by `verify_http_voucher`. Avoids a
 /// fresh chain read on every request.
 fn synthetic_channel(authorized_signer: SomaAddress) -> Channel {
-    Channel {
-        payer: SomaAddress::ZERO,
-        payee: SomaAddress::ZERO,
+    Channel::new(
+        SomaAddress::ZERO,
+        SomaAddress::ZERO,
         authorized_signer,
-        token: ::types::object::CoinType::Usdc,
-        deposit: 0,
-        settled_amount: 0,
-        close_requested_at_ms: None,
-    }
+        ::types::object::CoinType::Usdc,
+        0,
+    )
 }
 
 /// Helper used by the auth middleware to split the combined header

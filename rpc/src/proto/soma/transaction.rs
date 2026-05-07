@@ -799,6 +799,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                    // payee not yet wired through the proto schema —
+                    // RPC clients hitting this path operate on
+                    // older-style args. Use ZERO as a placeholder;
+                    // the proto schema gets updated in a follow-up.
+                    payee: crate::types::Address::ZERO,
                 })
             }
 

@@ -56,7 +56,7 @@ impl SomaPayHeader {
             .map_err(|_| ChannelError::Malformed)?;
         let http_voucher: HttpVoucher =
             bcs::from_bytes(&voucher_bytes).map_err(|_| ChannelError::Malformed)?;
-        if http_voucher.channel_id != channel_id {
+        if http_voucher.channel_id() != channel_id {
             return Err(ChannelError::Malformed);
         }
 
@@ -120,7 +120,7 @@ mod tests {
         let s = h.format();
         let parsed = SomaPayHeader::parse(&s).expect("round-trips");
         assert_eq!(parsed.channel_id, id_a);
-        assert_eq!(parsed.http_voucher.cumulative_amount, 100);
+        assert_eq!(parsed.http_voucher.cumulative_amount(), 100);
 
         // Channel-id mismatch must be rejected.
         let hv_b = HttpVoucher::from_request(id_b, 100, 0, b"", "rid", "POST", "/v1/x");

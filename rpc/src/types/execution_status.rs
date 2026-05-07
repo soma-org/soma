@@ -118,6 +118,11 @@ pub enum ExecutionError {
     ProviderInvalidEndpoint { reason: String },
     ProviderClockMissing,
 
+    // Per-pair channel cap (ProviderInbox) errors
+    ChannelTooManyOpenForPair { current: u32, max: u32 },
+    ChannelInboxPayeeMismatch { declared: Address, actual: Address },
+    NotAProviderInbox { object_id: Address },
+
     // Generic error for cases not covered by specific variants
     OtherError(String),
 }

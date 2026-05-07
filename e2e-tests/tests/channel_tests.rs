@@ -171,10 +171,18 @@ async fn submit_withdraw(
     payer: SomaAddress,
     channel_id: ObjectID,
 ) -> bool {
+    // Look up the channel's payee — required to declare the
+    // per-payee `ProviderInbox` shared input on the tx.
+    let payee = read_channel(test_cluster, channel_id)
+        .expect("channel exists")
+        .payee();
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id }),
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
+            channel_id,
+            payee,
+        }),
     );
     test_cluster
         .wallet
@@ -238,11 +246,11 @@ async fn channel_full_lifecycle() {
     info!(?channel_id, "channel opened");
 
     let ch = read_channel(&test_cluster, channel_id).expect("channel exists post-open");
-    assert_eq!(ch.payer, payer);
-    assert_eq!(ch.payee, payee);
-    assert_eq!(ch.deposit, 100_000);
-    assert_eq!(ch.settled_amount, 0);
-    assert!(ch.close_requested_at_ms.is_none());
+    assert_eq!(ch.payer(), payer);
+    assert_eq!(ch.payee(), payee);
+    assert_eq!(ch.deposit(), 100_000);
+    assert_eq!(ch.settled_amount(), 0);
+    assert!(ch.close_requested_at_ms().is_none());
 
     // After OpenChannel: payer USDC dropped by *at least* the deposit
     // (gas fee adds a small extra debit). Stage 8 invariant: the
@@ -263,8 +271,8 @@ async fn channel_full_lifecycle() {
     );
 
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(ch.deposit, 90_000);
-    assert_eq!(ch.settled_amount, 10_000);
+    assert_eq!(ch.deposit(), 90_000);
+    assert_eq!(ch.settled_amount(), 10_000);
 
     // 3. Settle at cumulative=25_000 (delta = 15_000).
     let voucher_sig = sign_voucher(&test_cluster, payer, channel_id, 25_000).await;
@@ -273,8 +281,8 @@ async fn channel_full_lifecycle() {
         "second Settle must succeed"
     );
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(ch.deposit, 75_000);
-    assert_eq!(ch.settled_amount, 25_000);
+    assert_eq!(ch.deposit(), 75_000);
+    assert_eq!(ch.settled_amount(), 25_000);
 
     // After two Settles: payee USDC rose by 25_000 (the cumulative
     // settled amount) minus gas fees. Stage 13c: gas is balance-
@@ -302,7 +310,7 @@ async fn channel_full_lifecycle() {
         "RequestClose must succeed"
     );
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    let close_at = ch.close_requested_at_ms.expect("close_requested_at_ms set");
+    let close_at = ch.close_requested_at_ms().expect("close_requested_at_ms set");
     assert!(close_at >= pre_close_ts, "close timestamp must be at-or-after pre-close clock");
 
     // 5. Try Withdraw immediately — must fail (grace not elapsed).
@@ -387,8 +395,8 @@ async fn channel_settle_rejects_payer_caller() {
 
     // Channel state is unchanged.
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(ch.deposit, 50_000);
-    assert_eq!(ch.settled_amount, 0);
+    assert_eq!(ch.deposit(), 50_000);
+    assert_eq!(ch.settled_amount(), 0);
 }
 
 /// Cumulative-monotonic replay protection at the e2e level: a stale
@@ -415,8 +423,8 @@ async fn channel_settle_rejects_stale_voucher() {
     assert!(!ok, "stale voucher must be rejected");
 
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(ch.deposit, 95_000);
-    assert_eq!(ch.settled_amount, 5_000);
+    assert_eq!(ch.deposit(), 95_000);
+    assert_eq!(ch.settled_amount(), 5_000);
 }
 
 /// All validators must agree on Channel state. Strong invariant:
@@ -501,10 +509,10 @@ async fn channels_independent_no_cross_interference() {
 
     let ch_a = read_channel(&test_cluster, chan_a).unwrap();
     let ch_b = read_channel(&test_cluster, chan_b).unwrap();
-    assert_eq!(ch_a.deposit, 40_000);
-    assert_eq!(ch_a.settled_amount, 10_000);
-    assert_eq!(ch_b.deposit, 50_000);
-    assert_eq!(ch_b.settled_amount, 30_000);
+    assert_eq!(ch_a.deposit(), 40_000);
+    assert_eq!(ch_a.settled_amount(), 10_000);
+    assert_eq!(ch_b.deposit(), 50_000);
+    assert_eq!(ch_b.settled_amount(), 30_000);
 
     // Cross-channel voucher must not verify: a voucher signed for
     // chan_a presented as a Settle on chan_b is rejected. The
@@ -535,6 +543,6 @@ async fn channel_settle_rejects_invalid_signature() {
     assert!(!ok, "Settle with mismatched cumulative_amount must be rejected");
 
     let ch = read_channel(&test_cluster, channel_id).unwrap();
-    assert_eq!(ch.deposit, 100_000, "no payment made on rejected Settle");
-    assert_eq!(ch.settled_amount, 0);
+    assert_eq!(ch.deposit(), 100_000, "no payment made on rejected Settle");
+    assert_eq!(ch.settled_amount(), 0);
 }

@@ -1192,6 +1192,24 @@ pub enum ExecutionFailureStatus {
     #[error("Provider op requires Clock (object 0x6) as a read-only shared input")]
     ProviderClockMissing,
 
+    /// `OpenChannel` rejected because the (payer, payee) pair already
+    /// holds the maximum allowed open channels. Bounds adversarial
+    /// state-bloat — see `ProviderInbox::MAX_CHANNELS_PER_PAIR`.
+    #[error("Too many open channels for this (payer, payee) pair: {current}/{max}")]
+    ChannelTooManyOpenForPair { current: u32, max: u32 },
+
+    /// The ProviderInbox declared as input doesn't match the channel
+    /// being withdrawn — caller passed the wrong `payee`. The
+    /// `WithdrawAfterTimeoutArgs.payee` must equal `channel.payee`.
+    #[error("ProviderInbox payee mismatch: declared {declared}, channel {actual}")]
+    ChannelInboxPayeeMismatch { declared: SomaAddress, actual: SomaAddress },
+
+    /// Loaded object at `ProviderInbox::derive_id(payee)` was not a
+    /// ProviderInbox — typically a domain-tag collision or a manually
+    /// crafted bad input.
+    #[error("Object {object_id} is not a ProviderInbox")]
+    NotAProviderInbox { object_id: ObjectID },
+
     //
     // Post-execution errors
     //

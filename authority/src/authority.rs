@@ -1713,8 +1713,8 @@ impl AuthorityState {
         for live_object in self.database_for_testing().iter_live_object_set() {
             let types::object::LiveObject::Normal(obj) = live_object;
             if let Some(channel) = obj.as_channel() {
-                if matches!(channel.token, CoinType::Soma) {
-                    channel_soma += channel.deposit as u128;
+                if matches!(channel.token(), CoinType::Soma) {
+                    channel_soma += channel.deposit() as u128;
                 }
             }
         }

@@ -22,6 +22,8 @@ epoch_duration_ms:
   u64: 86400000
 execution_version:
   u64: 1
+max_channels_per_pair:
+  u32: 8
 max_checkpoint_size_bytes:
   u64: 31457280
 max_transactions_per_checkpoint:

@@ -274,7 +274,7 @@ impl Router {
     ) -> anyhow::Result<Arc<tokio::sync::Mutex<ChannelSlot>>> {
         if let Some(id) = self.store.read_pointer(&provider.address).await {
             if let Ok(chan) = self.chain.get(id).await {
-                if chan.close_requested_at_ms.is_none() {
+                if chan.close_requested_at_ms().is_none() {
                     if let Some(slot) = self.store.slot(&id).await {
                         let g = slot.lock().await;
                         if g.state
@@ -291,16 +291,16 @@ impl Router {
                         let cumulative = self
                             .fetch_provider_last_cumulative(&provider.endpoint, id)
                             .await
-                            .unwrap_or(chan.settled_amount);
-                        let floor = cumulative.max(chan.settled_amount);
-                        if chan.deposit.saturating_sub(floor) > 40_000 {
+                            .unwrap_or(chan.settled_amount());
+                        let floor = cumulative.max(chan.settled_amount());
+                        if chan.deposit().saturating_sub(floor) > 40_000 {
                             let slot = self
                                 .store
                                 .install_slot(
                                     id,
                                     provider.address,
                                     provider.endpoint.clone(),
-                                    chan.deposit,
+                                    chan.deposit(),
                                     floor,
                                 )
                                 .await;
@@ -327,8 +327,8 @@ impl Router {
                 id,
                 provider.address,
                 provider.endpoint.clone(),
-                chan.deposit,
-                chan.settled_amount,
+                chan.deposit(),
+                chan.settled_amount(),
             )
             .await;
         Ok(slot)
