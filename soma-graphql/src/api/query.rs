@@ -1287,12 +1287,11 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_providers;
 
-        type Row = (Vec<u8>, String, i64, i64);
+        type Row = (Vec<u8>, String, i64);
         let row: Option<Row> = soma_providers::table
             .select((
                 soma_providers::address,
                 soma_providers::endpoint,
-                soma_providers::registered_at_ms,
                 soma_providers::last_update_cp,
             ))
             .filter(soma_providers::address.eq(addr_bytes))
@@ -1304,20 +1303,20 @@ impl Query {
         Ok(row.map(|r| GqlProvider {
             address: r.0,
             endpoint: r.1,
-            registered_at_ms: r.2,
-            last_update_cp: r.3,
+            last_update_cp: r.2,
         }))
     }
 
-    /// List providers, optionally filtered to those active within
-    /// `active_within_ms` of now (heartbeat-based liveness).
+    /// List providers, ordered by most recent registration / endpoint
+    /// change. Liveness is purely off-chain — callers that need to
+    /// know which providers are responding should HTTP-probe each
+    /// `endpoint`.
     #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn providers(
         &self,
         ctx: &Context<'_>,
         first: Option<i32>,
         after: Option<String>,
-        active_within_ms: Option<i64>,
     ) -> Result<Connection<String, GqlProvider>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
@@ -1327,26 +1326,16 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_providers;
 
-        type Row = (Vec<u8>, String, i64, i64);
+        type Row = (Vec<u8>, String, i64);
         let mut query = soma_providers::table
             .select((
                 soma_providers::address,
                 soma_providers::endpoint,
-                soma_providers::registered_at_ms,
                 soma_providers::last_update_cp,
             ))
-            .order(soma_providers::registered_at_ms.desc())
+            .order(soma_providers::last_update_cp.desc())
             .limit(limit + 1)
             .into_boxed();
-
-        if let Some(window_ms) = active_within_ms {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            let floor = now_ms.saturating_sub(window_ms);
-            query = query.filter(soma_providers::registered_at_ms.ge(floor));
-        }
 
         if let Some(after) = after.as_deref() {
             let cursor_bytes = hex::decode(after.strip_prefix("0x").unwrap_or(after))
@@ -1370,8 +1359,7 @@ impl Query {
                 GqlProvider {
                     address: r.0,
                     endpoint: r.1,
-                    registered_at_ms: r.2,
-                    last_update_cp: r.3,
+                    last_update_cp: r.2,
                 },
             ));
         }

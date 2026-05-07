@@ -455,7 +455,8 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::Settle(_)
         | TransactionKind::RequestClose(_)
         | TransactionKind::WithdrawAfterTimeout(_)
-        | TransactionKind::TopUp(_) => Box::new(ChannelExecutor::new()),
+        | TransactionKind::TopUp(_)
+        | TransactionKind::RateChannel(_) => Box::new(ChannelExecutor::new()),
 
         // Provider registry
         TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_) => {

@@ -4050,7 +4050,7 @@ pub struct ValidDuring {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 55, 56, 60, 61"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 57, 55, 56, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4151,6 +4151,8 @@ pub mod transaction_kind {
         WithdrawAfterTimeout(super::WithdrawAfterTimeout),
         #[prost(message, tag = "54")]
         TopUp(super::TopUp),
+        #[prost(message, tag = "57")]
+        RateChannel(super::RateChannel),
         /// Provider registry transactions
         #[prost(message, tag = "55")]
         RegisterProvider(super::RegisterProvider),
@@ -4760,6 +4762,20 @@ pub struct TopUp {
     /// Top-up amount, in the channel's smallest unit. Must be > 0.
     #[prost(uint64, optional, tag = "3")]
     pub amount: ::core::option::Option<u64>,
+}
+/// Payer-only: flag a channel as negative (`true`) or positive
+/// (`false`). Latest-wins. Requires `channel.settled_amount > 0`
+/// (must have actually paid before forming an opinion). The view
+/// aggregates a volume-weighted negative-rate per provider.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RateChannel {
+    /// Channel object ID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// True = thumbs down, False = thumbs up.
+    #[prost(bool, optional, tag = "2")]
+    pub negative: ::core::option::Option<bool>,
 }
 /// Register the signer as a provider on-chain. Creates a Provider
 /// shared object at Provider::derive_id(signer). Hard-fails if one

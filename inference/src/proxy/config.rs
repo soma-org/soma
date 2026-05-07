@@ -34,11 +34,18 @@ pub struct RoutingWeights {
     pub renewal: f64,
     /// How strongly to reward `distinct_buyers_30d`.
     pub buyers: f64,
+    /// How strongly to *penalize* `negative_rate_30d` (the
+    /// volume-weighted fraction of recent ratings that were
+    /// negative). Subtracted from the score, so larger = more
+    /// aggressive avoidance of complained-about providers.
+    /// `None` ratings (no in-window data) contribute zero
+    /// regardless of the weight.
+    pub negative_rate: f64,
 }
 
 impl Default for RoutingWeights {
     fn default() -> Self {
-        Self { price: 1.0, volume: 0.3, renewal: 0.2, buyers: 0.1 }
+        Self { price: 1.0, volume: 0.3, renewal: 0.2, buyers: 0.1, negative_rate: 1.0 }
     }
 }
 

@@ -22,6 +22,7 @@ pub mod obj_info;
 pub mod obj_versions;
 pub mod soma_balance_deltas;
 pub mod soma_channel_events;
+pub mod soma_channel_ratings;
 pub mod soma_channels;
 pub mod soma_epoch_state;
 pub mod soma_providers;

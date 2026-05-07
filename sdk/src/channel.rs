@@ -24,7 +24,7 @@ use types::digests::TransactionDigest;
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{CoinType, ObjectID};
 use types::transaction::{
-    OpenChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, Transaction,
+    OpenChannelArgs, RateChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, Transaction,
     TransactionKind, WithdrawAfterTimeoutArgs,
 };
 
@@ -194,6 +194,23 @@ pub async fn request_close(
     channel_id: ObjectID,
 ) -> anyhow::Result<()> {
     let kind = TransactionKind::RequestClose(RequestCloseArgs { channel_id });
+    let tx = build_signed(ctx, sender, kind).await?;
+    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    Ok(())
+}
+
+/// Rate a channel as negative (`true`) or positive (`false`).
+/// Payer-only on-chain; channel must have `settled_amount > 0`
+/// (the executor enforces both). Latest-wins: a subsequent call
+/// from the same payer for the same channel replaces the prior
+/// flag.
+pub async fn rate(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    channel_id: ObjectID,
+    negative: bool,
+) -> anyhow::Result<()> {
+    let kind = TransactionKind::RateChannel(RateChannelArgs { channel_id, negative });
     let tx = build_signed(ctx, sender, kind).await?;
     let _ = ctx.execute_transaction_must_succeed(tx).await;
     Ok(())

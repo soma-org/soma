@@ -109,7 +109,7 @@ async fn register_provider(
     assert!(response.effects.status().is_ok(), "RegisterProvider must succeed");
 }
 
-/// Heartbeat / endpoint-update helper.
+/// Endpoint-update helper.
 async fn update_provider(
     test_cluster: &test_cluster::TestCluster,
     signer: SomaAddress,
@@ -197,7 +197,7 @@ async fn current_cp(test_cluster: &test_cluster::TestCluster) -> u64 {
 }
 
 /// `RegisterProvider` → row in `soma_providers`. `UpdateProvider`
-/// changes endpoint + bumps `registered_at_ms` (heartbeat semantics).
+/// changes endpoint and bumps `last_update_cp`.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_provider_registry_indexed() {
@@ -229,7 +229,7 @@ async fn test_provider_registry_indexed() {
         .select((
             soma_providers::address,
             soma_providers::endpoint,
-            soma_providers::registered_at_ms,
+            soma_providers::last_update_cp,
         ))
         .filter(soma_providers::address.eq(signer.to_vec()))
         .first(conn.deref_mut())
@@ -237,19 +237,7 @@ async fn test_provider_registry_indexed() {
         .expect("provider row present after RegisterProvider");
     assert_eq!(row.0, signer.to_vec());
     assert_eq!(row.1, "https://prov-v1.example");
-    let registered_at_v1 = row.2;
-    assert!(registered_at_v1 > 0, "registered_at_ms must be stamped from clock");
-
-    // Drive a commit to advance the chain clock so the heartbeat
-    // timestamp can change.
-    let addrs = test_cluster.wallet.get_addresses();
-    let nudge = e2e_tests::balance_transfer_data(
-        &test_cluster,
-        CoinType::Usdc,
-        addrs[0],
-        vec![(addrs[1], 1)],
-    );
-    let _ = test_cluster.sign_and_execute_transaction(&nudge).await;
+    let cp_at_register = row.2;
 
     update_provider(&test_cluster, signer, "https://prov-v2.example").await;
     let cp2 = current_cp(&test_cluster).await;
@@ -258,24 +246,14 @@ async fn test_provider_registry_indexed() {
         .await
         .expect("indexer reaches cp2");
 
-    let row: (String, i64, i64) = soma_providers::table
-        .select((
-            soma_providers::endpoint,
-            soma_providers::registered_at_ms,
-            soma_providers::last_update_cp,
-        ))
+    let row: (String, i64) = soma_providers::table
+        .select((soma_providers::endpoint, soma_providers::last_update_cp))
         .filter(soma_providers::address.eq(signer.to_vec()))
         .first(conn.deref_mut())
         .await
         .unwrap();
     assert_eq!(row.0, "https://prov-v2.example", "endpoint updated");
-    assert!(
-        row.1 >= registered_at_v1,
-        "registered_at_ms must be monotonic non-decreasing across heartbeats: \
-         v1={registered_at_v1}, v2={}",
-        row.1
-    );
-    assert!(row.2 >= cp1 as i64);
+    assert!(row.1 > cp_at_register, "last_update_cp must advance on update");
 }
 
 /// Full channel lifecycle: open → top_up → settle → settle (twice) →

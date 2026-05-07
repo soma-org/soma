@@ -10,7 +10,7 @@ use futures::Stream;
 use rand::Rng;
 use rpc::api::client::Client;
 use rpc::proto::soma::ListOwnedObjectsRequest;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use types::base::SomaAddress;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::object::{Object, ObjectID, Version};
@@ -22,7 +22,6 @@ pub mod channel;
 pub mod client_config;
 pub mod crypto_utils;
 pub mod error;
-pub mod faucet_client;
 pub mod keypair;
 pub mod provider;
 pub mod transaction_builder;
@@ -37,14 +36,12 @@ pub const SOMA_TESTNET_URL: &str = "https://fullnode.testnet.soma.org:443";
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
     request_timeout: Duration,
-    faucet_url: Option<String>,
 }
 
 impl Default for SomaClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(60),
-            faucet_url: None,
         }
     }
 }
@@ -56,31 +53,12 @@ impl SomaClientBuilder {
         self
     }
 
-    /// Set the faucet service URL (e.g. `http://127.0.0.1:9123`).
-    pub fn faucet_url(mut self, url: impl Into<String>) -> Self {
-        self.faucet_url = Some(url.into());
-        self
-    }
-
     /// Build the client with RPC and object storage URLs
     pub async fn build(self, rpc_url: impl AsRef<str>) -> Result<SomaClient, error::Error> {
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
 
-        let faucet_client = match self.faucet_url {
-            Some(url) => {
-                let fc = faucet_client::FaucetClient::connect(url)
-                    .await
-                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
-                Some(Arc::new(Mutex::new(fc)))
-            }
-            None => None,
-        };
-
-        Ok(SomaClient {
-            inner: Arc::new(RwLock::new(client)),
-            faucet_client,
-        })
+        Ok(SomaClient { inner: Arc::new(RwLock::new(client)) })
     }
 
     /// Build a client for the local network with default addresses
@@ -102,7 +80,6 @@ impl SomaClientBuilder {
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
-    faucet_client: Option<Arc<Mutex<faucet_client::FaucetClient>>>,
 }
 
 impl SomaClient {
@@ -345,36 +322,9 @@ impl SomaClient {
         self.sign_and_execute(keypair, tx_data, label).await
     }
 
-    /// Merge all coins owned by the sender into as few as possible.
-    ///
-    /// Uses a single on-chain transaction: the smallest coin is
     // Stage 13b: `merge_coins` deleted along with the
     // TransactionKind::Transfer / MergeCoins variants. Coin objects
     // no longer exist (the balance accumulator is the sole record),
     // so there's nothing to merge.
-
-    /// Request test tokens from the faucet. Returns the gas response.
-    pub async fn request_faucet(
-        &self,
-        address: SomaAddress,
-    ) -> Result<faucet_client::GasResponse, error::Error> {
-        let fc = self
-            .faucet_client
-            .as_ref()
-            .ok_or_else(|| {
-                error::Error::ServiceNotConfigured(
-                    "No faucet_url was provided when creating SomaClient".into(),
-                )
-            })?
-            .clone();
-        let mut client = fc.lock().await;
-        let response = client
-            .request_gas(faucet_client::GasRequest { recipient: address.to_string() })
-            .await
-            .map_err(|e| error::Error::GrpcError(e.to_string()))?
-            .into_inner();
-        Ok(response)
-    }
-
 }
 

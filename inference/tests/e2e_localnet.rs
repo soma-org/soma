@@ -133,7 +133,6 @@ async fn proxy_provider_full_stack_against_real_chain() {
             address: provider_addr,
             pubkey_hex: String::new(),
             endpoint: provider_endpoint.clone(),
-            last_heartbeat_ms: 0,
         })
         .await
         .unwrap();
@@ -167,7 +166,6 @@ async fn proxy_provider_full_stack_against_real_chain() {
                 provider_wallet,
                 provider_addr,
                 ledger_path,
-                0, // no heartbeats
             )
             .await
             .ok();
@@ -392,7 +390,6 @@ async fn stateless_proxy_cold_start_resumes_safely() {
             address: provider_addr,
             pubkey_hex: String::new(),
             endpoint: provider_endpoint.clone(),
-            last_heartbeat_ms: 0,
         })
         .await
         .unwrap();
@@ -423,7 +420,6 @@ async fn stateless_proxy_cold_start_resumes_safely() {
                 provider_wallet,
                 provider_addr,
                 ledger_path,
-                0,
             )
             .await
             .ok();

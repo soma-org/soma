@@ -33,8 +33,8 @@ use types::provider_inbox::ProviderInbox;
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
-    OpenChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, TransactionKind,
-    WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RateChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs,
+    TransactionKind, WithdrawAfterTimeoutArgs,
 };
 
 use super::{TransactionExecutor, checked_add, checked_sub};
@@ -266,6 +266,46 @@ impl ChannelExecutor {
         let channel_object = Object::new_channel(channel_id, channel, tx_digest);
         store.create_object(channel_object);
 
+        Ok(())
+    }
+
+    /// Execute `RateChannel`. Validates caller == channel.payer and
+    /// channel.settled_amount > 0 (must have actually paid for
+    /// service). The rating bool isn't recorded on the Channel
+    /// object — the indexer reads it directly from the tx kind and
+    /// mirrors it to `soma_channel_ratings`. The Channel is declared
+    /// as a *read-only* shared input so multiple `RateChannel` txs
+    /// run in parallel with each other (though not with mutating
+    /// channel ops on the same channel).
+    fn execute_rate_channel(
+        &self,
+        store: &mut TemporaryStore,
+        signer: SomaAddress,
+        args: RateChannelArgs,
+        _tx_digest: TransactionDigest,
+    ) -> ExecutionResult<()> {
+        let (_channel_object, channel) = Self::load_channel(store, args.channel_id)?;
+
+        // Caller-authorization: only the payer can rate.
+        if signer != channel.payer {
+            return Err(ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected: channel.payer,
+                actual: signer,
+            }
+            .into());
+        }
+
+        // Must have actually paid for service before forming an opinion.
+        if channel.settled_amount == 0 {
+            return Err(ExecutionFailureStatus::ChannelInvalidInput {
+                reason: "RateChannel requires settled_amount > 0".to_string(),
+            }
+            .into());
+        }
+
+        // The bool itself doesn't need range validation. Indexer /
+        // view consume `args.negative` directly.
+        let _ = args.negative;
         Ok(())
     }
 
@@ -543,6 +583,9 @@ impl TransactionExecutor for ChannelExecutor {
                 self.execute_withdraw_after_timeout(store, signer, args, tx_digest)
             }
             TransactionKind::TopUp(args) => self.execute_top_up(store, signer, args, tx_digest),
+            TransactionKind::RateChannel(args) => {
+                self.execute_rate_channel(store, signer, args, tx_digest)
+            }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType.into()),
         }
     }
@@ -1132,6 +1175,83 @@ mod tests {
             TransactionDigest::default(),
         )
         .expect_err("missing channel must be rejected");
+    }
+
+    // ---------------------------------------------------------------
+    // RateChannel tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn rate_channel_negative_succeeds() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(1_000);
+        channel.settled_amount = 200; // payer has actually paid
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_rate_channel(
+            &mut store,
+            f.payer,
+            RateChannelArgs { channel_id: f.channel_id, negative: true },
+            TransactionDigest::default(),
+        )
+        .expect("RateChannel succeeds");
+    }
+
+    #[test]
+    fn rate_channel_positive_succeeds() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(1_000);
+        channel.settled_amount = 1; // any positive value is enough
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut exec = ChannelExecutor::new();
+        exec.execute_rate_channel(
+            &mut store,
+            f.payer,
+            RateChannelArgs { channel_id: f.channel_id, negative: false },
+            TransactionDigest::default(),
+        )
+        .expect("RateChannel succeeds for positive flag");
+    }
+
+    /// Only the payer can rate. Payee submitting `RateChannel` is
+    /// rejected with `ChannelCallerNotPayer` — same auth rule as
+    /// `RequestClose`.
+    #[test]
+    fn rate_channel_rejects_non_payer() {
+        let f = Fixture::new();
+        let mut channel = f.channel_with_deposit(1_000);
+        channel.settled_amount = 100;
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut exec = ChannelExecutor::new();
+        let err = exec
+            .execute_rate_channel(
+                &mut store,
+                f.payee, // not payer
+                RateChannelArgs { channel_id: f.channel_id, negative: true },
+                TransactionDigest::default(),
+            )
+            .expect_err("non-payer must be rejected");
+        assert!(matches!(err, ExecutionFailureStatus::ChannelCallerNotPayer { .. }));
+    }
+
+    /// Payer must have actually paid (settled_amount > 0) before
+    /// rating. Bricks the trivial-channel attack: open a $1 channel,
+    /// don't settle, immediately rate the competitor poorly.
+    #[test]
+    fn rate_channel_rejects_zero_settled() {
+        let f = Fixture::new();
+        let channel = f.channel_with_deposit(1_000); // settled_amount = 0
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut exec = ChannelExecutor::new();
+        let err = exec
+            .execute_rate_channel(
+                &mut store,
+                f.payer,
+                RateChannelArgs { channel_id: f.channel_id, negative: true },
+                TransactionDigest::default(),
+            )
+            .expect_err("zero-settled must be rejected");
+        assert!(matches!(err, ExecutionFailureStatus::ChannelInvalidInput { .. }));
     }
 
     // ---------------------------------------------------------------

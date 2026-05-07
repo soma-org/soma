@@ -210,14 +210,26 @@ diesel::table! {
     soma_providers (address) {
         address -> Bytea,
         endpoint -> Text,
-        registered_at_ms -> Int8,
         last_update_cp -> Int8,
     }
 }
 
+diesel::table! {
+    soma_channel_ratings (channel_id) {
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        negative -> Bool,
+        rated_at_cp -> Int8,
+        rated_at_ms -> Int8,
+    }
+}
+
 // View backed by the migration `provider_reputation`. Read-only; do
-// not derive `Insertable` for this. SUMs are provider-side; counts are
-// in-process distinct-buyer counts.
+// not derive `Insertable` for this. SUMs are provider-side; counts
+// are in-process distinct-buyer counts. `negative_rate_30d` is NULL
+// when the provider has no in-window ratings on positive-volume
+// channels.
 diesel::table! {
     provider_reputation (address) {
         address -> Bytea,
@@ -225,6 +237,8 @@ diesel::table! {
         distinct_buyers_30d -> Int8,
         channel_renewal_rate -> Float8,
         mean_channel_span_cps -> Int8,
+        negative_rate_30d -> Nullable<Float8>,
+        rating_count_30d -> Int8,
         signal_version -> Int4,
     }
 }
@@ -284,6 +298,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     obj_versions,
     soma_balance_deltas,
     soma_channel_events,
+    soma_channel_ratings,
     soma_channels,
     soma_epoch_state,
     provider_reputation,

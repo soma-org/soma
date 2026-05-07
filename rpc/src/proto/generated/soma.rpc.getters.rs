@@ -4852,6 +4852,39 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::TopUp(field.into()));
             self
         }
+        pub fn rate_channel(&self) -> &RateChannel {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &self.kind {
+                field as _
+            } else {
+                RateChannel::default_instance() as _
+            }
+        }
+        pub fn rate_channel_opt(&self) -> Option<&RateChannel> {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn rate_channel_opt_mut(&mut self) -> Option<&mut RateChannel> {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn rate_channel_mut(&mut self) -> &mut RateChannel {
+            if self.rate_channel_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RateChannel(RateChannel::default()),
+                );
+            }
+            self.rate_channel_opt_mut().unwrap()
+        }
+        pub fn with_rate_channel(mut self, field: RateChannel) -> Self {
+            self.kind = Some(transaction_kind::Kind::RateChannel(field.into()));
+            self
+        }
         pub fn register_provider(&self) -> &RegisterProvider {
             if let Some(transaction_kind::Kind::RegisterProvider(field)) = &self.kind {
                 field as _
@@ -6441,6 +6474,27 @@ mod _getter_impls {
         }
         pub fn with_amount(mut self, field: u64) -> Self {
             self.amount = Some(field.into());
+            self
+        }
+    }
+    impl RateChannel {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                negative: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RateChannel = RateChannel::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_negative(mut self, field: bool) -> Self {
+            self.negative = Some(field.into());
             self
         }
     }

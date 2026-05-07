@@ -3,9 +3,11 @@
 
 //! On-chain provider registry mirror.
 //!
-//! INSERT on RegisterProvider; UPSERT on UpdateProvider (the chain
-//! treats the latter as a heartbeat that always bumps
-//! `registered_at_ms`).
+//! INSERT on RegisterProvider; UPSERT (endpoint, last_update_cp) on
+//! UpdateProvider. Liveness is purely off-chain — the proxy probes
+//! the advertised endpoint over HTTP — so this table tracks
+//! "addresses claiming to provide", not "addresses currently
+//! responding".
 
 use std::sync::Arc;
 
@@ -20,7 +22,6 @@ use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::Object;
-use types::transaction::TransactionKind;
 
 pub struct SomaProviders;
 
@@ -36,17 +37,16 @@ impl Processor for SomaProviders {
 
         let mut out = Vec::new();
         for tx in transactions {
-            let kind = tx.transaction.kind();
-            if !kind.is_provider_tx() {
+            if !tx.transaction.kind().is_provider_tx() {
                 continue;
             }
             let post: Vec<&Object> = tx.output_objects(object_set).collect();
-            let provider = post.iter().find_map(|o| o.as_provider());
-            let Some(p) = provider else { continue };
+            let Some(p) = post.iter().find_map(|o| o.as_provider()) else {
+                continue;
+            };
             out.push(StoredProvider {
-                address: p.address.to_vec(),
-                endpoint: p.endpoint,
-                registered_at_ms: p.registered_at_ms as i64,
+                address: p.address().to_vec(),
+                endpoint: p.endpoint().to_string(),
                 last_update_cp: cp,
             });
         }
@@ -68,9 +68,6 @@ impl Handler for SomaProviders {
                 soma_providers::endpoint.eq(diesel::dsl::sql::<diesel::sql_types::Text>(
                     "EXCLUDED.endpoint",
                 )),
-                soma_providers::registered_at_ms.eq(
-                    diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.registered_at_ms"),
-                ),
                 soma_providers::last_update_cp.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
                     "EXCLUDED.last_update_cp",
                 )),

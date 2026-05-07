@@ -754,6 +754,10 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 coin_type: Some(coin_type_label(args.coin_type).to_string()),
                 amount: Some(args.amount),
             }),
+            K::RateChannel(args) => Kind::RateChannel(RateChannel {
+                channel_id: Some(args.channel_id.to_string()),
+                negative: Some(args.negative),
+            }),
 
             // Provider registry tx kinds.
             K::RegisterProvider(args) => Kind::RegisterProvider(RegisterProvider {

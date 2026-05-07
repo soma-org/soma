@@ -181,6 +181,14 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_channel_events pipeline")?;
 
     indexer
+        .concurrent_pipeline(
+            handlers::soma_channel_ratings::SomaChannelRatings,
+            no_prune.clone(),
+        )
+        .await
+        .context("Failed to register soma_channel_ratings pipeline")?;
+
+    indexer
         .concurrent_pipeline(handlers::soma_providers::SomaProviders, no_prune)
         .await
         .context("Failed to register soma_providers pipeline")?;

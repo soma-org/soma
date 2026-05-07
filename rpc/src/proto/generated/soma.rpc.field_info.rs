@@ -5886,6 +5886,12 @@ mod _field_impls {
             number: 54i32,
             message_fields: Some(TopUp::FIELDS),
         };
+        pub const RATE_CHANNEL_FIELD: &'static MessageField = &MessageField {
+            name: "rate_channel",
+            json_name: "rateChannel",
+            number: 57i32,
+            message_fields: Some(RateChannel::FIELDS),
+        };
         pub const REGISTER_PROVIDER_FIELD: &'static MessageField = &MessageField {
             name: "register_provider",
             json_name: "registerProvider",
@@ -5952,6 +5958,7 @@ mod _field_impls {
             Self::REQUEST_CLOSE_FIELD,
             Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
             Self::TOP_UP_FIELD,
+            Self::RATE_CHANNEL_FIELD,
             Self::REGISTER_PROVIDER_FIELD,
             Self::UPDATE_PROVIDER_FIELD,
             Self::SETTLEMENT_FIELD,
@@ -6141,6 +6148,10 @@ mod _field_impls {
         pub fn top_up(mut self) -> TopUpFieldPathBuilder {
             self.path.push(TransactionKind::TOP_UP_FIELD.name);
             TopUpFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn rate_channel(mut self) -> RateChannelFieldPathBuilder {
+            self.path.push(TransactionKind::RATE_CHANNEL_FIELD.name);
+            RateChannelFieldPathBuilder::new_with_base(self.path)
         }
         pub fn register_provider(mut self) -> RegisterProviderFieldPathBuilder {
             self.path.push(TransactionKind::REGISTER_PROVIDER_FIELD.name);
@@ -8896,6 +8907,55 @@ mod _field_impls {
         }
         pub fn amount(mut self) -> String {
             self.path.push(TopUp::AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RateChannel {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const NEGATIVE_FIELD: &'static MessageField = &MessageField {
+            name: "negative",
+            json_name: "negative",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RateChannel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::NEGATIVE_FIELD,
+        ];
+    }
+    impl RateChannel {
+        pub fn path_builder() -> RateChannelFieldPathBuilder {
+            RateChannelFieldPathBuilder::new()
+        }
+    }
+    pub struct RateChannelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RateChannelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(RateChannel::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn negative(mut self) -> String {
+            self.path.push(RateChannel::NEGATIVE_FIELD.name);
             self.finish()
         }
     }

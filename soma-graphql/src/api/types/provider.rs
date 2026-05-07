@@ -20,7 +20,6 @@ use crate::db::PgReader;
 pub struct Provider {
     pub address: Vec<u8>,
     pub endpoint: String,
-    pub registered_at_ms: i64,
     pub last_update_cp: i64,
 }
 
@@ -42,6 +41,14 @@ pub struct ProviderReputation {
     /// provider's channels (excluding withdrawn). Loose proxy for
     /// "how long buyers stick around."
     pub mean_channel_span_cps: BigInt,
+    /// Volume-weighted fraction of recently-rated channels this
+    /// provider's buyers flagged negative. `None` when no in-window
+    /// ratings on positive-volume channels (consumers should treat
+    /// "no signal" rather than `0.0`).
+    pub negative_rate_30d: Option<f64>,
+    /// Number of distinct channels rated in the 30d window.
+    /// Confidence proxy alongside `negative_rate_30d`.
+    pub rating_count_30d: BigInt,
     /// Versioned with the formula. Consumers compare to detect
     /// signal-definition changes without reading source.
     pub signal_version: i32,
@@ -59,12 +66,6 @@ impl Provider {
         &self.endpoint
     }
 
-    /// Wall-clock time of the most recent register/heartbeat.
-    /// Off-chain liveness is "now - registered_at_ms < threshold".
-    async fn registered_at_ms(&self) -> BigInt {
-        BigInt(self.registered_at_ms)
-    }
-
     /// Most recent checkpoint at which the provider record changed.
     async fn last_update_cp(&self) -> BigInt {
         BigInt(self.last_update_cp)
@@ -79,7 +80,7 @@ impl Provider {
 
         use indexer_alt_schema::schema::provider_reputation;
 
-        type Row = (Vec<u8>, i64, i64, f64, i64, i32);
+        type Row = (Vec<u8>, i64, i64, f64, i64, Option<f64>, i64, i32);
         let row: Option<Row> = provider_reputation::table
             .select((
                 provider_reputation::address,
@@ -87,6 +88,8 @@ impl Provider {
                 provider_reputation::distinct_buyers_30d,
                 provider_reputation::channel_renewal_rate,
                 provider_reputation::mean_channel_span_cps,
+                provider_reputation::negative_rate_30d,
+                provider_reputation::rating_count_30d,
                 provider_reputation::signal_version,
             ))
             .filter(provider_reputation::address.eq(&self.address))
@@ -100,7 +103,9 @@ impl Provider {
             distinct_buyers_30d: BigInt(r.2),
             channel_renewal_rate: r.3,
             mean_channel_span_cps: BigInt(r.4),
-            signal_version: r.5,
+            negative_rate_30d: r.5,
+            rating_count_30d: BigInt(r.6),
+            signal_version: r.7,
         }))
     }
 }

@@ -34,7 +34,6 @@ pub async fn run(
     wallet: Arc<WalletContext>,
     address: SomaAddress,
     soma_home: PathBuf,
-    heartbeat_interval_secs: u64,
 ) -> anyhow::Result<()> {
     tracing::info!(address = %address, "loaded provider identity");
 
@@ -66,10 +65,12 @@ pub async fn run(
     let channel = Arc::new(RunningTab::for_provider(cfg.auth.clock_skew_tolerance_secs));
     let ledger = ledger::Ledger::new(soma_home);
 
-    // On-chain registry. Lands the Provider object (or bumps the
-    // heartbeat). Failure is logged but not fatal — typical reason
-    // is the local node not yet being reachable; the heartbeat loop
-    // will retry.
+    // On-chain registry. Lands the Provider object or updates the
+    // advertised endpoint. Liveness is purely an off-chain concern
+    // (the proxy probes `endpoint` directly), so this runs once at
+    // boot and only re-runs if the operator restarts the server.
+    // Failure is logged but not fatal — the proxy can still discover
+    // the provider on the next refresh once the local node is up.
     if let Err(e) = sdk::provider::register_or_update(
         &wallet,
         address,
@@ -79,12 +80,6 @@ pub async fn run(
     {
         tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
     }
-    spawn_heartbeat(
-        wallet.clone(),
-        address,
-        cfg.server.public_endpoint.clone(),
-        heartbeat_interval_secs,
-    );
 
     // Background settle ticker. Insurance against provider crashes —
     // SIGTERM hook only fires on graceful shutdown, so without this
@@ -118,31 +113,6 @@ pub async fn run(
         .with_graceful_shutdown(shutdown_signal(chain.clone(), ledger.clone(), channel.clone()));
     serve.await?;
     Ok(())
-}
-
-fn spawn_heartbeat(
-    wallet: Arc<WalletContext>,
-    address: SomaAddress,
-    endpoint: String,
-    interval_secs: u64,
-) {
-    if interval_secs == 0 {
-        return;
-    }
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
-            // `UpdateProvider` stamps a fresh `registered_at_ms` from
-            // the consensus Clock — the indexer mirrors it into
-            // `soma_providers`, and downstream liveness watchers
-            // see the heartbeat.
-            if let Err(e) =
-                sdk::provider::update(&wallet, address, endpoint.clone()).await
-            {
-                tracing::warn!(err = %e, "on-chain provider heartbeat failed");
-            }
-        }
-    });
 }
 
 /// Background ticker that settles every channel with new progress

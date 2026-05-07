@@ -385,6 +385,10 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 coin_type: Some(args.coin_type.to_string()),
                 amount: Some(args.amount),
             }),
+            RateChannel(args) => Kind::RateChannel(super::RateChannel {
+                channel_id: Some(args.channel_id.to_string()),
+                negative: Some(args.negative),
+            }),
 
             // Provider registry
             RegisterProvider(args) => Kind::RegisterProvider(super::RegisterProvider {
@@ -823,6 +827,18 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 amount: args
                     .amount
                     .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+            }),
+
+            Kind::RateChannel(args) => Self::RateChannel(crate::types::RateChannelArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                negative: args
+                    .negative
+                    .ok_or_else(|| TryFromProtoError::missing("negative"))?,
             }),
 
             Kind::RegisterProvider(args) => {

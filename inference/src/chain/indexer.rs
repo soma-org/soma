@@ -3,15 +3,18 @@
 
 //! Indexer-backed [`ProviderRegistry`].
 //!
-//! `list_providers` queries the soma-graphql `providers(activeWithinMs:)`
-//! endpoint, which sources from the `soma_providers` indexer table —
-//! itself populated from `RegisterProvider` / `UpdateProvider`
-//! transactions on chain. `register_provider` is a no-op: registration
-//! happens directly through `sdk::provider::register_or_update` at
-//! server boot, so the indexer picks it up at the next checkpoint.
+//! `list_providers` queries the soma-graphql `providers` endpoint,
+//! which sources from the `soma_providers` indexer table — itself
+//! populated from `RegisterProvider` / `UpdateProvider` /
+//! `UnregisterProvider` transactions on chain. `register_provider`
+//! is a no-op: registration happens directly through
+//! `sdk::provider::register_or_update` at server boot, so the indexer
+//! picks it up at the next checkpoint.
 //!
-//! Stale providers are filtered by `active_within_ms` against
-//! `Provider.registered_at_ms` (heartbeat-based liveness).
+//! Liveness is purely off-chain: the proxy probes each returned
+//! `endpoint` over HTTP. Stale entries (servers that disappeared
+//! without unregistering) are filtered by failed probes, not by any
+//! on-chain timestamp.
 
 use std::time::Duration;
 
@@ -22,32 +25,20 @@ use types::base::SomaAddress;
 use crate::chain::types::*;
 use crate::chain::ProviderRegistry;
 
-/// Default staleness threshold — providers whose last on-chain
-/// heartbeat is older than this are dropped from the active set.
-/// Servers heartbeat via `UpdateProvider` every ~10 minutes (see
-/// `soma inference serve --heartbeat-interval-secs`), so 30 minutes
-/// tolerates a missed beat without dropping live providers.
-pub const DEFAULT_ACTIVE_WINDOW_MS: u64 = 30 * 60 * 1000;
-
 /// HTTP client over the soma-graphql `providers` query.
 #[derive(Clone)]
 pub struct IndexerProviderRegistry {
     http: reqwest::Client,
     url: String,
-    active_window_ms: u64,
 }
 
 impl IndexerProviderRegistry {
     pub fn new(url: String) -> Self {
-        Self::with_window(url, DEFAULT_ACTIVE_WINDOW_MS)
-    }
-
-    pub fn with_window(url: String, active_window_ms: u64) -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
             .expect("reqwest client");
-        Self { http, url, active_window_ms }
+        Self { http, url }
     }
 
     pub fn url(&self) -> &str {
@@ -59,22 +50,13 @@ impl IndexerProviderRegistry {
 impl ProviderRegistry for IndexerProviderRegistry {
     async fn list_providers(&self) -> Result<Vec<ProviderRecord>, ChainError> {
         let query = r#"
-            query Providers($w: Int!) {
-                providers(first: 50, activeWithinMs: $w) {
-                    edges { node { address endpoint registeredAtMs } }
+            query Providers {
+                providers(first: 50) {
+                    edges { node { address endpoint } }
                 }
             }
         "#;
-        // Clamp to i32 — the Int scalar's domain. 30 minutes (the
-        // default window) is well within i32 range; any caller that
-        // sets a larger window should switch the GraphQL field to
-        // BigInt at the same time.
-        let window_i32: i32 =
-            (self.active_window_ms as i64).clamp(0, i32::MAX as i64) as i32;
-        let body = serde_json::json!({
-            "query": query,
-            "variables": { "w": window_i32 },
-        });
+        let body = serde_json::json!({ "query": query });
         let resp = self
             .http
             .post(&self.url)
@@ -116,12 +98,10 @@ impl ProviderRegistry for IndexerProviderRegistry {
                 Ok(a) => a,
                 Err(_) => continue,
             };
-            let last_heartbeat_ms: u64 = parsed.registered_at_ms.parse().unwrap_or(0);
             out.push(ProviderRecord {
                 address,
                 pubkey_hex: String::new(),
                 endpoint: parsed.endpoint,
-                last_heartbeat_ms,
             });
         }
         Ok(out)
@@ -141,6 +121,4 @@ impl ProviderRegistry for IndexerProviderRegistry {
 struct GqlProvider {
     address: String,
     endpoint: String,
-    /// `BigInt` scalars come back as strings.
-    registered_at_ms: String,
 }

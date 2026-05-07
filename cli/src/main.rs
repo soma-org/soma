@@ -56,9 +56,6 @@ fn error_hint(msg: &str) -> Option<&'static str> {
             "Is the network running? Try `soma start localnet` to launch a local network.",
         );
     }
-    if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
-        return Some("Use `soma faucet` to request test tokens.");
-    }
     if msg_lower.contains("force-regenesis") {
         return Some(
             "Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.",

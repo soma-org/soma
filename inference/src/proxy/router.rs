@@ -33,12 +33,16 @@ fn price_score(card: &ModelCard) -> u128 {
 ///   -w_price·price + w_volume·log(volume_settled_30d + 1)
 ///                  + w_buyers·log(distinct_buyers_30d + 1)
 ///                  + w_renewal·channel_renewal_rate
+///                  - w_negative_rate·negative_rate_30d
 /// ```
 ///
 /// Logs damp high-cardinality signals so a single big provider
 /// doesn't dominate. Reputation `None` contributes 0 (unknown
 /// provider scores strictly worse than one with positive signal).
-/// Pulled out of [`Router::weighted_score`] for unit-testability.
+/// `negative_rate_30d == None` (no in-window ratings) contributes 0
+/// — absence of complaints is not a positive signal but also not a
+/// negative one. Pulled out of [`Router::weighted_score`] for
+/// unit-testability.
 fn weighted_score(
     w: &RoutingWeights,
     card: &ModelCard,
@@ -50,6 +54,9 @@ fn weighted_score(
         score += w.volume * (r.volume_settled_30d as f64 + 1.0).ln();
         score += w.buyers * (r.distinct_buyers_30d as f64 + 1.0).ln();
         score += w.renewal * r.channel_renewal_rate;
+        if let Some(neg_rate) = r.negative_rate_30d {
+            score -= w.negative_rate * neg_rate;
+        }
     }
     score
 }
@@ -412,6 +419,26 @@ mod tests {
             distinct_buyers_30d: buyers,
             channel_renewal_rate: renewal,
             mean_channel_span_cps: 0,
+            negative_rate_30d: None,
+            rating_count_30d: 0,
+        }
+    }
+
+    /// Helper: same as `rep` but with an explicit `negative_rate_30d`.
+    fn rep_with_neg(
+        volume: u64,
+        buyers: u64,
+        renewal: f64,
+        negative_rate: f64,
+        rating_count: u64,
+    ) -> ProviderReputation {
+        ProviderReputation {
+            volume_settled_30d: volume,
+            distinct_buyers_30d: buyers,
+            channel_renewal_rate: renewal,
+            mean_channel_span_cps: 0,
+            negative_rate_30d: Some(negative_rate),
+            rating_count_30d: rating_count,
         }
     }
 
@@ -449,6 +476,7 @@ mod tests {
             volume: 5.0,
             renewal: 1.0,
             buyers: 2.0,
+            negative_rate: 0.0,
         };
 
         let cheap_low_rep = card("0.0000001", "0.0000002");
@@ -469,7 +497,13 @@ mod tests {
     /// even against a higher-rep competitor.
     #[test]
     fn weighted_mode_falls_back_to_price_when_weights_tilt_that_way() {
-        let w = RoutingWeights { price: 100.0, volume: 0.01, renewal: 0.01, buyers: 0.01 };
+        let w = RoutingWeights {
+            price: 100.0,
+            volume: 0.01,
+            renewal: 0.01,
+            buyers: 0.01,
+            negative_rate: 0.0,
+        };
 
         let cheap = card("0.0000001", "0.0000002");
         let pricey = card("0.0000010", "0.0000020");
@@ -513,7 +547,13 @@ mod tests {
     /// factor of 2. Sanity: 2× volume costs less than 1.0 of price.
     #[test]
     fn log_damping_caps_signal_growth() {
-        let w = RoutingWeights { price: 1.0, volume: 1.0, renewal: 0.0, buyers: 0.0 };
+        let w = RoutingWeights {
+            price: 1.0,
+            volume: 1.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 0.0,
+        };
         let c = card("0.0000000", "0.0000000"); // price = 0
         let s_lo = weighted_score(&w, &c, Some(rep(1, 0, 0.0)));
         let s_hi = weighted_score(&w, &c, Some(rep(1_000_000, 0, 0.0)));
@@ -522,6 +562,52 @@ mod tests {
         assert!(
             delta > 5.0 && delta < 20.0,
             "log-scale delta out of expected band: {delta}"
+        );
+    }
+
+    /// `negative_rate_30d` lowers the score in proportion to the
+    /// configured weight; identical providers with different
+    /// negative rates rank with the lower-rate one ahead.
+    #[test]
+    fn weighted_mode_penalizes_high_negative_rate() {
+        let w = RoutingWeights {
+            price: 0.0,
+            volume: 0.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 10.0,
+        };
+        let c = card("0.0000001", "0.0000001");
+        let clean = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.0, 8)));
+        let mid = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.5, 8)));
+        let bad = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 1.0, 8)));
+        assert!(
+            clean > mid && mid > bad,
+            "monotonic penalty: clean={clean}, mid={mid}, bad={bad}",
+        );
+        // Exact: clean - bad = w.negative_rate * 1.0 = 10.0.
+        assert!(((clean - bad) - 10.0).abs() < 1e-9);
+    }
+
+    /// `negative_rate_30d == None` is a no-op even with a high
+    /// `w.negative_rate`. Absence of complaints isn't punished as
+    /// if it were maximum complaint.
+    #[test]
+    fn missing_negative_rate_is_a_no_op() {
+        let w = RoutingWeights {
+            price: 0.0,
+            volume: 0.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 10.0,
+        };
+        let c = card("0.0000001", "0.0000001");
+        let no_signal = weighted_score(&w, &c, Some(rep(1_000, 5, 0.0)));
+        let zero_neg = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.0, 8)));
+        assert!(
+            (no_signal - zero_neg).abs() < 1e-9,
+            "None and Some(0.0) should score identically: \
+             none={no_signal}, zero={zero_neg}",
         );
     }
 }

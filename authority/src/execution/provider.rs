@@ -8,17 +8,17 @@
 //! | Op                | Caller                    | Purpose                                       |
 //! |-------------------|---------------------------|-----------------------------------------------|
 //! | RegisterProvider  | anyone (becomes provider) | Creates a Provider object at derive_id(signer)|
-//! | UpdateProvider    | provider.address          | Bumps registered_at_ms; may change endpoint   |
+//! | UpdateProvider    | provider.address          | Changes the advertised endpoint               |
 //!
-//! `UpdateProvider` doubles as the heartbeat — there is no separate
-//! tx kind. Off-chain code decides whether a provider is "live" by
-//! looking at `registered_at_ms` against a staleness threshold.
+//! Liveness is purely an off-chain question — the proxy probes the
+//! advertised endpoint via HTTP. Nothing on-chain pretends to track
+//! whether a provider is responding.
 
-use types::base::{SomaAddress, TimestampMs};
+use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::ExecutionResult;
-use types::object::{Object, ObjectID};
+use types::object::Object;
 use types::provider::Provider;
 use types::temporary_store::TemporaryStore;
 use types::transaction::{RegisterProviderArgs, TransactionKind, UpdateProviderArgs};
@@ -36,12 +36,6 @@ pub struct ProviderExecutor;
 impl ProviderExecutor {
     pub(crate) fn new() -> Self {
         Self {}
-    }
-
-    fn read_clock_ts(store: &TemporaryStore) -> ExecutionResult<TimestampMs> {
-        store
-            .read_clock_timestamp_ms()
-            .ok_or(ExecutionFailureStatus::ProviderClockMissing)
     }
 
     /// Validate a candidate `endpoint` string. Empty or oversized
@@ -84,17 +78,15 @@ impl ProviderExecutor {
             return Err(ExecutionFailureStatus::ProviderAlreadyExists.into());
         }
 
-        let now_ms = Self::read_clock_ts(store)?;
-        let provider = Provider::new(signer, args.endpoint, now_ms);
+        let provider = Provider::new(signer, args.endpoint);
         let provider_object = Object::new_provider(provider, tx_digest);
         store.create_object(provider_object);
         Ok(())
     }
 
-    /// Execute `UpdateProvider`. Always stamps `registered_at_ms`
-    /// (heartbeat); endpoint update is optional from the user's
-    /// perspective (they may submit the same endpoint to bump the
-    /// heartbeat without a logical change).
+    /// Execute `UpdateProvider`. Changes the advertised endpoint.
+    /// Same-endpoint submissions are accepted but have no on-chain
+    /// effect (no liveness signal exists for them to refresh).
     fn execute_update(
         &self,
         store: &mut TemporaryStore,
@@ -127,13 +119,11 @@ impl ProviderExecutor {
         // also matches. Catches the (impossible-by-construction but
         // worth-asserting) case where someone forges a Provider
         // object at the right id with the wrong embedded address.
-        if provider.address != signer {
+        if provider.address() != signer {
             return Err(ExecutionFailureStatus::ProviderCallerMismatch.into());
         }
 
-        let now_ms = Self::read_clock_ts(store)?;
-        provider.endpoint = args.endpoint;
-        provider.registered_at_ms = now_ms;
+        provider.set_endpoint(args.endpoint);
 
         let mut updated = provider_object;
         updated.set_provider_data(&provider);
@@ -170,10 +160,8 @@ impl TransactionExecutor for ProviderExecutor {
 #[cfg(test)]
 mod tests {
     use protocol_config::Chain;
-    use types::CLOCK_OBJECT_ID;
-    use types::CLOCK_OBJECT_SHARED_VERSION;
     use types::digests::TransactionDigest;
-    use types::object::{ObjectID, ObjectType};
+    use types::object::ObjectType;
     use types::system_state::FeeParameters;
     use types::temporary_store::TemporaryStore;
     use types::transaction::{
@@ -182,18 +170,8 @@ mod tests {
 
     use super::*;
 
-    /// Helper: build a TemporaryStore with the Clock present at `ts_ms`.
-    fn empty_store_with_clock(ts_ms: TimestampMs) -> TemporaryStore {
-        let clock_obj = Object::new_clock_with_timestamp_for_testing(ts_ms);
-        let inputs = InputObjects::new(vec![ObjectReadResult::new(
-            InputObjectKind::SharedObject {
-                id: CLOCK_OBJECT_ID,
-                initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
-                mutable: false,
-            },
-            ObjectReadResultKind::Object(clock_obj),
-        )]);
-
+    fn empty_store() -> TemporaryStore {
+        let inputs = InputObjects::new(Vec::new());
         TemporaryStore::new(
             inputs,
             Vec::new(),
@@ -205,30 +183,16 @@ mod tests {
         )
     }
 
-    fn empty_store_with_clock_and_provider(
-        ts_ms: TimestampMs,
-        provider_obj: Object,
-    ) -> TemporaryStore {
-        let clock_obj = Object::new_clock_with_timestamp_for_testing(ts_ms);
+    fn store_with_provider(provider_obj: Object) -> TemporaryStore {
         let provider_id = provider_obj.id();
-        let inputs = InputObjects::new(vec![
-            ObjectReadResult::new(
-                InputObjectKind::SharedObject {
-                    id: CLOCK_OBJECT_ID,
-                    initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
-                    mutable: false,
-                },
-                ObjectReadResultKind::Object(clock_obj),
-            ),
-            ObjectReadResult::new(
-                InputObjectKind::SharedObject {
-                    id: provider_id,
-                    initial_shared_version: types::object::OBJECT_START_VERSION,
-                    mutable: true,
-                },
-                ObjectReadResultKind::Object(provider_obj),
-            ),
-        ]);
+        let inputs = InputObjects::new(vec![ObjectReadResult::new(
+            InputObjectKind::SharedObject {
+                id: provider_id,
+                initial_shared_version: types::object::OBJECT_START_VERSION,
+                mutable: true,
+            },
+            ObjectReadResultKind::Object(provider_obj),
+        )]);
         TemporaryStore::new(
             inputs,
             Vec::new(),
@@ -249,7 +213,7 @@ mod tests {
     #[test]
     fn register_creates_provider_at_derived_id() {
         let signer = addr(1);
-        let mut store = empty_store_with_clock(1_000);
+        let mut store = empty_store();
         let mut exec = ProviderExecutor::new();
         exec.execute_register(
             &mut store,
@@ -263,17 +227,16 @@ mod tests {
         let obj = store.read_object(&id).expect("provider exists");
         assert_eq!(*obj.type_(), ObjectType::Provider);
         let p = obj.as_provider().unwrap();
-        assert_eq!(p.address, signer);
-        assert_eq!(p.endpoint, "https://prov.example");
-        assert_eq!(p.registered_at_ms, 1_000);
+        assert_eq!(p.address(), signer);
+        assert_eq!(p.endpoint(), "https://prov.example");
     }
 
     #[test]
     fn register_rejects_duplicate() {
         let signer = addr(2);
-        let prov = Provider::new(signer, "https://old.example".into(), 0);
+        let prov = Provider::new(signer, "https://old.example".into());
         let prov_obj = Object::new_provider_for_testing(prov);
-        let mut store = empty_store_with_clock_and_provider(2_000, prov_obj);
+        let mut store = store_with_provider(prov_obj);
 
         let mut exec = ProviderExecutor::new();
         let err = exec
@@ -284,16 +247,13 @@ mod tests {
                 TransactionDigest::default(),
             )
             .expect_err("duplicate must fail");
-        assert!(matches!(
-            err,
-            ExecutionFailureStatus::ProviderAlreadyExists
-        ));
+        assert!(matches!(err, ExecutionFailureStatus::ProviderAlreadyExists));
     }
 
     #[test]
     fn register_rejects_empty_endpoint() {
         let signer = addr(3);
-        let mut store = empty_store_with_clock(1);
+        let mut store = empty_store();
         let mut exec = ProviderExecutor::new();
         let err = exec
             .execute_register(
@@ -312,7 +272,7 @@ mod tests {
     #[test]
     fn register_rejects_oversized_endpoint() {
         let signer = addr(4);
-        let mut store = empty_store_with_clock(1);
+        let mut store = empty_store();
         let mut exec = ProviderExecutor::new();
         let too_long = "x".repeat(PROVIDER_ENDPOINT_MAX_LEN + 1);
         let err = exec
@@ -330,39 +290,35 @@ mod tests {
     }
 
     #[test]
-    fn update_bumps_heartbeat_and_endpoint() {
+    fn update_changes_endpoint() {
         let signer = addr(5);
-        let prov = Provider::new(signer, "https://old.example".into(), 100);
+        let prov = Provider::new(signer, "https://old.example".into());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(signer);
-        let mut store = empty_store_with_clock_and_provider(5_000, prov_obj);
+        let mut store = store_with_provider(prov_obj);
 
         let mut exec = ProviderExecutor::new();
         exec.execute_update(
             &mut store,
             signer,
-            UpdateProviderArgs {
-                provider_id,
-                endpoint: "https://new.example".into(),
-            },
+            UpdateProviderArgs { provider_id, endpoint: "https://new.example".into() },
             TransactionDigest::default(),
         )
         .expect("update succeeds");
 
         let obj = store.read_object(&provider_id).unwrap();
         let p = obj.as_provider().unwrap();
-        assert_eq!(p.endpoint, "https://new.example");
-        assert_eq!(p.registered_at_ms, 5_000);
-        assert_eq!(p.address, signer, "address never changes");
+        assert_eq!(p.endpoint(), "https://new.example");
+        assert_eq!(p.address(), signer, "address never changes");
     }
 
     #[test]
-    fn update_heartbeat_with_same_endpoint_succeeds() {
+    fn update_with_same_endpoint_succeeds() {
         let signer = addr(6);
-        let prov = Provider::new(signer, "https://stable.example".into(), 100);
+        let prov = Provider::new(signer, "https://stable.example".into());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(signer);
-        let mut store = empty_store_with_clock_and_provider(9_999, prov_obj);
+        let mut store = store_with_provider(prov_obj);
 
         let mut exec = ProviderExecutor::new();
         exec.execute_update(
@@ -374,20 +330,20 @@ mod tests {
             },
             TransactionDigest::default(),
         )
-        .expect("heartbeat-only update succeeds");
+        .expect("same-endpoint update succeeds");
 
         let p = store.read_object(&provider_id).unwrap().as_provider().unwrap();
-        assert_eq!(p.registered_at_ms, 9_999);
+        assert_eq!(p.endpoint(), "https://stable.example");
     }
 
     #[test]
     fn update_rejects_wrong_signer() {
         let owner = addr(7);
         let attacker = addr(8);
-        let prov = Provider::new(owner, "https://prov.example".into(), 0);
+        let prov = Provider::new(owner, "https://prov.example".into());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(owner);
-        let mut store = empty_store_with_clock_and_provider(1, prov_obj);
+        let mut store = store_with_provider(prov_obj);
 
         let mut exec = ProviderExecutor::new();
         let err = exec
@@ -401,16 +357,13 @@ mod tests {
                 TransactionDigest::default(),
             )
             .expect_err("wrong signer must fail");
-        assert!(matches!(
-            err,
-            ExecutionFailureStatus::ProviderCallerMismatch
-        ));
+        assert!(matches!(err, ExecutionFailureStatus::ProviderCallerMismatch));
     }
 
     #[test]
     fn update_rejects_unregistered() {
         let signer = addr(9);
-        let mut store = empty_store_with_clock(1);
+        let mut store = empty_store();
         let provider_id = Provider::derive_id(signer);
 
         let mut exec = ProviderExecutor::new();
@@ -418,16 +371,10 @@ mod tests {
             .execute_update(
                 &mut store,
                 signer,
-                UpdateProviderArgs {
-                    provider_id,
-                    endpoint: "https://prov.example".into(),
-                },
+                UpdateProviderArgs { provider_id, endpoint: "https://prov.example".into() },
                 TransactionDigest::default(),
             )
             .expect_err("not-registered must fail");
-        assert!(matches!(
-            err,
-            ExecutionFailureStatus::ProviderNotFound
-        ));
+        assert!(matches!(err, ExecutionFailureStatus::ProviderNotFound));
     }
 }

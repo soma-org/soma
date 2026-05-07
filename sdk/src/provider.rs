@@ -6,8 +6,7 @@
 //! Two ops:
 //!   - [`register`] — first-time registration. Hard-fails on chain if
 //!     a Provider object already exists for the signer.
-//!   - [`update`] — heartbeat / endpoint change. Stamps a fresh
-//!     `registered_at_ms` from the consensus Clock on every call.
+//!   - [`update`] — change the advertised endpoint.
 //!
 //! Plus [`get`] for a one-shot read of the provider record by
 //! address. Servers call [`register_or_update`] on boot to be
@@ -38,10 +37,9 @@ pub async fn register(
     Ok(Provider::derive_id(sender))
 }
 
-/// Submit an `UpdateProvider` tx. Bumps `registered_at_ms` to the
-/// current Clock; updates `endpoint` to the supplied value. Doubles
-/// as a heartbeat — the executor stamps the timestamp on every call,
-/// even when the endpoint is unchanged.
+/// Submit an `UpdateProvider` tx. Changes the advertised `endpoint`.
+/// Submitting the same endpoint succeeds but has no on-chain effect —
+/// there's no liveness signal on-chain to refresh.
 pub async fn update(
     ctx: &WalletContext,
     sender: SomaAddress,

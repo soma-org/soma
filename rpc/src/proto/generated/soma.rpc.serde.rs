@@ -12833,6 +12833,121 @@ impl<'de> serde::Deserialize<'de> for ProtocolConfig {
         deserializer.deserialize_struct("soma.rpc.ProtocolConfig", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for RateChannel {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.channel_id.is_some() {
+            len += 1;
+        }
+        if self.negative.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.RateChannel", len)?;
+        if let Some(v) = self.channel_id.as_ref() {
+            struct_ser.serialize_field("channelId", v)?;
+        }
+        if let Some(v) = self.negative.as_ref() {
+            struct_ser.serialize_field("negative", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for RateChannel {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "channel_id",
+            "channelId",
+            "negative",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChannelId,
+            Negative,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "channelId" | "channel_id" => Ok(GeneratedField::ChannelId),
+                            "negative" => Ok(GeneratedField::Negative),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = RateChannel;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.RateChannel")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<RateChannel, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut channel_id__ = None;
+                let mut negative__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChannelId => {
+                            if channel_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("channelId"));
+                            }
+                            channel_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Negative => {
+                            if negative__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("negative"));
+                            }
+                            negative__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(RateChannel {
+                    channel_id: channel_id__,
+                    negative: negative__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.RateChannel", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for RegisterProvider {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -17930,6 +18045,9 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::TopUp(v) => {
                     struct_ser.serialize_field("topUp", v)?;
                 }
+                transaction_kind::Kind::RateChannel(v) => {
+                    struct_ser.serialize_field("rateChannel", v)?;
+                }
                 transaction_kind::Kind::RegisterProvider(v) => {
                     struct_ser.serialize_field("registerProvider", v)?;
                 }
@@ -18030,6 +18148,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "withdrawAfterTimeout",
             "top_up",
             "topUp",
+            "rate_channel",
+            "rateChannel",
             "register_provider",
             "registerProvider",
             "update_provider",
@@ -18080,6 +18200,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             RequestClose,
             WithdrawAfterTimeout,
             TopUp,
+            RateChannel,
             RegisterProvider,
             UpdateProvider,
             Settlement,
@@ -18145,6 +18266,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "requestClose" | "request_close" => Ok(GeneratedField::RequestClose),
                             "withdrawAfterTimeout" | "withdraw_after_timeout" => Ok(GeneratedField::WithdrawAfterTimeout),
                             "topUp" | "top_up" => Ok(GeneratedField::TopUp),
+                            "rateChannel" | "rate_channel" => Ok(GeneratedField::RateChannel),
                             "registerProvider" | "register_provider" => Ok(GeneratedField::RegisterProvider),
                             "updateProvider" | "update_provider" => Ok(GeneratedField::UpdateProvider),
                             "settlement" => Ok(GeneratedField::Settlement),
@@ -18444,6 +18566,13 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("topUp"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::TopUp)
+;
+                        }
+                        GeneratedField::RateChannel => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("rateChannel"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::RateChannel)
 ;
                         }
                         GeneratedField::RegisterProvider => {

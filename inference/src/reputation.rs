@@ -21,6 +21,14 @@ pub struct ProviderReputation {
     pub distinct_buyers_30d: u64,
     pub channel_renewal_rate: f64,
     pub mean_channel_span_cps: u64,
+    /// Volume-weighted fraction of rated channels this provider's
+    /// buyers flagged negative, in the 30d window. `None` when no
+    /// in-window ratings on positive-volume channels — consumers
+    /// treat as "no signal", not 0.
+    pub negative_rate_30d: Option<f64>,
+    /// Number of distinct channels rated in the 30d window.
+    /// Confidence proxy alongside `negative_rate_30d`.
+    pub rating_count_30d: u64,
 }
 
 /// Thin GraphQL client over `provider(address) { reputation { ... } }`
@@ -60,6 +68,8 @@ impl IndexerClient {
                         distinctBuyers30d
                         channelRenewalRate
                         meanChannelSpanCps
+                        negativeRate30d
+                        ratingCount30d
                     }
                 }
             }
@@ -88,6 +98,8 @@ impl IndexerClient {
             distinct_buyers_30d: parsed.distinct_buyers_30d.parse().unwrap_or(0),
             channel_renewal_rate: parsed.channel_renewal_rate,
             mean_channel_span_cps: parsed.mean_channel_span_cps.parse().unwrap_or(0),
+            negative_rate_30d: parsed.negative_rate_30d,
+            rating_count_30d: parsed.rating_count_30d.parse().unwrap_or(0),
         }))
     }
 
@@ -116,4 +128,9 @@ struct GqlReputation {
     distinct_buyers_30d: String,
     channel_renewal_rate: f64,
     mean_channel_span_cps: String,
+    /// `Float` scalar; `None` (NULL on the view) when no in-window
+    /// ratings on positive-volume channels.
+    #[serde(default)]
+    negative_rate_30d: Option<f64>,
+    rating_count_30d: String,
 }

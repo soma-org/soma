@@ -91,9 +91,9 @@ async fn submit_update(
     }
 }
 
-/// Happy path: register lands a Provider object at the derived id with
-/// the supplied endpoint and a non-zero `registered_at_ms`. Update
-/// changes the endpoint and bumps the timestamp.
+/// Happy path: register lands a Provider object at the derived id
+/// with the supplied endpoint. Update changes the endpoint while
+/// preserving address.
 #[cfg(msim)]
 #[msim::sim_test]
 async fn provider_register_then_update_e2e() {
@@ -111,9 +111,8 @@ async fn provider_register_then_update_e2e() {
 
     let id = Provider::derive_id(signer);
     let p1 = read_provider(&test_cluster, id).expect("Provider object created");
-    assert_eq!(p1.address, signer);
-    assert_eq!(p1.endpoint, endpoint_1);
-    assert!(p1.registered_at_ms > 0, "registered_at_ms stamped from clock");
+    assert_eq!(p1.address(), signer);
+    assert_eq!(p1.endpoint(), endpoint_1);
 
     // Update — endpoint change.
     let endpoint_2 = "https://provider-one-v2.example:8080";
@@ -123,12 +122,8 @@ async fn provider_register_then_update_e2e() {
     );
 
     let p2 = read_provider(&test_cluster, id).expect("Provider still present");
-    assert_eq!(p2.address, signer, "address never changes");
-    assert_eq!(p2.endpoint, endpoint_2, "endpoint updated");
-    assert!(
-        p2.registered_at_ms >= p1.registered_at_ms,
-        "registered_at_ms is monotonic across updates"
-    );
+    assert_eq!(p2.address(), signer, "address never changes");
+    assert_eq!(p2.endpoint(), endpoint_2, "endpoint updated");
 }
 
 // Note: duplicate-detection and wrong-signer paths are covered by
@@ -138,42 +133,6 @@ async fn provider_register_then_update_e2e() {
 // arrange when the object's existence is the property under test.
 // SDKs avoid the duplicate-register pitfall by going through
 // `sdk::provider::register_or_update`.
-
-/// Heartbeat path: calling UpdateProvider with the same endpoint
-/// still bumps `registered_at_ms`. This is the off-chain heartbeat
-/// signal — without bumping the timestamp, an off-chain liveness
-/// monitor couldn't tell live providers from stale ones.
-#[cfg(msim)]
-#[msim::sim_test]
-async fn provider_update_heartbeats_with_unchanged_endpoint() {
-    init_tracing();
-    let test_cluster = TestClusterBuilder::new().build().await;
-    let signer = test_cluster.wallet.get_addresses()[0];
-    let endpoint = "https://stable.example";
-
-    assert!(submit_register(&test_cluster, signer, endpoint).await);
-    let id = Provider::derive_id(signer);
-    let t0 = read_provider(&test_cluster, id).unwrap().registered_at_ms;
-
-    // Drive a commit so the clock advances at least one tick before the
-    // heartbeat. Without this the timestamp may not change.
-    let addrs = test_cluster.wallet.get_addresses();
-    let tx = e2e_tests::balance_transfer_data(
-        &test_cluster,
-        types::object::CoinType::Usdc,
-        addrs[0],
-        vec![(addrs[1], 1)],
-    );
-    let _ = test_cluster.sign_and_execute_transaction(&tx).await;
-
-    assert!(submit_update(&test_cluster, signer, endpoint).await);
-    let p = read_provider(&test_cluster, id).unwrap();
-    assert_eq!(p.endpoint, endpoint, "endpoint unchanged on heartbeat");
-    assert!(
-        p.registered_at_ms >= t0,
-        "registered_at_ms must be monotonic non-decreasing"
-    );
-}
 
 /// UpdateProvider on a never-registered address fails (no Provider
 /// object to load).

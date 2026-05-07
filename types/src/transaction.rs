@@ -125,10 +125,15 @@ pub enum TransactionKind {
     RequestClose(RequestCloseArgs),
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
     TopUp(TopUpArgs),
+    /// Payer flags a channel they've paid into as negative or
+    /// positive. Aggregated by the off-chain `provider_reputation`
+    /// view as a *volume-weighted negative rate* per provider; not
+    /// consensus-validated beyond auth + settled-amount precondition.
+    RateChannel(RateChannelArgs),
 
-    // Provider registry. Two ops only — there is no unregister;
-    // stale providers fall out of the off-chain active set by
-    // `registered_at_ms` heartbeat decay.
+    // Provider registry. Liveness is purely off-chain (HTTP probes
+    // by the proxy), so the only on-chain ops are register and
+    // endpoint update.
     RegisterProvider(RegisterProviderArgs),
     UpdateProvider(UpdateProviderArgs),
 
@@ -295,6 +300,29 @@ pub struct RequestCloseArgs {
     pub channel_id: ObjectID,
 }
 
+/// Args for `RateChannel`. The channel's payer flags a channel
+/// they've paid into as negative (`true`) or positive (`false`).
+/// Latest-wins: a subsequent `RateChannel` from the same payer
+/// replaces the prior flag (service quality can change).
+///
+/// Executor checks:
+///   * sender == channel.payer (only the buyer can rate the seller)
+///   * channel.settled_amount > 0 (must have actually paid before
+///     forming an opinion).
+///
+/// The view computes a volume-weighted **negative rate** per
+/// provider: among rated channels, what fraction of settled volume
+/// came from buyers who flagged the channel negatively. Higher =
+/// worse service signal.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RateChannelArgs {
+    pub channel_id: ObjectID,
+    /// `true` = negative rating (thumbs down), `false` = positive
+    /// (thumbs up). Both values are recorded; the view aggregates
+    /// the negative *rate* across rated volume.
+    pub negative: bool,
+}
+
 /// Args for `WithdrawAfterTimeout`. Payer-only. Reads Clock and
 /// SystemState (for `channel_grace_period_ms`) and pays the
 /// remainder of the deposit back to the payer if the grace period
@@ -331,8 +359,8 @@ pub struct TopUpArgs {
 
 /// Args for `RegisterProvider`. Signer becomes the provider's address;
 /// `Provider::derive_id(signer)` is the canonical id of the resulting
-/// shared object. Re-registration fails — use `UpdateProvider` to bump
-/// the heartbeat or change the endpoint.
+/// shared object. Re-registration fails — use `UpdateProvider` to
+/// change the endpoint.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct RegisterProviderArgs {
     /// HTTP(S) endpoint at which this provider serves `/soma/info`
@@ -341,9 +369,10 @@ pub struct RegisterProviderArgs {
     pub endpoint: String,
 }
 
-/// Args for `UpdateProvider`. Doubles as a heartbeat: the executor
-/// stamps `registered_at_ms` from the Clock on every call regardless
-/// of whether `endpoint` changed.
+/// Args for `UpdateProvider`. Changes the advertised `endpoint` on an
+/// existing Provider object. Same-endpoint submissions are accepted
+/// but have no observable on-chain effect — there is no liveness
+/// signal on-chain to refresh.
 ///
 /// `provider_id` is carried in the args (rather than derived
 /// post-hoc from the signer) so the scheduler can declare the
@@ -438,6 +467,7 @@ impl TransactionKind {
                 | TransactionKind::RequestClose(_)
                 | TransactionKind::WithdrawAfterTimeout(_)
                 | TransactionKind::TopUp(_)
+                | TransactionKind::RateChannel(_)
         )
     }
 
@@ -449,14 +479,19 @@ impl TransactionKind {
         )
     }
 
-    /// Channel ops that need to mutate an existing Channel shared object
-    /// (everything except `OpenChannel`, which creates one).
-    fn channel_id_input(&self) -> Option<ObjectID> {
+    /// Channel ops that need an existing Channel as a shared input
+    /// (everything except `OpenChannel`, which creates one). The
+    /// boolean is `true` if the op mutates the Channel object,
+    /// `false` for read-only ops (`RateChannel` reads
+    /// `payer`/`settled_amount` to authorize the rating but doesn't
+    /// touch the channel state).
+    fn channel_id_input(&self) -> Option<(ObjectID, bool)> {
         match self {
-            TransactionKind::Settle(args) => Some(args.channel_id),
-            TransactionKind::RequestClose(args) => Some(args.channel_id),
-            TransactionKind::WithdrawAfterTimeout(args) => Some(args.channel_id),
-            TransactionKind::TopUp(args) => Some(args.channel_id),
+            TransactionKind::Settle(args) => Some((args.channel_id, true)),
+            TransactionKind::RequestClose(args) => Some((args.channel_id, true)),
+            TransactionKind::WithdrawAfterTimeout(args) => Some((args.channel_id, true)),
+            TransactionKind::TopUp(args) => Some((args.channel_id, true)),
+            TransactionKind::RateChannel(args) => Some((args.channel_id, false)),
             _ => None,
         }
     }
@@ -498,10 +533,7 @@ impl TransactionKind {
     pub fn requires_clock_read(&self) -> bool {
         matches!(
             self,
-            TransactionKind::RequestClose(_)
-                | TransactionKind::WithdrawAfterTimeout(_)
-                | TransactionKind::RegisterProvider(_)
-                | TransactionKind::UpdateProvider(_)
+            TransactionKind::RequestClose(_) | TransactionKind::WithdrawAfterTimeout(_)
         )
     }
 
@@ -611,17 +643,18 @@ impl TransactionKind {
         // OBJECT_START_VERSION here. The shared-object scheduler
         // resolves to the actual current version via
         // `get_or_init_versions`.
-        if let Some(channel_id) = self.channel_id_input() {
+        if let Some((channel_id, mutable)) = self.channel_id_input() {
             objects.push(SharedInputObject {
                 id: channel_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
-                mutable: true,
+                mutable,
             });
         }
 
-        // UpdateProvider declares the existing Provider as a mutable
-        // shared input. Same `OBJECT_START_VERSION` convention as the
-        // channel ops — Provider::new_provider sets it.
+        // UpdateProvider / UnregisterProvider declare the existing
+        // Provider as a mutable shared input. RegisterProvider
+        // creates the object so it's omitted here (mirrors
+        // OpenChannel).
         if let Some(provider_id) = self.provider_id_input() {
             objects.push(SharedInputObject {
                 id: provider_id,
@@ -686,14 +719,16 @@ impl TransactionKind {
             });
         }
 
-        // Channel ops (other than OpenChannel) need the existing Channel
-        // as a mutable shared input. All channels use OBJECT_START_VERSION
-        // for `initial_shared_version` (set by `Object::new_channel`).
-        if let Some(channel_id) = self.channel_id_input() {
+        // Channel ops (other than OpenChannel) need the existing
+        // Channel as a shared input. Most mutate; `RateChannel`
+        // declares it read-only (it only validates the channel
+        // state, doesn't touch it). All channels use
+        // OBJECT_START_VERSION for `initial_shared_version`.
+        if let Some((channel_id, mutable)) = self.channel_id_input() {
             input_objects.push(InputObjectKind::SharedObject {
                 id: channel_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
-                mutable: true,
+                mutable,
             });
         }
 

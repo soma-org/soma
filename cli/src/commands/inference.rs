@@ -46,11 +46,6 @@ pub enum InferenceCommand {
         /// to ~/.soma.
         #[clap(long)]
         soma_home: Option<PathBuf>,
-        /// Heartbeat interval — `UpdateProvider` is sent on chain at
-        /// this cadence so off-chain liveness watchers see a fresh
-        /// `registered_at_ms`.
-        #[clap(long, default_value_t = 600)]
-        heartbeat_interval_secs: u64,
     },
 
     /// Run the local agent-facing proxy on `127.0.0.1:<port>`.
@@ -100,21 +95,13 @@ impl InferenceCommand {
                 address,
                 client,
                 soma_home,
-                heartbeat_interval_secs,
             } => {
                 let cfg = inference::server::config::load(&config)
                     .with_context(|| format!("loading {}", config.display()))?;
                 let (wallet, signer) = build_wallet(client, address).await?;
                 let soma_home =
                     soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
-                inference::server::run(
-                    cfg,
-                    wallet,
-                    signer,
-                    soma_home,
-                    heartbeat_interval_secs,
-                )
-                .await
+                inference::server::run(cfg, wallet, signer, soma_home).await
             }
             InferenceCommand::Proxy {
                 address,

@@ -77,6 +77,14 @@ impl Processor for SomaChannelEvents {
                 TransactionKind::WithdrawAfterTimeout(args) => {
                     (args.channel_id, "withdraw", 0)
                 }
+                TransactionKind::RateChannel(args) => {
+                    // Two kinds for the binary flag, so consumers
+                    // can filter on `kind` rather than reading a
+                    // delta field. delta=0 — no value flow.
+                    let kind_label =
+                        if args.negative { "rate_negative" } else { "rate_positive" };
+                    (args.channel_id, kind_label, 0)
+                }
                 _ => continue,
             };
 

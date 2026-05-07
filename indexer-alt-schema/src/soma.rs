@@ -6,6 +6,7 @@ use soma_field_count::FieldCount;
 
 use crate::schema::soma_balance_deltas;
 use crate::schema::soma_channel_events;
+use crate::schema::soma_channel_ratings;
 use crate::schema::soma_channels;
 use crate::schema::soma_epoch_state;
 use crate::schema::soma_providers;
@@ -106,6 +107,22 @@ pub struct StoredChannelEvent {
     pub timestamp_ms: i64,
 }
 
+/// Channel rating mirror. UPSERT on every `RateChannel` tx
+/// (latest-wins). One row per rated channel. `payee` is denormalized
+/// for fast per-provider aggregation in the `provider_reputation`
+/// view.
+#[derive(Insertable, AsChangeset, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_channel_ratings)]
+pub struct StoredChannelRating {
+    pub channel_id: Vec<u8>,
+    pub payer: Vec<u8>,
+    pub payee: Vec<u8>,
+    /// `true` = thumbs down; `false` = thumbs up.
+    pub negative: bool,
+    pub rated_at_cp: i64,
+    pub rated_at_ms: i64,
+}
+
 // --- Provider registry ---
 
 /// On-chain provider record mirror. INSERT on `RegisterProvider`,
@@ -115,6 +132,5 @@ pub struct StoredChannelEvent {
 pub struct StoredProvider {
     pub address: Vec<u8>,
     pub endpoint: String,
-    pub registered_at_ms: i64,
     pub last_update_cp: i64,
 }

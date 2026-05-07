@@ -23,7 +23,6 @@ pub struct ProviderRecord {
     pub address: SomaAddress,
     pub pubkey_hex: String,
     pub endpoint: String,
-    pub last_heartbeat_ms: u64,
 }
 
 /// Computed channel status for client/provider display. Derived from

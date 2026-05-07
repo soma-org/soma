@@ -170,6 +170,7 @@ pub enum TransactionKind {
     RequestClose(RequestCloseArgs),
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
     TopUp(TopUpArgs),
+    RateChannel(RateChannelArgs),
 
     // Provider registry
     RegisterProvider(RegisterProviderArgs),
@@ -274,6 +275,14 @@ pub struct TopUpArgs {
     pub channel_id: Address,
     pub coin_type: types::object::CoinType,
     pub amount: u64,
+}
+
+/// Args for `RateChannel`. Payer flags a channel they've paid into
+/// as negative (`true`) or positive (`false`). Latest-wins.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RateChannelArgs {
+    pub channel_id: Address,
+    pub negative: bool,
 }
 
 // Provider registry arg types

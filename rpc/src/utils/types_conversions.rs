@@ -595,6 +595,14 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     amount: args.amount,
                 })
             }
+            TransactionKind::RateChannel(args) => {
+                TK::RateChannel(types::transaction::RateChannelArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    negative: args.negative,
+                })
+            }
 
             // Provider registry transactions
             TransactionKind::RegisterProvider(args) => {
@@ -1618,6 +1626,29 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 Self::NotAChannel { object_id: object_id.into() }
             }
             ExecutionError::ChannelClockMissing => Self::ChannelClockMissing,
+
+            // Provider registry errors
+            ExecutionError::ProviderAlreadyExists => Self::ProviderAlreadyExists,
+            ExecutionError::ProviderNotFound => Self::ProviderNotFound,
+            ExecutionError::ProviderCallerMismatch => Self::ProviderCallerMismatch,
+            ExecutionError::ProviderInvalidEndpoint { reason } => {
+                Self::ProviderInvalidEndpoint { reason }
+            }
+            ExecutionError::ProviderClockMissing => Self::ProviderClockMissing,
+
+            // Per-pair channel cap (ProviderInbox) errors
+            ExecutionError::ChannelTooManyOpenForPair { current, max } => {
+                Self::ChannelTooManyOpenForPair { current, max }
+            }
+            ExecutionError::ChannelInboxPayeeMismatch { declared, actual } => {
+                Self::ChannelInboxPayeeMismatch {
+                    declared: declared.into(),
+                    actual: actual.into(),
+                }
+            }
+            ExecutionError::NotAProviderInbox { object_id } => {
+                Self::NotAProviderInbox { object_id: object_id.into() }
+            }
 
             _ => unreachable!("sdk shouldn't have a variant that the mono repo doesn't"),
         }
