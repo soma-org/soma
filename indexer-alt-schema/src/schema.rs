@@ -189,6 +189,59 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_channels (channel_id) {
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        authorized_signer -> Bytea,
+        token -> Text,
+        deposit -> Int8,
+        settled_amount -> Int8,
+        close_requested_at_ms -> Nullable<Int8>,
+        status -> Int2,
+        opened_at_cp -> Int8,
+        opened_tx_digest -> Bytea,
+        last_update_cp -> Int8,
+    }
+}
+
+diesel::table! {
+    soma_channel_events (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        channel_id -> Bytea,
+        kind -> Text,
+        delta -> Int8,
+        timestamp_ms -> Int8,
+    }
+}
+
+diesel::table! {
+    soma_providers (address) {
+        address -> Bytea,
+        endpoint -> Text,
+        registered_at_ms -> Int8,
+        last_update_cp -> Int8,
+    }
+}
+
+// View backed by the migration `provider_reputation`. Read-only; do
+// not derive `Insertable` for this. SUMs are provider-side; counts are
+// in-process distinct-buyer counts.
+diesel::table! {
+    provider_reputation (address) {
+        address -> Bytea,
+        volume_settled_30d -> Int8,
+        distinct_buyers_30d -> Int8,
+        channel_renewal_rate -> Float8,
+        mean_channel_span_cps -> Int8,
+        signal_version -> Int4,
+    }
+}
+
+diesel::joinable!(provider_reputation -> soma_providers (address));
+
+diesel::table! {
     soma_validators (address, epoch) {
         address -> Bytea,
         epoch -> Int8,
@@ -297,7 +350,11 @@ diesel::allow_tables_to_appear_in_same_query!(
     soma_asks,
     soma_balance_deltas,
     soma_bids,
+    soma_channels,
+    soma_channel_events,
     soma_epoch_state,
+    soma_providers,
+    provider_reputation,
     soma_settlements,
     soma_staked_soma,
     soma_validators,

@@ -19,26 +19,35 @@ CREATE OR REPLACE TRIGGER soma_tx_details_notify
     AFTER INSERT ON soma_tx_details
     FOR EACH ROW EXECUTE FUNCTION notify_new_transaction();
 
--- Target status change (specifically when status = 'filled')
-CREATE OR REPLACE FUNCTION notify_target_filled() RETURNS trigger AS $$
+-- Target status change trigger — only created if soma_targets exists
+-- (legacy table, removed in later migrations).
+DO $$
 BEGIN
-    IF NEW.status = 'filled' THEN
-        PERFORM pg_notify('target_filled', json_build_object(
-            'target_id', encode(NEW.target_id, 'hex'),
-            'epoch', NEW.epoch,
-            'fill_epoch', NEW.fill_epoch,
-            'winning_model_id', encode(COALESCE(NEW.winning_model_id, ''::bytea), 'hex'),
-            'submitter', encode(COALESCE(NEW.submitter, ''::bytea), 'hex'),
-            'reward_pool', NEW.reward_pool
-        )::text);
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'soma_targets') THEN
+        EXECUTE $f$
+            CREATE OR REPLACE FUNCTION notify_target_filled() RETURNS trigger AS $body$
+            BEGIN
+                IF NEW.status = 'filled' THEN
+                    PERFORM pg_notify('target_filled', json_build_object(
+                        'target_id', encode(NEW.target_id, 'hex'),
+                        'epoch', NEW.epoch,
+                        'fill_epoch', NEW.fill_epoch,
+                        'winning_model_id', encode(COALESCE(NEW.winning_model_id, ''::bytea), 'hex'),
+                        'submitter', encode(COALESCE(NEW.submitter, ''::bytea), 'hex'),
+                        'reward_pool', NEW.reward_pool
+                    )::text);
+                END IF;
+                RETURN NEW;
+            END;
+            $body$ LANGUAGE plpgsql;
+        $f$;
+        EXECUTE $f$
+            CREATE OR REPLACE TRIGGER soma_targets_notify_filled
+                AFTER INSERT ON soma_targets
+                FOR EACH ROW EXECUTE FUNCTION notify_target_filled();
+        $f$;
     END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER soma_targets_notify_filled
-    AFTER INSERT ON soma_targets
-    FOR EACH ROW EXECUTE FUNCTION notify_target_filled();
+END $$;
 
 -- New checkpoint
 CREATE OR REPLACE FUNCTION notify_new_checkpoint() RETURNS trigger AS $$

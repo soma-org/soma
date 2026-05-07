@@ -175,4 +175,6 @@ pub enum ObjectType {
     BalanceAccumulator,
     /// Stage 14a: per-(pool_id, staker) F1 delegation row accumulator.
     DelegationAccumulator,
+    /// Provider registry record. One object per provider address.
+    Provider,
 }

@@ -1,105 +1,83 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+//! In-memory proxy-side channel state.
+//!
+//! The proxy is **stateless on disk** — there is no `~/.soma/.../proxy/`
+//! tree any more. On cold start the router rehydrates channel
+//! pointers from the indexer (`channels(payer = me, status = open)`)
+//! and per-channel `cumulative_authorized` from the provider's
+//! `/soma/channel/{id}` endpoint. The chain's `Channel.settled_amount`
+//! is the floor; the provider's last-held cumulative is the floor for
+//! the proxy's next signed voucher (so we never issue a non-monotonic
+//! voucher after a restart).
+//!
+//! See `proxy::router::Router::hydrate_open_channels` for the
+//! cold-start flow.
+
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use tokio::sync::Mutex;
 use ::types::base::SomaAddress;
 use ::types::object::ObjectID;
 
 use crate::channel::running_tab::TabClientState;
-use crate::persist::{read_json, write_json};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ClientStore {
-    base: PathBuf,
-    cache: Arc<tokio::sync::RwLock<HashMap<ObjectID, Arc<Mutex<ChannelSlot>>>>>,
+    /// Per-channel slot, keyed by `Channel` object id. Single source
+    /// of truth for the proxy's view of cumulative authorization on
+    /// each channel.
+    slots: Arc<tokio::sync::RwLock<HashMap<ObjectID, Arc<Mutex<ChannelSlot>>>>>,
+    /// Most-recent channel id used per provider address. Lets the
+    /// router skip a fresh OpenChannel when an existing channel still
+    /// has headroom.
+    pointer: Arc<tokio::sync::RwLock<HashMap<SomaAddress, ObjectID>>>,
 }
 
 pub struct ChannelSlot {
     pub state: TabClientState,
-    pub path: PathBuf,
 }
 
 impl ClientStore {
-    pub fn new(soma_home: PathBuf) -> Self {
-        let base = soma_home.join("client");
-        let _ = std::fs::create_dir_all(base.join("channels"));
-        let _ = std::fs::create_dir_all(base.join("channels-by-provider"));
-        Self {
-            base,
-            cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    fn channel_path(&self, id: &ObjectID) -> PathBuf {
-        self.base.join("channels").join(format!("{}.json", id))
+    pub async fn read_pointer(&self, addr: &SomaAddress) -> Option<ObjectID> {
+        self.pointer.read().await.get(addr).copied()
     }
 
-    fn pointer_path(&self, addr: &SomaAddress) -> PathBuf {
-        self.base
-            .join("channels-by-provider")
-            .join(format!("{addr}.txt"))
-    }
-
-    pub fn read_pointer(&self, addr: &SomaAddress) -> Option<ObjectID> {
-        let path = self.pointer_path(addr);
-        match std::fs::read_to_string(&path) {
-            Ok(s) => {
-                let s = s.trim();
-                if s.is_empty() {
-                    None
-                } else {
-                    s.parse::<ObjectID>().ok()
-                }
-            }
-            Err(_) => None,
-        }
-    }
-
-    pub fn write_pointer(&self, addr: &SomaAddress, id: &ObjectID) -> std::io::Result<()> {
-        let path = self.pointer_path(addr);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, id.to_string().as_bytes())
+    pub async fn write_pointer(&self, addr: &SomaAddress, id: &ObjectID) {
+        self.pointer.write().await.insert(*addr, *id);
     }
 
     pub async fn slot(&self, id: &ObjectID) -> Option<Arc<Mutex<ChannelSlot>>> {
-        if let Some(s) = self.cache.read().await.get(id) {
-            return Some(s.clone());
-        }
-        let path = self.channel_path(id);
-        let state: Option<TabClientState> = read_json(&path).ok().flatten();
-        if let Some(state) = state {
-            let slot = Arc::new(Mutex::new(ChannelSlot { state, path }));
-            self.cache.write().await.insert(*id, slot.clone());
-            Some(slot)
-        } else {
-            None
-        }
+        self.slots.read().await.get(id).cloned()
     }
 
-    pub async fn init_slot(
+    /// Insert (or overwrite) a slot for `channel_id`. Used both by
+    /// the lazy-open path (after a fresh OpenChannel) and by the
+    /// indexer-backed cold-start hydration.
+    pub async fn install_slot(
         &self,
         channel_id: ObjectID,
         provider_address: SomaAddress,
-        provider_endpoint: &str,
+        provider_endpoint: String,
         deposit_micros: u64,
-    ) -> anyhow::Result<Arc<Mutex<ChannelSlot>>> {
-        let path = self.channel_path(&channel_id);
-        let state = TabClientState::new(
+        cumulative_authorized_micros: u64,
+    ) -> Arc<Mutex<ChannelSlot>> {
+        let mut state = TabClientState::new(
             channel_id,
             provider_address,
-            provider_endpoint.to_string(),
+            provider_endpoint,
             deposit_micros,
         );
-        write_json(&path, &state).context("write client channel state")?;
-        let slot = Arc::new(Mutex::new(ChannelSlot { state, path }));
-        self.cache.write().await.insert(channel_id, slot.clone());
-        Ok(slot)
+        state.cumulative_authorized_micros = cumulative_authorized_micros;
+        let slot = Arc::new(Mutex::new(ChannelSlot { state }));
+        self.slots.write().await.insert(channel_id, slot.clone());
+        self.pointer.write().await.insert(provider_address, channel_id);
+        slot
     }
 }

@@ -1166,6 +1166,33 @@ pub enum ExecutionFailureStatus {
     ChannelClockMissing,
 
     //
+    // Provider errors
+    //
+    /// `RegisterProvider` rejected because a Provider object already
+    /// exists for the signer. Use `UpdateProvider` instead.
+    #[error("Provider already registered for this address")]
+    ProviderAlreadyExists,
+
+    /// `UpdateProvider` could not load the Provider object — caller
+    /// must register first.
+    #[error("Provider not registered for this address")]
+    ProviderNotFound,
+
+    /// `UpdateProvider` signer did not match `provider.address`.
+    #[error("Provider update caller is not the registered address")]
+    ProviderCallerMismatch,
+
+    /// Provider endpoint was empty or exceeded the maximum length.
+    /// The cap exists to bound on-chain object size.
+    #[error("Provider endpoint invalid: {reason}")]
+    ProviderInvalidEndpoint { reason: String },
+
+    /// Clock missing for a Provider op (RegisterProvider /
+    /// UpdateProvider). Same shape as `ChannelClockMissing`.
+    #[error("Provider op requires Clock (object 0x6) as a read-only shared input")]
+    ProviderClockMissing,
+
+    //
     // Post-execution errors
     //
     /// Generic SOMA error that wraps other error types

@@ -92,6 +92,26 @@ pub enum ChannelCommand {
         #[clap(long)]
         client: Option<PathBuf>,
     },
+    /// List the active wallet's channels by querying the indexer.
+    /// Recovers buyer-side channel state without any local files.
+    List {
+        /// Filter by role: `payer` or `payee`. Default: payer.
+        #[clap(long, default_value = "payer")]
+        role: String,
+        /// Filter by status: `open`, `closing`, or `withdrawn`.
+        /// Omit for all.
+        #[clap(long)]
+        status: Option<String>,
+        /// GraphQL HTTP endpoint of the indexer.
+        #[clap(long)]
+        indexer_url: String,
+        /// Override the wallet address being queried for.
+        #[clap(long)]
+        address: Option<SomaAddress>,
+        /// Override the wallet config path.
+        #[clap(long)]
+        client: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -180,6 +200,53 @@ impl ChannelCommand {
                 let chan = obj.as_channel()
                     .ok_or_else(|| anyhow::anyhow!("{channel_id} is not a Channel"))?;
                 println!("{}", serde_json::to_string_pretty(&chan)?);
+                Ok(())
+            }
+            Self::List { role, status, indexer_url, address, client } => {
+                let (_ctx, signer) = build_wallet(client, address)?;
+                let role_arg = match role.as_str() {
+                    "payer" => "payer",
+                    "payee" => "payee",
+                    other => anyhow::bail!(
+                        "unknown role {other}; expected 'payer' or 'payee'"
+                    ),
+                };
+                let status_filter = match status.as_deref() {
+                    None => "",
+                    Some("open") => ", status: OPEN",
+                    Some("closing") => ", status: CLOSING",
+                    Some("withdrawn") => ", status: WITHDRAWN",
+                    Some(other) => anyhow::bail!(
+                        "unknown status {other}; expected 'open' / 'closing' / 'withdrawn'"
+                    ),
+                };
+                let addr_hex = format!("0x{}", hex::encode(signer.to_vec()));
+                let query = format!(
+                    r#"query Channels($a: String!) {{
+                        channels({role_arg}: $a{status_filter}, first: 50) {{
+                            edges {{ node {{
+                                id payer payee token deposit settledAmount
+                                status closeRequestedAtMs lastUpdateCp
+                            }} }}
+                        }}
+                    }}"#
+                );
+                let body = serde_json::json!({
+                    "query": query,
+                    "variables": { "a": addr_hex },
+                });
+                let resp = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()?
+                    .post(&indexer_url)
+                    .json(&body)
+                    .send()
+                    .await?;
+                if !resp.status().is_success() {
+                    anyhow::bail!("indexer returned status {}", resp.status());
+                }
+                let v: serde_json::Value = resp.json().await?;
+                println!("{}", serde_json::to_string_pretty(&v)?);
                 Ok(())
             }
         }

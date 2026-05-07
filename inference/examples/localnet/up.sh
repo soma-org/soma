@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Bring up: localnet + provider + proxy. Lazily opens an on-chain
-# channel on first request. Settles on `down.sh`.
+# Bring up: localnet + indexer (Postgres + soma-indexer-alt + soma-graphql) +
+# provider + proxy. Lazily opens an on-chain channel on first request.
+# Settles on `down.sh`.
 #
 # Variants:
 #   BACKEND=openrouter  ./up.sh   (default — needs OPENROUTER_API_KEY in ~/autodebate/.env)
@@ -17,26 +18,58 @@ fi
 
 ensure_soma_built
 
-# --- 1. Start localnet --------------------------------------------------------
-# We don't use --force-regenesis because the tempdir keystore wouldn't
-# be reachable from `soma keytool list`. Instead we wipe the soma
-# config dir first so the next boot triggers a fresh genesis that
-# persists at $SOMA_HOME (= ~/.soma/soma_config).
+# --- 0. Build indexer + graphql binaries (cached after first run) -------------
+ensure_built() {
+  local pkg="$1"; local bin="$2"
+  if [ -x "$ROOT/target/release/$bin" ]; then return; fi
+  echo "→ building $pkg (release)..." >&2
+  (cd "$ROOT" && PYO3_PYTHON=python3 cargo build --release -p "$pkg")
+}
+ensure_built indexer-alt indexer-alt
+ensure_built soma-graphql soma-graphql
+
+# --- 1. Postgres --------------------------------------------------------------
+PG_DATA="${PG_DATA:-$HOME/.soma/inference-localnet-pg}"
+PG_PORT="${PG_PORT:-5447}"
+PG_DB="${PG_DB:-soma_localnet}"
+PG_URL="postgres://${USER}@127.0.0.1:${PG_PORT}/${PG_DB}"
+
+if [ ! -d "$PG_DATA/global" ]; then
+  echo "→ initializing Postgres data dir at $PG_DATA..."
+  initdb -D "$PG_DATA" --auth-local=trust --auth-host=trust --username="$USER" >/dev/null
+fi
+
+if pg_isready -p "$PG_PORT" -h 127.0.0.1 >/dev/null 2>&1; then
+  echo "→ Postgres on :$PG_PORT already up; reusing."
+else
+  echo "→ starting Postgres on :$PG_PORT..."
+  pg_ctl -D "$PG_DATA" -l "$LOG_DIR/postgres.log" \
+    -o "-p $PG_PORT -c unix_socket_directories=$PG_DATA -c listen_addresses=127.0.0.1" \
+    start
+fi
+createdb -p "$PG_PORT" -h 127.0.0.1 "$PG_DB" 2>/dev/null || true
+
+# --- 2. Start localnet --------------------------------------------------------
 if [ -e "$SOMA_HOME/network.yaml" ] && [ "${REUSE:-0}" != "1" ]; then
   echo "  wiping $SOMA_HOME for fresh genesis (set REUSE=1 to keep)..."
   rm -rf "$SOMA_HOME"
 fi
 
-echo "→ booting localnet..."
-"$SOMA_BIN" start localnet --epoch-duration-ms 60000 \
+INGEST_DIR="$HOME/.soma/inference-localnet-ingestion"
+rm -rf "$INGEST_DIR" && mkdir -p "$INGEST_DIR"
+
+echo "→ booting localnet (with data ingestion, 5min epochs)..."
+# 5-minute epochs keep the localnet from reconfiguring mid-test —
+# user txs submitted right around an epoch boundary can otherwise
+# stall on committee handoff (see down.sh for the symptom).
+"$SOMA_BIN" start localnet --epoch-duration-ms 300000 \
+    --data-ingestion-dir "$INGEST_DIR" \
     >"$LOG_DIR/localnet.log" 2>&1 &
 LOCALNET_PID=$!
 
 echo -n "  waiting for RPC at 127.0.0.1:$LOCALNET_RPC_PORT"
 for _ in $(seq 1 200); do
   if curl -sS --max-time 1 "http://127.0.0.1:${LOCALNET_RPC_PORT}/" >/dev/null 2>&1; then
-    # /metrics responds even if the gRPC layer isn't fully up yet —
-    # also check that we can list keys (which needs client.yaml).
     if [ -f "$SOMA_HOME/client.yaml" ] && [ -f "$SOMA_HOME/soma.keystore" ]; then
       echo " ready"
       break
@@ -52,8 +85,6 @@ if [ ! -f "$SOMA_HOME/soma.keystore" ]; then
   exit 1
 fi
 
-# Localnet seeds ~/.soma/soma_config/soma.keystore with funded
-# accounts at boot. Read them out via JSON.
 list_addrs() {
   "$SOMA_BIN" keytool list 2>/dev/null \
     | python3 -c 'import sys, json
@@ -75,13 +106,43 @@ PROVIDER="${ADDRS[1]}"
 echo "  payer    = $PAYER"
 echo "  provider = $PROVIDER"
 
-# Fund the provider with USDC so it has gas (channel ops are payer-
-# debited but the provider needs gas for Settle).
+# Fund the provider with USDC for settlement gas.
 echo "→ funding provider with 100 USDC for settlement gas..."
 "$SOMA_BIN" transfer 100 "$PROVIDER" --usdc --gas-budget 10000000 >/dev/null 2>&1 || \
   echo "  (transfer skipped — provider may already be funded)"
 
-# --- 2. Write provider TOML --------------------------------------------------
+# --- 3. Start indexer-alt -----------------------------------------------------
+echo "→ starting soma indexer..."
+"$ROOT/target/release/indexer-alt" \
+    --database-url "$PG_URL" \
+    --local-ingestion-path "$INGEST_DIR" \
+    >"$LOG_DIR/indexer.log" 2>&1 &
+INDEXER_PID=$!
+
+# --- 4. Start soma-graphql ----------------------------------------------------
+GRAPHQL_PORT="${GRAPHQL_PORT:-7000}"
+GRAPHQL_URL="http://127.0.0.1:${GRAPHQL_PORT}/graphql"
+echo "→ starting soma-graphql on :$GRAPHQL_PORT..."
+"$ROOT/target/release/soma-graphql" \
+    --database-url "$PG_URL" \
+    --listen-address "127.0.0.1:${GRAPHQL_PORT}" \
+    >"$LOG_DIR/graphql.log" 2>&1 &
+GRAPHQL_PID=$!
+
+echo -n "  waiting for GraphQL"
+for _ in $(seq 1 30); do
+  if curl -sS --max-time 1 "http://127.0.0.1:${GRAPHQL_PORT}/health" >/dev/null 2>&1 \
+     || curl -sS --max-time 1 "$GRAPHQL_URL" -X POST -H 'content-type: application/json' \
+            -d '{"query":"{__typename}"}' >/dev/null 2>&1; then
+    echo " ready"
+    break
+  fi
+  sleep 0.5
+  echo -n "."
+done
+echo
+
+# --- 5. Write provider TOML --------------------------------------------------
 PROV_TOML="/tmp/soma-inference-localnet-provider.toml"
 cat >"$PROV_TOML" <<EOF
 [server]
@@ -108,11 +169,12 @@ pricing = { prompt = "${DEMO_PRICE_PROMPT}", completion = "${DEMO_PRICE_COMPLETI
 EOF
 echo "→ provider config: $PROV_TOML"
 
-# --- 3. Start the provider server --------------------------------------------
+# --- 6. Start the provider server (registers on-chain) ------------------------
 echo "→ starting soma inference serve --address $PROVIDER..."
 "$SOMA_BIN" inference serve \
     --config "$PROV_TOML" \
     --address "$PROVIDER" \
+    --heartbeat-interval-secs 30 \
     >"$LOG_DIR/provider.log" 2>&1 &
 PROV_PID=$!
 for _ in $(seq 1 30); do
@@ -122,25 +184,34 @@ for _ in $(seq 1 30); do
   sleep 0.3
 done
 
-# Manually register the provider into the local registry so the
-# proxy's discovery can find it. (One PR away from being on-chain.)
-PROVIDER_REG="$SOMA_HOME/registry/providers/${PROVIDER}.json"
-mkdir -p "$(dirname "$PROVIDER_REG")"
-cat >"$PROVIDER_REG" <<EOF
-{
-  "address": "${PROVIDER}",
-  "pubkey_hex": "",
-  "endpoint": "http://127.0.0.1:${PROVIDER_PORT}",
-  "last_heartbeat_ms": $(date +%s)000
-}
-EOF
-echo "  registry entry: $PROVIDER_REG"
+# Wait for the indexer to surface the provider via GraphQL — the
+# proxy needs `providers()` to return at least one row before
+# routing.
+echo -n "  waiting for provider to land in indexer"
+for _ in $(seq 1 60); do
+  N=$(curl -sS --max-time 2 -X POST "$GRAPHQL_URL" \
+        -H 'content-type: application/json' \
+        -d '{"query":"{providers(first:10){edges{node{address}}}}"}' \
+        2>/dev/null | python3 -c 'import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(len((d.get("data") or {}).get("providers",{}).get("edges") or []))
+except Exception:
+    print(0)' 2>/dev/null)
+  if [ "${N:-0}" -gt 0 ]; then
+    echo " ready ($N)"
+    break
+  fi
+  sleep 1
+  echo -n "."
+done
 
-# --- 4. Start the proxy ------------------------------------------------------
+# --- 7. Start the proxy (indexer-backed registry) ----------------------------
 echo "→ starting soma inference proxy --address $PAYER..."
 "$SOMA_BIN" inference proxy \
     --address "$PAYER" \
     --listen "127.0.0.1:${PROXY_PORT}" \
+    --indexer-url "$GRAPHQL_URL" \
     >"$LOG_DIR/proxy.log" 2>&1 &
 PROXY_PID=$!
 for _ in $(seq 1 30); do
@@ -150,15 +221,19 @@ for _ in $(seq 1 30); do
   sleep 0.3
 done
 
-# --- 5. Persist state --------------------------------------------------------
+# --- 8. Persist state ---------------------------------------------------------
 cat >"$STATE_FILE" <<EOF
 LOCALNET_PID=${LOCALNET_PID}
+INDEXER_PID=${INDEXER_PID}
+GRAPHQL_PID=${GRAPHQL_PID}
 PROV_PID=${PROV_PID}
 PROXY_PID=${PROXY_PID}
 PAYER=${PAYER}
 PROVIDER=${PROVIDER}
 MODEL=${DEFAULT_MODEL}
 BACKEND=${BACKEND}
+GRAPHQL_URL=${GRAPHQL_URL}
+INGEST_DIR=${INGEST_DIR}
 EOF
 
 echo
@@ -166,10 +241,11 @@ echo "READY ($BACKEND)"
 echo "  payer        = $PAYER"
 echo "  provider     = $PROVIDER  (http://127.0.0.1:${PROVIDER_PORT})"
 echo "  proxy        = http://127.0.0.1:${PROXY_PORT}"
+echo "  graphql      = $GRAPHQL_URL"
 echo "  model        = $DEFAULT_MODEL"
 echo "  state        = $STATE_FILE"
 echo "  logs         = $LOG_DIR"
 echo
 echo "send a request:  examples/localnet/chat.sh \"hello\""
-echo "show channel:    examples/localnet/show.sh"
+echo "list channels:   examples/localnet/show.sh"
 echo "tear down:       examples/localnet/down.sh   # provider settles on SIGTERM"

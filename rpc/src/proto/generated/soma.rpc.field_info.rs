@@ -5908,6 +5908,18 @@ mod _field_impls {
             number: 54i32,
             message_fields: Some(TopUp::FIELDS),
         };
+        pub const REGISTER_PROVIDER_FIELD: &'static MessageField = &MessageField {
+            name: "register_provider",
+            json_name: "registerProvider",
+            number: 55i32,
+            message_fields: Some(RegisterProvider::FIELDS),
+        };
+        pub const UPDATE_PROVIDER_FIELD: &'static MessageField = &MessageField {
+            name: "update_provider",
+            json_name: "updateProvider",
+            number: 56i32,
+            message_fields: Some(UpdateProvider::FIELDS),
+        };
         pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
             name: "settlement",
             json_name: "settlement",
@@ -5962,6 +5974,8 @@ mod _field_impls {
             Self::REQUEST_CLOSE_FIELD,
             Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
             Self::TOP_UP_FIELD,
+            Self::REGISTER_PROVIDER_FIELD,
+            Self::UPDATE_PROVIDER_FIELD,
             Self::SETTLEMENT_FIELD,
             Self::BALANCE_TRANSFER_FIELD,
         ];
@@ -6149,6 +6163,14 @@ mod _field_impls {
         pub fn top_up(mut self) -> TopUpFieldPathBuilder {
             self.path.push(TransactionKind::TOP_UP_FIELD.name);
             TopUpFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn register_provider(mut self) -> RegisterProviderFieldPathBuilder {
+            self.path.push(TransactionKind::REGISTER_PROVIDER_FIELD.name);
+            RegisterProviderFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn update_provider(mut self) -> UpdateProviderFieldPathBuilder {
+            self.path.push(TransactionKind::UPDATE_PROVIDER_FIELD.name);
+            UpdateProviderFieldPathBuilder::new_with_base(self.path)
         }
         pub fn settlement(mut self) -> SettlementFieldPathBuilder {
             self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
@@ -8918,6 +8940,91 @@ mod _field_impls {
         }
         pub fn amount(mut self) -> String {
             self.path.push(TopUp::AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RegisterProvider {
+        pub const ENDPOINT_FIELD: &'static MessageField = &MessageField {
+            name: "endpoint",
+            json_name: "endpoint",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RegisterProvider {
+        const FIELDS: &'static [&'static MessageField] = &[Self::ENDPOINT_FIELD];
+    }
+    impl RegisterProvider {
+        pub fn path_builder() -> RegisterProviderFieldPathBuilder {
+            RegisterProviderFieldPathBuilder::new()
+        }
+    }
+    pub struct RegisterProviderFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RegisterProviderFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn endpoint(mut self) -> String {
+            self.path.push(RegisterProvider::ENDPOINT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl UpdateProvider {
+        pub const PROVIDER_ID_FIELD: &'static MessageField = &MessageField {
+            name: "provider_id",
+            json_name: "providerId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ENDPOINT_FIELD: &'static MessageField = &MessageField {
+            name: "endpoint",
+            json_name: "endpoint",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for UpdateProvider {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PROVIDER_ID_FIELD,
+            Self::ENDPOINT_FIELD,
+        ];
+    }
+    impl UpdateProvider {
+        pub fn path_builder() -> UpdateProviderFieldPathBuilder {
+            UpdateProviderFieldPathBuilder::new()
+        }
+    }
+    pub struct UpdateProviderFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl UpdateProviderFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn provider_id(mut self) -> String {
+            self.path.push(UpdateProvider::PROVIDER_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn endpoint(mut self) -> String {
+            self.path.push(UpdateProvider::ENDPOINT_FIELD.name);
             self.finish()
         }
     }

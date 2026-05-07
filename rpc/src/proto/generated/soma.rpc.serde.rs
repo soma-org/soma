@@ -6036,6 +6036,11 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::ChannelCoinTypeMismatch => "CHANNEL_COIN_TYPE_MISMATCH",
             Self::NotAChannel => "NOT_A_CHANNEL",
             Self::ChannelClockMissing => "CHANNEL_CLOCK_MISSING",
+            Self::ProviderAlreadyExists => "PROVIDER_ALREADY_EXISTS",
+            Self::ProviderNotFound => "PROVIDER_NOT_FOUND",
+            Self::ProviderCallerMismatch => "PROVIDER_CALLER_MISMATCH",
+            Self::ProviderInvalidEndpoint => "PROVIDER_INVALID_ENDPOINT",
+            Self::ProviderClockMissing => "PROVIDER_CLOCK_MISSING",
         };
         serializer.serialize_str(variant)
     }
@@ -6118,6 +6123,11 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "CHANNEL_COIN_TYPE_MISMATCH",
             "NOT_A_CHANNEL",
             "CHANNEL_CLOCK_MISSING",
+            "PROVIDER_ALREADY_EXISTS",
+            "PROVIDER_NOT_FOUND",
+            "PROVIDER_CALLER_MISMATCH",
+            "PROVIDER_INVALID_ENDPOINT",
+            "PROVIDER_CLOCK_MISSING",
         ];
 
         struct GeneratedVisitor;
@@ -6229,6 +6239,11 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "CHANNEL_COIN_TYPE_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ChannelCoinTypeMismatch),
                     "NOT_A_CHANNEL" => Ok(execution_error::ExecutionErrorKind::NotAChannel),
                     "CHANNEL_CLOCK_MISSING" => Ok(execution_error::ExecutionErrorKind::ChannelClockMissing),
+                    "PROVIDER_ALREADY_EXISTS" => Ok(execution_error::ExecutionErrorKind::ProviderAlreadyExists),
+                    "PROVIDER_NOT_FOUND" => Ok(execution_error::ExecutionErrorKind::ProviderNotFound),
+                    "PROVIDER_CALLER_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ProviderCallerMismatch),
+                    "PROVIDER_INVALID_ENDPOINT" => Ok(execution_error::ExecutionErrorKind::ProviderInvalidEndpoint),
+                    "PROVIDER_CLOCK_MISSING" => Ok(execution_error::ExecutionErrorKind::ProviderClockMissing),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -12831,6 +12846,103 @@ impl<'de> serde::Deserialize<'de> for ProtocolConfig {
         deserializer.deserialize_struct("soma.rpc.ProtocolConfig", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for RegisterProvider {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.endpoint.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.RegisterProvider", len)?;
+        if let Some(v) = self.endpoint.as_ref() {
+            struct_ser.serialize_field("endpoint", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for RegisterProvider {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "endpoint",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Endpoint,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "endpoint" => Ok(GeneratedField::Endpoint),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = RegisterProvider;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.RegisterProvider")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<RegisterProvider, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut endpoint__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Endpoint => {
+                            if endpoint__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("endpoint"));
+                            }
+                            endpoint__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(RegisterProvider {
+                    endpoint: endpoint__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.RegisterProvider", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for RemoveValidator {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -17831,6 +17943,12 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::TopUp(v) => {
                     struct_ser.serialize_field("topUp", v)?;
                 }
+                transaction_kind::Kind::RegisterProvider(v) => {
+                    struct_ser.serialize_field("registerProvider", v)?;
+                }
+                transaction_kind::Kind::UpdateProvider(v) => {
+                    struct_ser.serialize_field("updateProvider", v)?;
+                }
                 transaction_kind::Kind::Settlement(v) => {
                     struct_ser.serialize_field("settlement", v)?;
                 }
@@ -17925,6 +18043,10 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "withdrawAfterTimeout",
             "top_up",
             "topUp",
+            "register_provider",
+            "registerProvider",
+            "update_provider",
+            "updateProvider",
             "settlement",
             "balance_transfer",
             "balanceTransfer",
@@ -17971,6 +18093,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             RequestClose,
             WithdrawAfterTimeout,
             TopUp,
+            RegisterProvider,
+            UpdateProvider,
             Settlement,
             BalanceTransfer,
             __SkipField__,
@@ -18034,6 +18158,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "requestClose" | "request_close" => Ok(GeneratedField::RequestClose),
                             "withdrawAfterTimeout" | "withdraw_after_timeout" => Ok(GeneratedField::WithdrawAfterTimeout),
                             "topUp" | "top_up" => Ok(GeneratedField::TopUp),
+                            "registerProvider" | "register_provider" => Ok(GeneratedField::RegisterProvider),
+                            "updateProvider" | "update_provider" => Ok(GeneratedField::UpdateProvider),
                             "settlement" => Ok(GeneratedField::Settlement),
                             "balanceTransfer" | "balance_transfer" => Ok(GeneratedField::BalanceTransfer),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -18331,6 +18457,20 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("topUp"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::TopUp)
+;
+                        }
+                        GeneratedField::RegisterProvider => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("registerProvider"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::RegisterProvider)
+;
+                        }
+                        GeneratedField::UpdateProvider => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("updateProvider"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UpdateProvider)
 ;
                         }
                         GeneratedField::Settlement => {
@@ -19251,6 +19391,121 @@ impl<'de> serde::Deserialize<'de> for UndoReportValidator {
             }
         }
         deserializer.deserialize_struct("soma.rpc.UndoReportValidator", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for UpdateProvider {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.provider_id.is_some() {
+            len += 1;
+        }
+        if self.endpoint.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateProvider", len)?;
+        if let Some(v) = self.provider_id.as_ref() {
+            struct_ser.serialize_field("providerId", v)?;
+        }
+        if let Some(v) = self.endpoint.as_ref() {
+            struct_ser.serialize_field("endpoint", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for UpdateProvider {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "provider_id",
+            "providerId",
+            "endpoint",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ProviderId,
+            Endpoint,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "providerId" | "provider_id" => Ok(GeneratedField::ProviderId),
+                            "endpoint" => Ok(GeneratedField::Endpoint),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = UpdateProvider;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.UpdateProvider")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<UpdateProvider, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut provider_id__ = None;
+                let mut endpoint__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ProviderId => {
+                            if provider_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("providerId"));
+                            }
+                            provider_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Endpoint => {
+                            if endpoint__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("endpoint"));
+                            }
+                            endpoint__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(UpdateProvider {
+                    provider_id: provider_id__,
+                    endpoint: endpoint__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.UpdateProvider", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for UpdateValidatorMetadata {

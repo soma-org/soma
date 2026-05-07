@@ -24,6 +24,7 @@ pub mod crypto_utils;
 pub mod error;
 pub mod faucet_client;
 pub mod keypair;
+pub mod provider;
 #[cfg(feature = "proxy")]
 pub mod proxy_client;
 pub mod transaction_builder;

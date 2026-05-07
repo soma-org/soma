@@ -25,6 +25,7 @@ pub mod channel;
 pub mod openai;
 pub mod persist;
 pub mod pricing;
+pub mod reputation;
 pub mod tokenizer;
 pub mod proxy;
 pub mod server;

@@ -3,15 +3,17 @@
 
 //! Two chain seams used by the inference crate:
 //!
-//! - [`ProviderRegistry`] — provider lookup. File-backed for now
-//!   ([`local::LocalDiscovery`]); will be replaced by the on-chain
-//!   `Provider` shared object in the next PR.
+//! - [`ProviderRegistry`] — provider lookup. Indexer-backed
+//!   ([`indexer::IndexerProviderRegistry`]) queries the soma-graphql
+//!   `providers()` endpoint, which mirrors the on-chain `Provider`
+//!   shared object. [`memory::MemoryDiscovery`] exists for in-process
+//!   tests.
 //! - [`ChannelSurface`] — payment-channel ops. Chain-backed
 //!   ([`chain::ChainChannelSurface`]) — opens / reads / settles the
 //!   on-chain `types::channel::Channel`.
 
 pub mod chain;
-pub mod local;
+pub mod indexer;
 pub mod memory;
 pub mod types;
 

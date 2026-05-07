@@ -13,9 +13,11 @@
 use serde::{Deserialize, Serialize};
 use types::base::SomaAddress;
 
-/// Off-chain provider record. Will be subsumed by an on-chain
-/// `Provider` object in the next PR; for now lives in the file-based
-/// `LocalDiscovery`/`InMemoryDiscovery`.
+/// In-memory projection of an on-chain `Provider` record, used by
+/// [`super::ProviderRegistry`] consumers (the proxy router, in
+/// particular). The on-chain `Provider` object is the source of
+/// truth; `ProviderRecord` is what the indexer-backed registry
+/// returns to the proxy.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderRecord {
     pub address: SomaAddress,

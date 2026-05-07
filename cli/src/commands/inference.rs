@@ -20,7 +20,7 @@ use sdk::wallet_context::{create_wallet_context, DEFAULT_WALLET_TIMEOUT_SEC};
 use types::base::SomaAddress;
 use types::config::soma_config_dir;
 
-use inference::chain::local::LocalDiscovery;
+use inference::chain::indexer::IndexerProviderRegistry;
 
 #[derive(Parser, Debug)]
 #[clap(rename_all = "kebab-case")]
@@ -42,11 +42,13 @@ pub enum InferenceCommand {
         /// Path to the soma client config (defaults to ~/.soma/client.yaml).
         #[clap(long)]
         client: Option<PathBuf>,
-        /// Soma home (for off-chain provider registry + per-channel
-        /// ledger). Defaults to ~/.soma.
+        /// Soma home (for the per-channel provider ledger). Defaults
+        /// to ~/.soma.
         #[clap(long)]
         soma_home: Option<PathBuf>,
-        /// Heartbeat interval for the off-chain provider registry.
+        /// Heartbeat interval — `UpdateProvider` is sent on chain at
+        /// this cadence so off-chain liveness watchers see a fresh
+        /// `registered_at_ms`.
         #[clap(long, default_value_t = 600)]
         heartbeat_interval_secs: u64,
     },
@@ -78,6 +80,15 @@ pub enum InferenceCommand {
         /// Provider-list cache TTL (seconds).
         #[clap(long, default_value_t = 30)]
         provider_cache_ttl_secs: u64,
+        /// Provider-routing mode: `price` (default) or `weighted`.
+        /// `weighted` requires reputation from the indexer.
+        #[clap(long, default_value = "price")]
+        routing: String,
+        /// GraphQL HTTP endpoint of the indexer. Required: provider
+        /// discovery and (in `weighted` mode) reputation are sourced
+        /// from here.
+        #[clap(long)]
+        indexer_url: String,
     },
 }
 
@@ -96,15 +107,10 @@ impl InferenceCommand {
                 let (wallet, signer) = build_wallet(client, address).await?;
                 let soma_home =
                     soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
-                let registry = Arc::new(
-                    LocalDiscovery::new(soma_home.join("registry"))
-                        .context("init local discovery")?,
-                );
                 inference::server::run(
                     cfg,
                     wallet,
                     signer,
-                    registry,
                     soma_home,
                     heartbeat_interval_secs,
                 )
@@ -117,18 +123,30 @@ impl InferenceCommand {
                 listen,
                 default_deposit_micros,
                 provider_cache_ttl_secs,
+                routing,
+                indexer_url,
             } => {
                 let (wallet, signer) = build_wallet(client, address).await?;
                 let soma_home =
                     soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
-                let registry = Arc::new(
-                    LocalDiscovery::new(soma_home.join("registry"))
-                        .context("init local discovery")?,
-                );
+                let registry =
+                    Arc::new(IndexerProviderRegistry::new(indexer_url.clone()));
+                let mode = match routing.as_str() {
+                    "price" => inference::proxy::config::RoutingMode::Price,
+                    "weighted" => inference::proxy::config::RoutingMode::Weighted,
+                    other => anyhow::bail!(
+                        "unknown routing mode {other}; expected 'price' or 'weighted'"
+                    ),
+                };
                 let cfg = inference::proxy::Config {
                     listen_addr: listen,
                     default_deposit_micros,
                     provider_cache_ttl_secs,
+                    routing: inference::proxy::config::RoutingConfig {
+                        mode,
+                        weights: Default::default(),
+                        indexer_url: Some(indexer_url),
+                    },
                 };
                 inference::proxy::run(cfg, wallet, signer, registry, soma_home).await
             }

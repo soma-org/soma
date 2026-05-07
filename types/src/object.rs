@@ -674,6 +674,11 @@ pub enum ObjectType {
     /// `AddStake`, `WithdrawStake`, and `ChangeEpoch` (for validator
     /// commission credit).
     DelegationAccumulator,
+    /// On-chain provider record. One object per provider address,
+    /// deterministically addressed via `Provider::derive_id`. Created
+    /// by `RegisterProvider`, mutated by `UpdateProvider`. See
+    /// [`crate::provider::Provider`].
+    Provider,
 }
 
 impl fmt::Display for ObjectType {
@@ -687,6 +692,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Channel => write!(f, "Channel"),
             ObjectType::BalanceAccumulator => write!(f, "BalanceAccumulator"),
             ObjectType::DelegationAccumulator => write!(f, "DelegationAccumulator"),
+            ObjectType::Provider => write!(f, "Provider"),
         }
     }
 }
@@ -705,6 +711,7 @@ impl FromStr for ObjectType {
             "Channel" => Ok(ObjectType::Channel),
             "BalanceAccumulator" => Ok(ObjectType::BalanceAccumulator),
             "DelegationAccumulator" => Ok(ObjectType::DelegationAccumulator),
+            "Provider" => Ok(ObjectType::Provider),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

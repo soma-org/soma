@@ -126,6 +126,12 @@ pub enum TransactionKind {
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
     TopUp(TopUpArgs),
 
+    // Provider registry. Two ops only — there is no unregister;
+    // stale providers fall out of the off-chain active set by
+    // `registered_at_ms` heartbeat decay.
+    RegisterProvider(RegisterProviderArgs),
+    UpdateProvider(UpdateProviderArgs),
+
     /// Stage 7: stateless value transfer — debits sender's
     /// accumulator balance, credits each recipient's. No owned
     /// coin objects involved on either side. Sender pays gas
@@ -319,6 +325,33 @@ pub struct TopUpArgs {
     pub amount: u64,
 }
 
+/// Args for `RegisterProvider`. Signer becomes the provider's address;
+/// `Provider::derive_id(signer)` is the canonical id of the resulting
+/// shared object. Re-registration fails — use `UpdateProvider` to bump
+/// the heartbeat or change the endpoint.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RegisterProviderArgs {
+    /// HTTP(S) endpoint at which this provider serves `/soma/info`
+    /// and the OpenAI-compatible `/v1/...` endpoints. Validated for
+    /// non-empty + length cap by the executor.
+    pub endpoint: String,
+}
+
+/// Args for `UpdateProvider`. Doubles as a heartbeat: the executor
+/// stamps `registered_at_ms` from the Clock on every call regardless
+/// of whether `endpoint` changed.
+///
+/// `provider_id` is carried in the args (rather than derived
+/// post-hoc from the signer) so the scheduler can declare the
+/// shared input from the kind alone, matching the channel-tx
+/// pattern. The executor verifies `provider_id ==
+/// Provider::derive_id(signer)` and rejects mismatches.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateProviderArgs {
+    pub provider_id: ObjectID,
+    pub endpoint: String,
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeEmergencyUnpauseArgs {
     pub aggregated_signature: Vec<u8>,
@@ -404,6 +437,14 @@ impl TransactionKind {
         )
     }
 
+    /// True for any provider-registry tx kind.
+    pub fn is_provider_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_)
+        )
+    }
+
     /// Channel ops that need to mutate an existing Channel shared object
     /// (everything except `OpenChannel`, which creates one).
     fn channel_id_input(&self) -> Option<ObjectID> {
@@ -416,6 +457,15 @@ impl TransactionKind {
         }
     }
 
+    /// Provider ops that mutate an existing Provider shared object
+    /// (`UpdateProvider`; `RegisterProvider` creates a new one).
+    fn provider_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::UpdateProvider(args) => Some(args.provider_id),
+            _ => None,
+        }
+    }
+
     /// True for txs that need to read the current Clock timestamp.
     /// Used by both `shared_input_objects()` and `input_objects()` to
     /// declare Clock as a *read-only* shared input — letting the
@@ -424,7 +474,10 @@ impl TransactionKind {
     pub fn requires_clock_read(&self) -> bool {
         matches!(
             self,
-            TransactionKind::RequestClose(_) | TransactionKind::WithdrawAfterTimeout(_)
+            TransactionKind::RequestClose(_)
+                | TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::RegisterProvider(_)
+                | TransactionKind::UpdateProvider(_)
         )
     }
 
@@ -538,6 +591,17 @@ impl TransactionKind {
             });
         }
 
+        // UpdateProvider declares the existing Provider as a mutable
+        // shared input. Same `OBJECT_START_VERSION` convention as the
+        // channel ops — Provider::new_provider sets it.
+        if let Some(provider_id) = self.provider_id_input() {
+            objects.push(SharedInputObject {
+                id: provider_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
         objects.into_iter()
     }
 
@@ -585,6 +649,17 @@ impl TransactionKind {
         if let Some(channel_id) = self.channel_id_input() {
             input_objects.push(InputObjectKind::SharedObject {
                 id: channel_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // UpdateProvider needs the existing Provider as a mutable
+        // shared input. RegisterProvider creates the object so it's
+        // omitted here (mirrors OpenChannel).
+        if let Some(provider_id) = self.provider_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: provider_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
                 mutable: true,
             });

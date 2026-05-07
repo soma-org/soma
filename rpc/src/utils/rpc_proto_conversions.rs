@@ -232,6 +232,16 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Some(object_id.to_hex()),
             ),
             E::ChannelClockMissing => (ExecutionErrorKind::ChannelClockMissing, None),
+
+            // Provider registry errors
+            E::ProviderAlreadyExists => (ExecutionErrorKind::ProviderAlreadyExists, None),
+            E::ProviderNotFound => (ExecutionErrorKind::ProviderNotFound, None),
+            E::ProviderCallerMismatch => (ExecutionErrorKind::ProviderCallerMismatch, None),
+            E::ProviderInvalidEndpoint { reason } => (
+                ExecutionErrorKind::ProviderInvalidEndpoint,
+                Some(reason),
+            ),
+            E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
         };
 
         message.set_kind(kind);
@@ -731,6 +741,15 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 channel_id: Some(args.channel_id.to_string()),
                 coin_type: Some(coin_type_label(args.coin_type).to_string()),
                 amount: Some(args.amount),
+            }),
+
+            // Provider registry tx kinds.
+            K::RegisterProvider(args) => Kind::RegisterProvider(RegisterProvider {
+                endpoint: Some(args.endpoint),
+            }),
+            K::UpdateProvider(args) => Kind::UpdateProvider(UpdateProvider {
+                provider_id: Some(args.provider_id.to_string()),
+                endpoint: Some(args.endpoint),
             }),
 
             K::BalanceTransfer(args) => Kind::BalanceTransfer(BalanceTransfer {

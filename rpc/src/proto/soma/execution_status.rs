@@ -212,6 +212,16 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 Some(ErrorDetails::ObjectId(object_id.to_string())),
             ),
             E::ChannelClockMissing => (ExecutionErrorKind::ChannelClockMissing, None),
+
+            // Provider registry typed errors.
+            E::ProviderAlreadyExists => (ExecutionErrorKind::ProviderAlreadyExists, None),
+            E::ProviderNotFound => (ExecutionErrorKind::ProviderNotFound, None),
+            E::ProviderCallerMismatch => (ExecutionErrorKind::ProviderCallerMismatch, None),
+            E::ProviderInvalidEndpoint { reason } => (
+                ExecutionErrorKind::ProviderInvalidEndpoint,
+                Some(ErrorDetails::OtherError(reason)),
+            ),
+            E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
         };
 
         Self { description, kind: Some(kind.into()), error_details }
@@ -533,6 +543,20 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 }
             }
             K::ChannelClockMissing => Ok(Self::ChannelClockMissing),
+
+            // Provider registry typed errors.
+            K::ProviderAlreadyExists => Ok(Self::ProviderAlreadyExists),
+            K::ProviderNotFound => Ok(Self::ProviderNotFound),
+            K::ProviderCallerMismatch => Ok(Self::ProviderCallerMismatch),
+            K::ProviderInvalidEndpoint => {
+                let reason = if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                    s.clone()
+                } else {
+                    String::new()
+                };
+                Ok(Self::ProviderInvalidEndpoint { reason })
+            }
+            K::ProviderClockMissing => Ok(Self::ProviderClockMissing),
         }
     }
 }

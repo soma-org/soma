@@ -767,6 +767,19 @@ pub mod execution_error {
         NotAChannel = 71,
         /// Clock not declared as a shared input by a channel op that needs it.
         ChannelClockMissing = 72,
+        ///
+        /// Provider registry errors
+        ///
+        /// RegisterProvider on an address that already has a Provider object.
+        ProviderAlreadyExists = 80,
+        /// UpdateProvider for an address that has not registered yet.
+        ProviderNotFound = 81,
+        /// UpdateProvider signer != Provider.address (or args.provider_id != derive_id(signer)).
+        ProviderCallerMismatch = 82,
+        /// Endpoint string was empty or exceeded the max length cap.
+        ProviderInvalidEndpoint = 83,
+        /// Clock not declared as a shared input by a Provider op.
+        ProviderClockMissing = 84,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -854,6 +867,11 @@ pub mod execution_error {
                 Self::ChannelCoinTypeMismatch => "CHANNEL_COIN_TYPE_MISMATCH",
                 Self::NotAChannel => "NOT_A_CHANNEL",
                 Self::ChannelClockMissing => "CHANNEL_CLOCK_MISSING",
+                Self::ProviderAlreadyExists => "PROVIDER_ALREADY_EXISTS",
+                Self::ProviderNotFound => "PROVIDER_NOT_FOUND",
+                Self::ProviderCallerMismatch => "PROVIDER_CALLER_MISMATCH",
+                Self::ProviderInvalidEndpoint => "PROVIDER_INVALID_ENDPOINT",
+                Self::ProviderClockMissing => "PROVIDER_CLOCK_MISSING",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -942,6 +960,11 @@ pub mod execution_error {
                 "CHANNEL_COIN_TYPE_MISMATCH" => Some(Self::ChannelCoinTypeMismatch),
                 "NOT_A_CHANNEL" => Some(Self::NotAChannel),
                 "CHANNEL_CLOCK_MISSING" => Some(Self::ChannelClockMissing),
+                "PROVIDER_ALREADY_EXISTS" => Some(Self::ProviderAlreadyExists),
+                "PROVIDER_NOT_FOUND" => Some(Self::ProviderNotFound),
+                "PROVIDER_CALLER_MISMATCH" => Some(Self::ProviderCallerMismatch),
+                "PROVIDER_INVALID_ENDPOINT" => Some(Self::ProviderInvalidEndpoint),
+                "PROVIDER_CLOCK_MISSING" => Some(Self::ProviderClockMissing),
                 _ => None,
             }
         }
@@ -4018,7 +4041,7 @@ pub struct ValidDuring {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 60, 61"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 54, 55, 56, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4119,6 +4142,11 @@ pub mod transaction_kind {
         WithdrawAfterTimeout(super::WithdrawAfterTimeout),
         #[prost(message, tag = "54")]
         TopUp(super::TopUp),
+        /// Provider registry transactions
+        #[prost(message, tag = "55")]
+        RegisterProvider(super::RegisterProvider),
+        #[prost(message, tag = "56")]
+        UpdateProvider(super::UpdateProvider),
         /// Per-commit accumulator settlement system transaction (Stage 6a).
         #[prost(message, tag = "60")]
         Settlement(super::Settlement),
@@ -4727,6 +4755,32 @@ pub struct TopUp {
     /// Top-up amount, in the channel's smallest unit. Must be > 0.
     #[prost(uint64, optional, tag = "3")]
     pub amount: ::core::option::Option<u64>,
+}
+/// Register the signer as a provider on-chain. Creates a Provider
+/// shared object at Provider::derive_id(signer). Hard-fails if one
+/// already exists for the signer (use UpdateProvider).
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegisterProvider {
+    /// HTTP(S) endpoint for the provider's /soma/info and /v1/* APIs.
+    #[prost(string, optional, tag = "1")]
+    pub endpoint: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Update the signer's provider record. Doubles as a heartbeat —
+/// the executor stamps `registered_at_ms` from the Clock on every
+/// call regardless of whether the endpoint changed.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UpdateProvider {
+    /// Provider object ID (hex string). Carried explicitly so the
+    /// scheduler can declare it as a shared input from the tx kind
+    /// alone. The executor verifies that
+    /// `provider_id == Provider::derive_id(signer)`.
+    #[prost(string, optional, tag = "1")]
+    pub provider_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// New (or unchanged) endpoint URL.
+    #[prost(string, optional, tag = "2")]
+    pub endpoint: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

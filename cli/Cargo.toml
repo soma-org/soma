@@ -37,6 +37,7 @@ hex.workspace = true
 admin.workspace = true
 axum.workspace = true
 inference.workspace = true
+reqwest.workspace = true
 clap_complete = "4"
 camino = "1.2.2"
 csv = "1.4.0"

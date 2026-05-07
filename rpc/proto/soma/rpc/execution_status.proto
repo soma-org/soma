@@ -256,6 +256,20 @@ message ExecutionError {
     NOT_A_CHANNEL = 71;
     // Clock not declared as a shared input by a channel op that needs it.
     CHANNEL_CLOCK_MISSING = 72;
+
+    //
+    // Provider registry errors
+    //
+    // RegisterProvider on an address that already has a Provider object.
+    PROVIDER_ALREADY_EXISTS = 80;
+    // UpdateProvider for an address that has not registered yet.
+    PROVIDER_NOT_FOUND = 81;
+    // UpdateProvider signer != Provider.address (or args.provider_id != derive_id(signer)).
+    PROVIDER_CALLER_MISMATCH = 82;
+    // Endpoint string was empty or exceeded the max length cap.
+    PROVIDER_INVALID_ENDPOINT = 83;
+    // Clock not declared as a shared input by a Provider op.
+    PROVIDER_CLOCK_MISSING = 84;
   }
 
   optional ExecutionErrorKind kind = 2;

@@ -12,6 +12,7 @@ use channel::ChannelExecutor;
 // MergeCoins tx kinds.
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, prepare_gas};
+use provider::ProviderExecutor;
 use settlement::SettlementExecutor;
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
@@ -40,6 +41,7 @@ mod channel;
 // Stage 13b: mod coin removed.
 mod object;
 mod prepare_gas;
+mod provider;
 mod settlement;
 mod staking;
 mod system;
@@ -451,6 +453,11 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::RequestClose(_)
         | TransactionKind::WithdrawAfterTimeout(_)
         | TransactionKind::TopUp(_) => Box::new(ChannelExecutor::new()),
+
+        // Provider registry
+        TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_) => {
+            Box::new(ProviderExecutor::new())
+        }
 
         // Per-commit balance settlement (Stage 3)
         TransactionKind::Settlement(_) => Box::new(SettlementExecutor::new()),

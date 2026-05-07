@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Extension, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,6 +14,7 @@ use futures::StreamExt;
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use ::types::object::ObjectID;
 
 use crate::catalog::ModelCard;
 use crate::chain::ChannelSurface;
@@ -45,9 +46,35 @@ pub fn build_router(state: Arc<ProviderState>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/soma/info", get(soma_info))
+        .route("/soma/channel/{id}", get(soma_channel))
         .route("/v1/models", get(models))
         .merge(v1)
         .with_state(state)
+}
+
+/// Per-channel state from the provider's perspective. Lets a buyer
+/// who lost their local proxy state recover the highest cumulative
+/// they've already authorized — the floor for their next voucher.
+/// Returns 404 if the provider has never seen this channel.
+async fn soma_channel(
+    State(state): State<Arc<ProviderState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Ok(channel_id) = id.parse::<ObjectID>() else {
+        return error(StatusCode::BAD_REQUEST, "invalid_channel_id", "expected hex");
+    };
+    let Some(slot) = state.ledger.slot(&channel_id).await else {
+        return error(StatusCode::NOT_FOUND, "channel_unknown", "no ledger entry");
+    };
+    let s = slot.lock().await;
+    let body = json!({
+        "channel_id": channel_id.to_string(),
+        "last_cumulative_micros": s.state.cumulative_authorized_micros,
+        "total_consumed_micros": s.state.total_consumed_micros,
+        "deposit_micros": s.state.deposit_micros,
+        "has_signature": s.state.last_onchain_sig.is_some(),
+    });
+    (StatusCode::OK, Json(body)).into_response()
 }
 
 async fn health(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {

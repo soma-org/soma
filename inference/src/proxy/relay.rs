@@ -33,15 +33,10 @@ pub struct RelayedResponse {
     pub body_bytes: Option<Bytes>,
 }
 
-async fn persist(slot: &Arc<tokio::sync::Mutex<ChannelSlot>>) {
-    let g = slot.lock().await;
-    let path = g.path.clone();
-    if let Ok(s) = serde_json::to_string_pretty(&g.state) {
-        let _ = std::fs::write(path, s);
-    }
-}
-
-async fn reconcile_and_persist(
+// Proxy state lives only in memory now — there is no per-request
+// `persist` step. Callers that previously called `persist`/`reconcile_and_persist`
+// just hold the lock long enough to update the in-memory `TabClientState`.
+async fn reconcile(
     channel: &RunningTab,
     slot: &Arc<tokio::sync::Mutex<ChannelSlot>>,
     request_id: &str,
@@ -49,10 +44,6 @@ async fn reconcile_and_persist(
 ) {
     let mut g = slot.lock().await;
     channel.reconcile(&mut g.state, request_id, actual_micros).await;
-    let path = g.path.clone();
-    if let Ok(s) = serde_json::to_string_pretty(&g.state) {
-        let _ = std::fs::write(path, s);
-    }
 }
 
 pub async fn forward_chat_completion(
@@ -90,7 +81,6 @@ pub async fn forward_chat_completion(
                 .await
                 .context("authorize")?
         };
-        persist(slot).await;
 
         let url = format!("{}{}", provider.endpoint.trim_end_matches('/'), path);
         let mut h = pass_inbound(inbound_headers);
@@ -130,7 +120,6 @@ pub async fn forward_chat_completion(
             g.state.cumulative_authorized_micros = need.saturating_sub(worst_case_micros);
             g.state.last_authorized = None;
             drop(g);
-            persist(slot).await;
             continue;
         }
 
@@ -172,7 +161,7 @@ pub async fn forward_chat_completion(
                         let block_s = String::from_utf8_lossy(&block);
                         if let Some(u) = extract_usage_from_chunk(&block_s) {
                             let actual = realized_for_usage(&card, &u);
-                            reconcile_and_persist(&channel, &slot, &rid, actual).await;
+                            reconcile(&channel, &slot, &rid, actual).await;
                         }
                     }
                 }
@@ -191,7 +180,7 @@ pub async fn forward_chat_completion(
             if let Some(u) = v.get("usage") {
                 if let Ok(usage) = serde_json::from_value::<crate::openai::Usage>(u.clone()) {
                     let actual = realized_for_usage(card, &usage);
-                    reconcile_and_persist(&ctx.channel, slot, &request_id, actual).await;
+                    reconcile(&ctx.channel, slot, &request_id, actual).await;
                 }
             }
         }

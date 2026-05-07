@@ -176,9 +176,24 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_tx_details pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune)
+        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune.clone())
         .await
         .context("Failed to register soma_validators pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_channels::SomaChannels, no_prune.clone())
+        .await
+        .context("Failed to register soma_channels pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_channel_events::SomaChannelEvents, no_prune.clone())
+        .await
+        .context("Failed to register soma_channel_events pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_providers::SomaProviders, no_prune)
+        .await
+        .context("Failed to register soma_providers pipeline")?;
 
     Ok(())
 }

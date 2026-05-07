@@ -8,10 +8,10 @@
 //! reconciles realized cost on the streamed `usage` chunk.
 
 pub mod config;
+pub mod state;
 mod relay;
 mod router;
 mod server;
-mod state;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ pub async fn run(
     wallet: Arc<WalletContext>,
     address: SomaAddress,
     registry: Arc<dyn ProviderRegistry>,
-    soma_home: PathBuf,
+    _soma_home: PathBuf,
 ) -> anyhow::Result<()> {
     let cfg = Arc::new(cfg);
     tracing::info!(address = %address, "loaded client identity");
@@ -40,7 +40,9 @@ pub async fn run(
     let chain: Arc<dyn ChannelSurface> =
         Arc::new(ChainChannelSurface::new(wallet.clone(), address));
 
-    let store = state::ClientStore::new(soma_home);
+    // Stateless on disk — purely in-memory channel cache. On first
+    // request the router rehydrates from the chain / the provider.
+    let store = state::ClientStore::new();
     let channel =
         Arc::new(crate::channel::RunningTab::for_client(wallet.clone(), address));
 

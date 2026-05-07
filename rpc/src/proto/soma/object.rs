@@ -174,6 +174,7 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::Channel => "Channel".to_string(),
             crate::types::ObjectType::BalanceAccumulator => "BalanceAccumulator".to_string(),
             crate::types::ObjectType::DelegationAccumulator => "DelegationAccumulator".to_string(),
+            crate::types::ObjectType::Provider => "Provider".to_string(),
         }
     }
 }
@@ -192,6 +193,7 @@ impl FromStr for crate::types::ObjectType {
             "Channel" => Ok(Self::Channel),
             "BalanceAccumulator" => Ok(Self::BalanceAccumulator),
             "DelegationAccumulator" => Ok(Self::DelegationAccumulator),
+            "Provider" => Ok(Self::Provider),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

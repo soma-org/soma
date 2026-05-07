@@ -7,7 +7,10 @@ use soma_field_count::FieldCount;
 use crate::schema::soma_asks;
 use crate::schema::soma_balance_deltas;
 use crate::schema::soma_bids;
+use crate::schema::soma_channels;
+use crate::schema::soma_channel_events;
 use crate::schema::soma_epoch_state;
+use crate::schema::soma_providers;
 use crate::schema::soma_settlements;
 use crate::schema::soma_staked_soma;
 use crate::schema::soma_validators;
@@ -126,4 +129,53 @@ pub struct StoredVault {
     pub cp_sequence_number: i64,
     pub owner: Vec<u8>,
     pub balance: i64,
+}
+
+// --- Channel registry ---
+
+/// Per-channel state mirror. INSERT on `OpenChannel`, UPDATE on
+/// `Settle` / `RequestClose` / `TopUp` / `WithdrawAfterTimeout`.
+/// `status` follows the off-chain `ChannelStatus` enum: 0 open,
+/// 1 closing, 2 withdrawn.
+#[derive(Insertable, AsChangeset, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_channels)]
+#[diesel(treat_none_as_null = true)]
+pub struct StoredChannel {
+    pub channel_id: Vec<u8>,
+    pub payer: Vec<u8>,
+    pub payee: Vec<u8>,
+    pub authorized_signer: Vec<u8>,
+    pub token: String,
+    pub deposit: i64,
+    pub settled_amount: i64,
+    pub close_requested_at_ms: Option<i64>,
+    pub status: i16,
+    pub opened_at_cp: i64,
+    pub opened_tx_digest: Vec<u8>,
+    pub last_update_cp: i64,
+}
+
+/// Append-only event log for channel ops. One row per channel tx.
+#[derive(Insertable, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_channel_events)]
+pub struct StoredChannelEvent {
+    pub tx_sequence_number: i64,
+    pub cp_sequence_number: i64,
+    pub channel_id: Vec<u8>,
+    pub kind: String,
+    pub delta: i64,
+    pub timestamp_ms: i64,
+}
+
+// --- Provider registry ---
+
+/// On-chain provider record mirror. INSERT on `RegisterProvider`,
+/// UPDATE on `UpdateProvider`.
+#[derive(Insertable, AsChangeset, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_providers)]
+pub struct StoredProvider {
+    pub address: Vec<u8>,
+    pub endpoint: String,
+    pub registered_at_ms: i64,
+    pub last_update_cp: i64,
 }

@@ -16,11 +16,13 @@ use crate::api::types::address::Address;
 use crate::api::types::ask::Ask;
 use crate::api::types::available_range::AvailableRange;
 use crate::api::types::bid::Bid;
+use crate::api::types::channel::{Channel as GqlChannel, ChannelStatus};
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
 use crate::api::types::epoch_state::EpochState;
 use crate::api::types::network_metrics::NetworkMetrics;
 use crate::api::types::object::Object as GqlObject;
+use crate::api::types::provider::Provider as GqlProvider;
 use crate::api::types::reputation::Reputation;
 use crate::api::types::service_config::ServiceConfig;
 use crate::api::types::settlement::Settlement;
@@ -1393,6 +1395,296 @@ impl Query {
             network_address: row.9,
             proxy_address: row.10,
         }))
+    }
+
+    // ---------------------------------------------------------------
+    // Payment channels
+    // ---------------------------------------------------------------
+
+    /// Look up a single payment channel by id (hex). Returns `None`
+    /// if the indexer has not seen a channel at this id.
+    async fn channel(&self, ctx: &Context<'_>, id: String) -> Result<Option<GqlChannel>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let id_hex = id.strip_prefix("0x").unwrap_or(&id);
+        let id_bytes = hex::decode(id_hex)
+            .map_err(|e| Error::new(format!("Invalid channel id: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_channels;
+
+        type Row = (
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            String,
+            i64,
+            i64,
+            Option<i64>,
+            i16,
+            i64,
+            Vec<u8>,
+            i64,
+        );
+
+        let row: Option<Row> = soma_channels::table
+            .select((
+                soma_channels::channel_id,
+                soma_channels::payer,
+                soma_channels::payee,
+                soma_channels::authorized_signer,
+                soma_channels::token,
+                soma_channels::deposit,
+                soma_channels::settled_amount,
+                soma_channels::close_requested_at_ms,
+                soma_channels::status,
+                soma_channels::opened_at_cp,
+                soma_channels::opened_tx_digest,
+                soma_channels::last_update_cp,
+            ))
+            .filter(soma_channels::channel_id.eq(id_bytes))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| GqlChannel {
+            channel_id: r.0,
+            payer: r.1,
+            payee: r.2,
+            authorized_signer: r.3,
+            token: r.4,
+            deposit: r.5,
+            settled_amount: r.6,
+            close_requested_at_ms: r.7,
+            status: r.8,
+            opened_at_cp: r.9,
+            opened_tx_digest: r.10,
+            last_update_cp: r.11,
+        }))
+    }
+
+    /// List payment channels filtered by payer and/or payee. At least
+    /// one of the two must be supplied — channel listing is otherwise
+    /// unbounded and the indexer doesn't pre-aggregate. Status
+    /// filter narrows further.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn channels(
+        &self,
+        ctx: &Context<'_>,
+        payer: Option<String>,
+        payee: Option<String>,
+        status: Option<ChannelStatus>,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<Connection<String, GqlChannel>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit =
+            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        if payer.is_none() && payee.is_none() {
+            return Err(Error::new("channels(): one of `payer` or `payee` is required"));
+        }
+
+        use indexer_alt_schema::schema::soma_channels;
+
+        type Row = (
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            String,
+            i64,
+            i64,
+            Option<i64>,
+            i16,
+            i64,
+            Vec<u8>,
+            i64,
+        );
+
+        let mut query = soma_channels::table
+            .select((
+                soma_channels::channel_id,
+                soma_channels::payer,
+                soma_channels::payee,
+                soma_channels::authorized_signer,
+                soma_channels::token,
+                soma_channels::deposit,
+                soma_channels::settled_amount,
+                soma_channels::close_requested_at_ms,
+                soma_channels::status,
+                soma_channels::opened_at_cp,
+                soma_channels::opened_tx_digest,
+                soma_channels::last_update_cp,
+            ))
+            .order(soma_channels::last_update_cp.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(p) = payer.as_deref() {
+            let bytes = hex::decode(p.strip_prefix("0x").unwrap_or(p))
+                .map_err(|e| Error::new(format!("Invalid payer: {e}")))?;
+            query = query.filter(soma_channels::payer.eq(bytes));
+        }
+        if let Some(p) = payee.as_deref() {
+            let bytes = hex::decode(p.strip_prefix("0x").unwrap_or(p))
+                .map_err(|e| Error::new(format!("Invalid payee: {e}")))?;
+            query = query.filter(soma_channels::payee.eq(bytes));
+        }
+        if let Some(s) = status {
+            query = query.filter(soma_channels::status.eq(s.to_i16()));
+        }
+
+        if let Some(after) = after.as_deref() {
+            let cursor_bytes = hex::decode(after.strip_prefix("0x").unwrap_or(after))
+                .map_err(|e| Error::new(format!("Invalid cursor: {e}")))?;
+            query = query.filter(soma_channels::channel_id.gt(cursor_bytes));
+        }
+
+        let rows: Vec<Row> = query
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+        let has_next = rows.len() as i64 > limit;
+        let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for r in nodes {
+            let cursor = format!("0x{}", hex::encode(&r.0));
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlChannel {
+                    channel_id: r.0,
+                    payer: r.1,
+                    payee: r.2,
+                    authorized_signer: r.3,
+                    token: r.4,
+                    deposit: r.5,
+                    settled_amount: r.6,
+                    close_requested_at_ms: r.7,
+                    status: r.8,
+                    opened_at_cp: r.9,
+                    opened_tx_digest: r.10,
+                    last_update_cp: r.11,
+                },
+            ));
+        }
+        Ok(connection)
+    }
+
+    // ---------------------------------------------------------------
+    // Provider registry
+    // ---------------------------------------------------------------
+
+    /// Look up a single provider by address.
+    async fn provider(
+        &self,
+        ctx: &Context<'_>,
+        address: String,
+    ) -> Result<Option<GqlProvider>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
+        let addr_bytes = hex::decode(addr_hex)
+            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_providers;
+
+        type Row = (Vec<u8>, String, i64, i64);
+        let row: Option<Row> = soma_providers::table
+            .select((
+                soma_providers::address,
+                soma_providers::endpoint,
+                soma_providers::registered_at_ms,
+                soma_providers::last_update_cp,
+            ))
+            .filter(soma_providers::address.eq(addr_bytes))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| GqlProvider {
+            address: r.0,
+            endpoint: r.1,
+            registered_at_ms: r.2,
+            last_update_cp: r.3,
+        }))
+    }
+
+    /// List providers, optionally filtered to those active within
+    /// `active_within_ms` of now (heartbeat-based liveness).
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn providers(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        active_within_ms: Option<i64>,
+    ) -> Result<Connection<String, GqlProvider>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit =
+            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_providers;
+
+        type Row = (Vec<u8>, String, i64, i64);
+        let mut query = soma_providers::table
+            .select((
+                soma_providers::address,
+                soma_providers::endpoint,
+                soma_providers::registered_at_ms,
+                soma_providers::last_update_cp,
+            ))
+            .order(soma_providers::registered_at_ms.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(window_ms) = active_within_ms {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            let floor = now_ms.saturating_sub(window_ms);
+            query = query.filter(soma_providers::registered_at_ms.ge(floor));
+        }
+
+        if let Some(after) = after.as_deref() {
+            let cursor_bytes = hex::decode(after.strip_prefix("0x").unwrap_or(after))
+                .map_err(|e| Error::new(format!("Invalid cursor: {e}")))?;
+            query = query.filter(soma_providers::address.gt(cursor_bytes));
+        }
+
+        let rows: Vec<Row> = query
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+        let has_next = rows.len() as i64 > limit;
+        let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for r in nodes {
+            let cursor = format!("0x{}", hex::encode(&r.0));
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlProvider {
+                    address: r.0,
+                    endpoint: r.1,
+                    registered_at_ms: r.2,
+                    last_update_cp: r.3,
+                },
+            ));
+        }
+        Ok(connection)
     }
 
     /// Network-wide metrics (TPS, totals).

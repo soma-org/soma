@@ -43,7 +43,7 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand};
+use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ObjectsCommand, ProviderCommand, SomaValidatorCommand, WalletCommand};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
 use crate::usdc_amount::UsdcAmount;
@@ -416,6 +416,20 @@ EXAMPLES:
     Channel {
         #[clap(subcommand)]
         cmd: ChannelCommand,
+    },
+
+    /// Manage on-chain provider registry (register, update, show).
+    #[clap(
+        name = "provider",
+        after_help = "\
+EXAMPLES:
+    soma provider register --endpoint https://my.provider:8080
+    soma provider show
+    soma provider update --endpoint https://new.endpoint:8080"
+    )]
+    Provider {
+        #[clap(subcommand)]
+        cmd: ProviderCommand,
     },
 
     /// Manage validators (register, set gas price, commission)
@@ -952,6 +966,8 @@ impl SomaCommand {
             SomaCommand::Inference { cmd } => cmd.execute().await,
 
             SomaCommand::Channel { cmd } => cmd.execute().await,
+
+            SomaCommand::Provider { cmd } => cmd.execute().await,
 
             // =================================================================
             // OPERATOR COMMANDS

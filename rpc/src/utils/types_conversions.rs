@@ -64,6 +64,7 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::Channel => ObjectType::Channel,
             types::object::ObjectType::BalanceAccumulator => ObjectType::BalanceAccumulator,
             types::object::ObjectType::DelegationAccumulator => ObjectType::DelegationAccumulator,
+            types::object::ObjectType::Provider => ObjectType::Provider,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -94,6 +95,7 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::Channel => types::object::ObjectType::Channel,
             ObjectType::BalanceAccumulator => types::object::ObjectType::BalanceAccumulator,
             ObjectType::DelegationAccumulator => types::object::ObjectType::DelegationAccumulator,
+            ObjectType::Provider => types::object::ObjectType::Provider,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -592,6 +594,21 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     )),
                     coin_type: args.coin_type,
                     amount: args.amount,
+                })
+            }
+
+            // Provider registry transactions
+            TransactionKind::RegisterProvider(args) => {
+                TK::RegisterProvider(types::transaction::RegisterProviderArgs {
+                    endpoint: args.endpoint,
+                })
+            }
+            TransactionKind::UpdateProvider(args) => {
+                TK::UpdateProvider(types::transaction::UpdateProviderArgs {
+                    provider_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.provider_id,
+                    )),
+                    endpoint: args.endpoint,
                 })
             }
 
@@ -1418,6 +1435,21 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             }
             types::effects::ExecutionFailureStatus::ChannelClockMissing => {
                 Self::ChannelClockMissing
+            }
+
+            // Provider registry errors
+            types::effects::ExecutionFailureStatus::ProviderAlreadyExists => {
+                Self::ProviderAlreadyExists
+            }
+            types::effects::ExecutionFailureStatus::ProviderNotFound => Self::ProviderNotFound,
+            types::effects::ExecutionFailureStatus::ProviderCallerMismatch => {
+                Self::ProviderCallerMismatch
+            }
+            types::effects::ExecutionFailureStatus::ProviderInvalidEndpoint { reason } => {
+                Self::ProviderInvalidEndpoint { reason }
+            }
+            types::effects::ExecutionFailureStatus::ProviderClockMissing => {
+                Self::ProviderClockMissing
             }
         }
     }

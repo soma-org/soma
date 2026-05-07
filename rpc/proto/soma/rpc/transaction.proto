@@ -125,6 +125,10 @@ message TransactionKind {
     WithdrawAfterTimeout withdraw_after_timeout = 53;
     TopUp top_up = 54;
 
+    // Provider registry transactions
+    RegisterProvider register_provider = 55;
+    UpdateProvider update_provider = 56;
+
     // Per-commit accumulator settlement system transaction (Stage 6a).
     Settlement settlement = 60;
 
@@ -555,4 +559,25 @@ message TopUp {
   optional string coin_type = 2;
   // Top-up amount, in the channel's smallest unit. Must be > 0.
   optional uint64 amount = 3;
+}
+
+// Register the signer as a provider on-chain. Creates a Provider
+// shared object at Provider::derive_id(signer). Hard-fails if one
+// already exists for the signer (use UpdateProvider).
+message RegisterProvider {
+  // HTTP(S) endpoint for the provider's /soma/info and /v1/* APIs.
+  optional string endpoint = 1;
+}
+
+// Update the signer's provider record. Doubles as a heartbeat —
+// the executor stamps `registered_at_ms` from the Clock on every
+// call regardless of whether the endpoint changed.
+message UpdateProvider {
+  // Provider object ID (hex string). Carried explicitly so the
+  // scheduler can declare it as a shared input from the tx kind
+  // alone. The executor verifies that
+  // `provider_id == Provider::derive_id(signer)`.
+  optional string provider_id = 1;
+  // New (or unchanged) endpoint URL.
+  optional string endpoint = 2;
 }

@@ -21,9 +21,8 @@ use ::types::base::SomaAddress;
 pub use config::Config;
 
 use crate::chain::chain::ChainChannelSurface;
-use crate::chain::{ChannelSurface, ProviderRegistry, ProviderRecord};
+use crate::chain::ChannelSurface;
 use crate::channel::RunningTab;
-use crate::now_ms;
 
 /// Run the provider until shutdown (SIGTERM / SIGINT).
 ///
@@ -34,7 +33,6 @@ pub async fn run(
     cfg: Config,
     wallet: Arc<WalletContext>,
     address: SomaAddress,
-    registry: Arc<dyn ProviderRegistry>,
     soma_home: PathBuf,
     heartbeat_interval_secs: u64,
 ) -> anyhow::Result<()> {
@@ -68,14 +66,25 @@ pub async fn run(
     let channel = Arc::new(RunningTab::for_provider(cfg.auth.clock_skew_tolerance_secs));
     let ledger = ledger::Ledger::new(soma_home);
 
-    let record = ProviderRecord {
+    // On-chain registry. Lands the Provider object (or bumps the
+    // heartbeat). Failure is logged but not fatal — typical reason
+    // is the local node not yet being reachable; the heartbeat loop
+    // will retry.
+    if let Err(e) = sdk::provider::register_or_update(
+        &wallet,
         address,
-        pubkey_hex: pubkey_hex.clone(),
-        endpoint: cfg.server.public_endpoint.clone(),
-        last_heartbeat_ms: now_ms(),
-    };
-    registry.register_provider(record.clone()).await.context("register_provider on boot")?;
-    spawn_heartbeat(registry.clone(), record, heartbeat_interval_secs);
+        cfg.server.public_endpoint.clone(),
+    )
+    .await
+    {
+        tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
+    }
+    spawn_heartbeat(
+        wallet.clone(),
+        address,
+        cfg.server.public_endpoint.clone(),
+        heartbeat_interval_secs,
+    );
 
     let state = Arc::new(handler::ProviderState {
         chain: chain.clone(),
@@ -101,8 +110,9 @@ pub async fn run(
 }
 
 fn spawn_heartbeat(
-    registry: Arc<dyn ProviderRegistry>,
-    mut record: ProviderRecord,
+    wallet: Arc<WalletContext>,
+    address: SomaAddress,
+    endpoint: String,
     interval_secs: u64,
 ) {
     if interval_secs == 0 {
@@ -111,9 +121,14 @@ fn spawn_heartbeat(
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
-            record.last_heartbeat_ms = now_ms();
-            if let Err(e) = registry.register_provider(record.clone()).await {
-                tracing::warn!(err = %e, "heartbeat register_provider failed");
+            // `UpdateProvider` stamps a fresh `registered_at_ms` from
+            // the consensus Clock — the indexer mirrors it into
+            // `soma_providers`, and downstream liveness watchers
+            // see the heartbeat.
+            if let Err(e) =
+                sdk::provider::update(&wallet, address, endpoint.clone()).await
+            {
+                tracing::warn!(err = %e, "on-chain provider heartbeat failed");
             }
         }
     });

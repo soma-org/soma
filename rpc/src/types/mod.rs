@@ -44,10 +44,10 @@ pub use transaction::{
     BridgeEmergencyUnpauseArgs, BridgeWithdrawArgs, ChangeEpoch, ClaimRewardsArgs,
     CommitModelArgs, ConsensusCommitPrologue, CreateModelArgs,
     GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
-    OpenChannelArgs, RemoveValidatorArgs, RequestCloseArgs, RevealModelArgs, SettleArgs,
-    SettlementTransaction, SignedTransaction, SubmissionManifest, SubmitDataArgs,
-    TopUpArgs, Transaction, TransactionKind, UpdateValidatorMetadataArgs,
-    WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RegisterProviderArgs, RemoveValidatorArgs, RequestCloseArgs,
+    RevealModelArgs, SettleArgs, SettlementTransaction, SignedTransaction, SubmissionManifest,
+    SubmitDataArgs, TopUpArgs, Transaction, TransactionKind, UpdateProviderArgs,
+    UpdateValidatorMetadataArgs, WithdrawAfterTimeoutArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

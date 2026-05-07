@@ -386,6 +386,15 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 amount: Some(args.amount),
             }),
 
+            // Provider registry
+            RegisterProvider(args) => Kind::RegisterProvider(super::RegisterProvider {
+                endpoint: Some(args.endpoint.clone()),
+            }),
+            UpdateProvider(args) => Kind::UpdateProvider(super::UpdateProvider {
+                provider_id: Some(args.provider_id.to_string()),
+                endpoint: Some(args.endpoint.clone()),
+            }),
+
             Settlement(settlement) => Kind::Settlement(super::Settlement {
                 epoch: Some(settlement.epoch),
                 round: Some(settlement.round),
@@ -809,6 +818,28 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 amount: args
                     .amount
                     .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+            }),
+
+            Kind::RegisterProvider(args) => {
+                Self::RegisterProvider(crate::types::RegisterProviderArgs {
+                    endpoint: args
+                        .endpoint
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
+                })
+            }
+
+            Kind::UpdateProvider(args) => Self::UpdateProvider(crate::types::UpdateProviderArgs {
+                provider_id: args
+                    .provider_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("provider_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("provider_id", e))?,
+                endpoint: args
+                    .endpoint
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
             }),
 
             Kind::Settlement(settlement) => {

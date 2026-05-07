@@ -171,6 +171,10 @@ pub enum TransactionKind {
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
     TopUp(TopUpArgs),
 
+    // Provider registry
+    RegisterProvider(RegisterProviderArgs),
+    UpdateProvider(UpdateProviderArgs),
+
     /// Per-commit accumulator settlement system transaction (Stage 6a).
     /// Injected by the consensus handler exactly once per commit;
     /// applies aggregated balance-event deltas to the on-chain
@@ -269,6 +273,19 @@ pub struct TopUpArgs {
     pub channel_id: Address,
     pub coin_type: types::object::CoinType,
     pub amount: u64,
+}
+
+// Provider registry arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RegisterProviderArgs {
+    pub endpoint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct UpdateProviderArgs {
+    pub provider_id: Address,
+    pub endpoint: String,
 }
 
 // Supporting types for validator management

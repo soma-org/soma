@@ -111,6 +111,13 @@ pub enum ExecutionError {
     NotAChannel { object_id: Address },
     ChannelClockMissing,
 
+    // Provider registry errors
+    ProviderAlreadyExists,
+    ProviderNotFound,
+    ProviderCallerMismatch,
+    ProviderInvalidEndpoint { reason: String },
+    ProviderClockMissing,
+
     // Generic error for cases not covered by specific variants
     OtherError(String),
 }

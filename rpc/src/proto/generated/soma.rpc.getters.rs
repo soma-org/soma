@@ -4862,6 +4862,73 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::TopUp(field.into()));
             self
         }
+        pub fn register_provider(&self) -> &RegisterProvider {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &self.kind {
+                field as _
+            } else {
+                RegisterProvider::default_instance() as _
+            }
+        }
+        pub fn register_provider_opt(&self) -> Option<&RegisterProvider> {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_provider_opt_mut(&mut self) -> Option<&mut RegisterProvider> {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_provider_mut(&mut self) -> &mut RegisterProvider {
+            if self.register_provider_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RegisterProvider(RegisterProvider::default()),
+                );
+            }
+            self.register_provider_opt_mut().unwrap()
+        }
+        pub fn with_register_provider(mut self, field: RegisterProvider) -> Self {
+            self.kind = Some(transaction_kind::Kind::RegisterProvider(field.into()));
+            self
+        }
+        pub fn update_provider(&self) -> &UpdateProvider {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &self.kind {
+                field as _
+            } else {
+                UpdateProvider::default_instance() as _
+            }
+        }
+        pub fn update_provider_opt(&self) -> Option<&UpdateProvider> {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_provider_opt_mut(&mut self) -> Option<&mut UpdateProvider> {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_provider_mut(&mut self) -> &mut UpdateProvider {
+            if self.update_provider_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UpdateProvider(UpdateProvider::default()),
+                );
+            }
+            self.update_provider_opt_mut().unwrap()
+        }
+        pub fn with_update_provider(mut self, field: UpdateProvider) -> Self {
+            self.kind = Some(transaction_kind::Kind::UpdateProvider(field.into()));
+            self
+        }
         pub fn settlement(&self) -> &Settlement {
             if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
                 field as _
@@ -6397,6 +6464,41 @@ mod _getter_impls {
         }
         pub fn with_amount(mut self, field: u64) -> Self {
             self.amount = Some(field.into());
+            self
+        }
+    }
+    impl RegisterProvider {
+        pub const fn const_default() -> Self {
+            Self { endpoint: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RegisterProvider = RegisterProvider::const_default();
+            &DEFAULT
+        }
+        pub fn with_endpoint(mut self, field: String) -> Self {
+            self.endpoint = Some(field.into());
+            self
+        }
+    }
+    impl UpdateProvider {
+        pub const fn const_default() -> Self {
+            Self {
+                provider_id: None,
+                endpoint: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UpdateProvider = UpdateProvider::const_default();
+            &DEFAULT
+        }
+        pub fn with_provider_id(mut self, field: String) -> Self {
+            self.provider_id = Some(field.into());
+            self
+        }
+        pub fn with_endpoint(mut self, field: String) -> Self {
+            self.endpoint = Some(field.into());
             self
         }
     }
