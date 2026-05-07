@@ -21,6 +21,7 @@ pub mod kv_transactions;
 pub mod obj_info;
 pub mod obj_versions;
 pub mod soma_balance_deltas;
+pub mod soma_bridge_deposits;
 pub mod soma_channel_events;
 pub mod soma_channel_ratings;
 pub mod soma_channels;

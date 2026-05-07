@@ -460,3 +460,116 @@ async fn test_multiple_transactions() {
     assert_eq!(cps[0].epoch, 1);
 }
 
+
+// ===========================================================================
+// soma_bridge_deposits
+// ===========================================================================
+
+#[tokio::test]
+#[ignore]
+async fn test_soma_bridge_deposits_process() {
+    let recipient_a = SomaAddress::random();
+    let recipient_b = SomaAddress::random();
+    let eth_hash_a = [0x42u8; 32];
+    let eth_hash_b = [0x99u8; 32];
+
+    let cp = Arc::new(
+        TestCheckpointBuilder::new(7)
+            .with_epoch(0)
+            .with_network_total_transactions(2)
+            .add_bridge_deposit(recipient_a, 1_000_000, eth_hash_a, 17)
+            .add_bridge_deposit(recipient_b, 500_000, eth_hash_b, 18)
+            .build(),
+    );
+
+    let values = soma_bridge_deposits::SomaBridgeDeposits
+        .process(&cp)
+        .await
+        .unwrap();
+
+    assert_eq!(values.len(), 2);
+    assert_eq!(values[0].recipient, recipient_a.to_vec());
+    assert_eq!(values[0].amount, 1_000_000);
+    assert_eq!(values[0].nonce, 17);
+    assert_eq!(values[0].eth_tx_hash, eth_hash_a.to_vec());
+    assert_eq!(values[0].cp_sequence_number, 7);
+
+    assert_eq!(values[1].recipient, recipient_b.to_vec());
+    assert_eq!(values[1].amount, 500_000);
+    assert_eq!(values[1].nonce, 18);
+    assert_eq!(values[1].eth_tx_hash, eth_hash_b.to_vec());
+
+    // tx_sequence_number is contiguous from `network_total - len`, so the two
+    // bridge deposits should land at indexes 0 and 1.
+    assert_eq!(values[0].tx_sequence_number, 0);
+    assert_eq!(values[1].tx_sequence_number, 1);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_soma_bridge_deposits_commit() {
+    let (db, _temp) = setup().await;
+    let cp = Arc::new(
+        TestCheckpointBuilder::new(1)
+            .with_epoch(0)
+            .with_network_total_transactions(1)
+            .add_bridge_deposit(SomaAddress::random(), 1_000_000, [0x42u8; 32], 1)
+            .build(),
+    );
+    let values = soma_bridge_deposits::SomaBridgeDeposits
+        .process(&cp)
+        .await
+        .unwrap();
+    assert_eq!(values.len(), 1);
+
+    let mut conn = db.connect().await.unwrap();
+    let rows = soma_bridge_deposits::SomaBridgeDeposits::commit(&values, &mut conn)
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+
+    // Round-trip: read it back.
+    use indexer_alt_schema::schema::soma_bridge_deposits as t;
+    let stored: (i64, i64, Vec<u8>, i64, i64, Vec<u8>, i64) = t::table
+        .select((
+            t::tx_sequence_number,
+            t::cp_sequence_number,
+            t::recipient,
+            t::amount,
+            t::nonce,
+            t::eth_tx_hash,
+            t::timestamp_ms,
+        ))
+        .first(conn.deref_mut())
+        .await
+        .unwrap();
+    assert_eq!(stored.3, 1_000_000);
+    assert_eq!(stored.4, 1);
+    assert_eq!(stored.5, [0x42u8; 32].to_vec());
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_soma_bridge_deposits_skips_non_bridge_txs() {
+    // Mixed checkpoint: one BridgeDeposit, one BalanceTransfer. Only the
+    // bridge deposit should be picked up.
+    let bridge_recipient = SomaAddress::random();
+    let coin_sender = SomaAddress::random();
+    let coin_recipient = SomaAddress::random();
+
+    let cp = Arc::new(
+        TestCheckpointBuilder::new(2)
+            .with_epoch(0)
+            .with_network_total_transactions(2)
+            .add_bridge_deposit(bridge_recipient, 100, [0x01u8; 32], 1)
+            .add_transfer_coin(coin_sender, coin_recipient, 50_000)
+            .build(),
+    );
+
+    let values = soma_bridge_deposits::SomaBridgeDeposits
+        .process(&cp)
+        .await
+        .unwrap();
+    assert_eq!(values.len(), 1, "non-bridge tx must not be picked up");
+    assert_eq!(values[0].recipient, bridge_recipient.to_vec());
+}

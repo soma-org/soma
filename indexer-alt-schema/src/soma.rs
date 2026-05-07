@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use soma_field_count::FieldCount;
 
 use crate::schema::soma_balance_deltas;
+use crate::schema::soma_bridge_deposits;
 use crate::schema::soma_channel_events;
 use crate::schema::soma_channel_ratings;
 use crate::schema::soma_channels;
@@ -121,6 +122,23 @@ pub struct StoredChannelRating {
     pub negative: bool,
     pub rated_at_cp: i64,
     pub rated_at_ms: i64,
+}
+
+// --- Bridge deposits ---
+
+/// Per-tx materialization of `BridgeDeposit` transactions. INSERT-only;
+/// every BridgeDeposit produces exactly one row. `eth_tx_hash` is the
+/// Base-side L1 proof carried in `BridgeDepositArgs`.
+#[derive(Insertable, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_bridge_deposits)]
+pub struct StoredBridgeDeposit {
+    pub tx_sequence_number: i64,
+    pub cp_sequence_number: i64,
+    pub recipient: Vec<u8>,
+    pub amount: i64,
+    pub nonce: i64,
+    pub eth_tx_hash: Vec<u8>,
+    pub timestamp_ms: i64,
 }
 
 // --- Provider registry ---

@@ -239,6 +239,58 @@ impl TestCheckpointBuilder {
         self
     }
 
+    /// Add a `BridgeDeposit` system transaction. Bridge deposits have no
+    /// input or output UTXOs (Soma uses the accumulator model for fungible
+    /// balances); the recipient gets a balance delta tracked elsewhere.
+    /// `aggregated_signature` and `signer_bitmap` are left empty — the
+    /// indexer-side handler doesn't validate the bridge committee proof.
+    pub fn add_bridge_deposit(
+        mut self,
+        recipient: SomaAddress,
+        amount: u64,
+        eth_tx_hash: [u8; 32],
+        nonce: u64,
+    ) -> Self {
+        let tx_digest = TransactionDigest::random();
+        let version = Version::from_u64(self.next_version);
+        self.next_version += 1;
+
+        let tx_data = TransactionData::new(
+            TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
+                nonce,
+                eth_tx_hash,
+                recipient,
+                amount,
+                aggregated_signature: vec![],
+                signer_bitmap: vec![],
+            }),
+            SomaAddress::default(),
+            vec![],
+        );
+
+        let effects = TransactionEffects::V1(TransactionEffectsV1 {
+            status: ExecutionStatus::Success,
+            executed_epoch: self.epoch,
+            transaction_digest: tx_digest,
+            version,
+            changed_objects: vec![],
+            dependencies: vec![],
+            unchanged_shared_objects: vec![],
+            transaction_fee: TransactionFee::default(),
+            gas_object_index: None,
+            balance_events: vec![],
+            delegation_events: vec![],
+        });
+
+        self.transactions.push(TestTransaction {
+            tx_data,
+            effects,
+            input_objects: vec![],
+            output_objects: vec![],
+        });
+        self
+    }
+
     /// Add a ChangeEpoch transaction that includes a SystemState in its output objects.
     ///
     /// The system state is provided as-is, so it must already be configured with the

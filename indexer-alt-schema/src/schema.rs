@@ -274,6 +274,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_bridge_deposits (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        recipient -> Bytea,
+        amount -> Int8,
+        nonce -> Int8,
+        eth_tx_hash -> Bytea,
+        timestamp_ms -> Int8,
+    }
+}
+
+diesel::table! {
     watermarks (pipeline) {
         pipeline -> Text,
         epoch_hi_inclusive -> Int8,
@@ -306,6 +318,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     soma_staked_soma,
     soma_validators,
     soma_tx_details,
+    soma_bridge_deposits,
     tx_affected_addresses,
     tx_affected_objects,
     tx_balance_changes,
