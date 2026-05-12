@@ -461,6 +461,39 @@ mod tests {
         assert_eq!(msg[20], TOKEN_TRANSFER_MESSAGE_VERSION_V2);
     }
 
+    /// **Cross-language wire-format proof.** Pinned `keccak256` of a
+    /// deterministic V2 withdrawal sentinel — the same value MUST be
+    /// asserted by the Solidity test
+    /// (`SOMA_WITHDRAW_SENTINEL_HASH` in `test/SomaBridgeTest.t.sol`).
+    /// If either side changes encoding, both tests break — making
+    /// silent wire-format drift across the Rust/Solidity boundary
+    /// impossible.
+    #[test]
+    fn test_withdrawal_sentinel_hash_matches_solidity() {
+        let action = BridgeAction::Withdrawal {
+            nonce: 0x0102030405060708,
+            sender: SomaAddress::from([0xAA; 32]),
+            target_chain: types::bridge::BridgeChainId::EthCustom,
+            recipient_eth_address: [0xBB; 20],
+            token_type: types::bridge::USDC_TOKEN_TYPE,
+            amount: 0x1122334455667788,
+            timestamp_ms: 0x99AABBCCDDEEFF00,
+        };
+        let msg_bytes = action.to_message_bytes();
+        // Expected canonical bytes — 102 = 30-byte header + 72-byte payload.
+        assert_eq!(msg_bytes.len(), 102);
+        let hash = Keccak256::digest(&msg_bytes);
+        let got_hex = hex::encode(hash.as_ref());
+        // Computed once via `cast keccak <canonical hex>`. Pinned both
+        // here and in the matching Solidity test.
+        const EXPECTED: &str =
+            "920f174c925e333236cfc68cf2023e6028c7d843b004d4786f5fb37ac2c5db79";
+        assert_eq!(
+            got_hex, EXPECTED,
+            "wire-format keccak diverged from the cross-language sentinel"
+        );
+    }
+
     #[test]
     fn test_emergency_actions_encoding() {
         let pause = BridgeAction::EmergencyPause { nonce: 0 };
@@ -740,7 +773,7 @@ mod tests {
         assert_eq!(msg_bytes[63], types::bridge::BridgeChainId::EthCustom.as_u8());
         // Target length = 20 (Eth)
         assert_eq!(msg_bytes[64], 20);
-        // Target (Eth recipient)
+        // Target (Eth recipient) — kept distinct from sender's 0xFF
         assert_eq!(&msg_bytes[65..85], &[0xAA; 20]);
         // Token type = USDC
         assert_eq!(msg_bytes[85], types::bridge::USDC_TOKEN_TYPE);

@@ -242,8 +242,9 @@ impl TestCheckpointBuilder {
     /// Add a `BridgeDeposit` system transaction. Bridge deposits have no
     /// input or output UTXOs (Soma uses the accumulator model for fungible
     /// balances); the recipient gets a balance delta tracked elsewhere.
-    /// `aggregated_signature` and `signer_bitmap` are left empty — the
-    /// indexer-side handler doesn't validate the bridge committee proof.
+    /// `signatures` is left empty and `timestamp_ms` defaults to 0 — the
+    /// indexer-side handler doesn't validate the bridge committee proof
+    /// and the V2 timestamp isn't load-bearing for indexer tests.
     pub fn add_bridge_deposit(
         mut self,
         recipient: SomaAddress,
@@ -261,8 +262,8 @@ impl TestCheckpointBuilder {
                 eth_tx_hash,
                 recipient,
                 amount,
-                aggregated_signature: vec![],
-                signer_bitmap: vec![],
+                timestamp_ms: 0,
+                signatures: std::collections::BTreeMap::new(),
             }),
             SomaAddress::default(),
             vec![],

@@ -232,6 +232,23 @@ reqwest = { version = "0.12.28", default-features = false, features = [
 ] }
 reqwest-retry = "0.7.0"
 reqwest-middleware = "0.4.2"
+
+# Full alloy stack for the bridge's outbound relayer — ABI encoding +
+# EIP-1559 tx envelopes + local-wallet signing + HTTP provider + anvil
+# bindings for tests. Pinned to match Sui's `crates/sui-bridge`.
+alloy = { version = "1.1.3", features = [
+  "rand",
+  "sol-types",
+  "json-rpc",
+  "signer-local",
+  "signers",
+  "providers",
+  "provider-http",
+  "rpc-types-eth",
+  "network",
+  "node-bindings",
+  "contract",
+] }
 axum = { version = "0.8", default-features = false, features = [
   "macros",
   "tokio",

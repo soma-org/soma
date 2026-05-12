@@ -52,13 +52,22 @@ contract BridgeCommittee is IBridgeCommittee, CommitteeUpgradeable {
         // contract is both the verifier and the verified.
         __CommitteeUpgradeable_init(address(this));
         __UUPSUpgradeable_init();
+
+        uint256 _committeeLength = _committeeMembers.length;
+        // Sui parity: the dedup bitmap in verifySignatures is uint256
+        // so 255 is the hard ceiling on member count. Use the same
+        // verbatim error string Sui uses for byte-for-byte test parity.
         require(
-            _committeeMembers.length == _stake.length,
-            "BridgeCommittee: Members + stake arrays length mismatch"
+            _committeeLength < 256,
+            "BridgeCommittee: Committee length must be less than 256"
+        );
+        require(
+            _committeeLength == _stake.length,
+            "BridgeCommittee: Committee and stake arrays must be of the same length"
         );
 
         uint16 totalStake = 0;
-        for (uint16 i = 0; i < _committeeMembers.length; i++) {
+        for (uint16 i = 0; i < _committeeLength; i++) {
             address member = _committeeMembers[i];
             require(
                 committeeStake[member] == 0,
@@ -92,17 +101,26 @@ contract BridgeCommittee is IBridgeCommittee, CommitteeUpgradeable {
             (bytes32 r, bytes32 s, uint8 v) = _splitSignature(signatures[i]);
             (signer,,) = ECDSA.tryRecover(digest, v, r, s);
 
-            // Drop signers that aren't in the committee or are blocklisted.
-            // They don't count toward the threshold and don't get the dedup
-            // bitmap slot.
-            if (blocklist[signer] || committeeStake[signer] == 0) continue;
+            // Reject signers that aren't in the committee at all. Sui
+            // parity: a sig from a non-member is a malformed cert, not
+            // a "skip and try the rest" condition — fail loudly so the
+            // off-chain aggregator doesn't waste gas re-submitting.
+            require(
+                committeeStake[signer] != 0,
+                "BridgeCommittee: Signer has no stake"
+            );
+            // Blocklisted committee members contribute zero stake. Sui
+            // parity: their presence in the array is rejected outright.
+            require(!blocklist[signer], "BridgeCommittee: Signer is blocklisted");
 
             uint8 idx = committeeIndex[signer];
             uint256 mask = uint256(1) << idx;
-            if (bitmap & mask != 0) {
-                // Duplicate signature from the same signer — already counted.
-                continue;
-            }
+            // Sui parity: a duplicate signer in the sig array is a
+            // malformed cert; reject rather than silently skip.
+            require(
+                bitmap & mask == 0,
+                "BridgeCommittee: Duplicate signature provided"
+            );
             bitmap |= mask;
             approvalStake += committeeStake[signer];
         }

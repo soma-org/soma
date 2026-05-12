@@ -29,6 +29,11 @@ fastcrypto = { workspace = true }
 # Ethereum RPC (raw JSON-RPC via reqwest — avoids alloy serde compatibility issues)
 reqwest = { workspace = true }
 
+# Full alloy stack for the outbound relayer — ABI encoding +
+# EIP-1559 envelope + local-wallet signing + HTTP provider for
+# `eth_sendRawTransaction`. Pinned via workspace.
+alloy = { workspace = true }
+
 # HTTP REST surface for the bridge sig-exchange server (Sui parity).
 axum = { workspace = true }
 

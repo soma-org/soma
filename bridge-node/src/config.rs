@@ -147,10 +147,20 @@ pub struct BridgeNodeConfig {
     pub outbound_relayer: Option<OutboundRelayerConfigBlock>,
 }
 
-/// Outbound-relayer config block. Most fields are stubs today; the
-/// final shape lands once the Soma Eth-side bridge contract ships.
+/// Outbound-relayer config block. Triggers spinning up an
+/// `EthSubmitter` at bridge-node startup and connecting it to the
+/// outbound polling loop. Requires an Eth wallet key the operator
+/// can fund + the deployed `SomaBridge` contract address.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboundRelayerConfigBlock {
+    /// Deployed `SomaBridge` proxy address on Ethereum (the contract
+    /// that owns the vault + receives release calls). Required.
+    pub bridge_contract_address: String,
+    /// Operator wallet private key (32 bytes hex, with or without
+    /// `0x` prefix). This wallet pays gas for every release tx and
+    /// signs the EIP-1559 envelope. **NOT** the validator's bridge
+    /// committee key — that one signs the inner cert.
+    pub operator_private_key_hex: String,
     /// Poll cadence in milliseconds.
     #[serde(default = "default_outbound_poll_ms")]
     pub poll_interval_ms: u64,
@@ -159,6 +169,13 @@ pub struct OutboundRelayerConfigBlock {
     /// window each tick. Production swaps this for a chain read.
     #[serde(default = "default_scan_window")]
     pub scan_window: u64,
+    /// Override the Eth RPC URL for the submitter. When `None`, the
+    /// submitter reuses `bridge_node.eth_rpc_urls[0]` (top-level
+    /// config). A separate field lets operators send writes through a
+    /// flashbots-style protected RPC while reads still fan out across
+    /// the multi-provider quorum.
+    #[serde(default)]
+    pub eth_submit_rpc_url: Option<String>,
 }
 
 fn default_outbound_poll_ms() -> u64 {

@@ -50,6 +50,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use alloy::primitives::TxHash;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
 use types::bridge::WithdrawalCertificate;
@@ -63,30 +64,22 @@ use crate::soma_client::{SomaBridgeClient, SomaBridgeClientInner};
 /// withdrawal experience without thrashing the Soma RPC.
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(10);
 
-/// How the relayer turns an on-chain cert into the bytes that go on
-/// the wire to Ethereum. Implementations encode the Soma Eth-side
-/// bridge contract's calldata, build the Eth tx envelope, sign it
-/// with the operator's Eth wallet, and return the raw tx ready for
-/// `eth_sendRawTransaction`.
+/// What the relayer does with each cert-attached withdrawal it
+/// discovers. The production impl ([`crate::eth_submitter::EthSubmitter`])
+/// builds the Eth-side ABI calldata, wraps it in an EIP-1559 envelope,
+/// signs with the operator wallet, and submits via
+/// `eth_sendRawTransaction`. Tests use mocks that record the call
+/// without burning gas.
 ///
-/// Factored as a trait so:
-/// - the polling loop can be tested without a real Eth wallet or ABI
-///   (the stub returns canned bytes);
-/// - the Soma Eth-side contracts at [`../bridge/evm/`](../bridge/evm/)
-///   supply their own implementation once the integration layer is
-///   wired up (alloy / ethers / hand-rolled ABI encoding);
-/// - operators running different bridge contract versions can swap
-///   without recompiling the polling loop.
+/// `Ok(Some(TxHash))` — submitted; mark relayed
+/// `Ok(None)` — skipped intentionally (e.g. malformed cert)
+/// `Err(_)` — transient; the relayer logs + retries next scan
 #[async_trait::async_trait]
-pub trait EthTxBuilder: Send + Sync {
-    /// Return `Some(raw_tx_bytes)` if the relayer should submit this
-    /// withdrawal; `None` if the relayer should skip (e.g. the cert
-    /// is malformed, the contract is paused, etc.). On `Err` the
-    /// relayer logs + retries on the next poll.
-    async fn build_release_tx(
+pub trait WithdrawalSubmitter: Send + Sync {
+    async fn submit(
         &self,
         withdrawal: &OutboundWithdrawal,
-    ) -> BridgeResult<Option<Vec<u8>>>;
+    ) -> BridgeResult<Option<TxHash>>;
 }
 
 /// What the polling loop hands to the [`EthTxBuilder`]. Carries the
@@ -152,19 +145,13 @@ impl RelayedTracker for InMemoryRelayedTracker {
     }
 }
 
-/// The outbound relayer. Polls Soma for completed PendingWithdrawals,
-/// hands each to the [`EthTxBuilder`], and (on next iteration) submits
-/// the resulting raw tx to Ethereum.
-///
-/// Tx submission via `eth_sendRawTransaction` is **not yet wired
-/// here**: that requires plumbing a writeable EthClient method (the
-/// current `rpc_call<T>` is read-shaped). It's the natural next
-/// chunk to land. For now the relayer logs what it would have
-/// submitted — operators can sanity-check the polling + ABI logic
-/// without burning gas while the contract ABI finalizes.
+/// The outbound relayer. Polls Soma for completed PendingWithdrawals
+/// and hands each one to the [`WithdrawalSubmitter`], which in
+/// production calls `eth_sendRawTransaction` on the operator's Eth
+/// RPC.
 pub struct OutboundRelayer<C: SomaBridgeClientInner> {
     soma_client: Arc<SomaBridgeClient<C>>,
-    tx_builder: Arc<dyn EthTxBuilder>,
+    submitter: Arc<dyn WithdrawalSubmitter>,
     tracker: Arc<dyn RelayedTracker>,
     poll_interval: Duration,
     /// Upper bound on withdrawal nonces to scan per poll. Without a
@@ -178,14 +165,14 @@ pub struct OutboundRelayer<C: SomaBridgeClientInner> {
 impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
     pub fn new(
         soma_client: Arc<SomaBridgeClient<C>>,
-        tx_builder: Arc<dyn EthTxBuilder>,
+        submitter: Arc<dyn WithdrawalSubmitter>,
         tracker: Arc<dyn RelayedTracker>,
         poll_interval: Duration,
         scan_window: u64,
     ) -> Self {
         Self {
             soma_client,
-            tx_builder,
+            submitter,
             tracker,
             poll_interval,
             scan_window,
@@ -253,34 +240,24 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
                 message_bytes,
                 certificate: cert,
             };
-            match self.tx_builder.build_release_tx(&outbound).await {
-                Ok(Some(raw_tx)) => {
-                    // TODO(soma#bridge-eth-submit): submit
-                    // `raw_tx` via `eth_sendRawTransaction` on the
-                    // EthClient. Today we log + mark relayed so the
-                    // polling loop is exercised end-to-end against
-                    // mock contracts; the actual EVM submission
-                    // lands once the Soma Eth-side bridge contract
-                    // repo finalizes its ABI (mirrors how
-                    // the in-tree `bridge/evm/` Foundry project — the
-                    // Rust side can land tests before the contract ABI
-                    // integration is wired).
+            match self.submitter.submit(&outbound).await {
+                Ok(Some(tx_hash)) => {
                     info!(
                         nonce = outbound.nonce,
-                        raw_tx_len = raw_tx.len(),
                         sig_count = outbound.certificate.signatures.len(),
-                        "would submit Eth-side release tx (pending Eth submission wiring)"
+                        ?tx_hash,
+                        "Eth-side release tx submitted"
                     );
                     self.tracker.mark_relayed(outbound.nonce);
                 }
                 Ok(None) => {
-                    debug!(nonce = outbound.nonce, "builder returned None; skipping");
+                    debug!(nonce = outbound.nonce, "submitter returned None; skipping");
                 }
                 Err(e) => {
                     warn!(
                         nonce = outbound.nonce,
                         error = %e,
-                        "build_release_tx failed; will retry next scan"
+                        "submit failed; will retry next scan"
                     );
                 }
             }
@@ -289,31 +266,20 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
     }
 }
 
-/// Placeholder `EthTxBuilder` for the skeleton wiring. Returns a
-/// deterministic stub byte vector so tests can assert that the
-/// polling loop calls into a builder for each completed withdrawal.
-/// Production swaps this for an implementation that ABI-encodes
-/// `transferAttestedBridgedTokens` (or whatever the Soma Eth contract
-/// names its release function) and signs the tx with the operator's
-/// wallet.
-pub struct StubEthTxBuilder;
-
+/// `WithdrawalSubmitter` impl on the real Eth submitter.
 #[async_trait::async_trait]
-impl EthTxBuilder for StubEthTxBuilder {
-    async fn build_release_tx(
+impl WithdrawalSubmitter for crate::eth_submitter::EthSubmitter {
+    async fn submit(
         &self,
         withdrawal: &OutboundWithdrawal,
-    ) -> BridgeResult<Option<Vec<u8>>> {
+    ) -> BridgeResult<Option<TxHash>> {
         if withdrawal.certificate.signatures.is_empty() {
             return Err(BridgeError::Internal(
                 "outbound relayer received cert with no signatures".to_string(),
             ));
         }
-        // Stub: identifiable bytes so log inspection during dev is
-        // useful. Format: `b"STUB" || nonce_be(8)`.
-        let mut bytes = b"STUB".to_vec();
-        bytes.extend_from_slice(&withdrawal.nonce.to_be_bytes());
-        Ok(Some(bytes))
+        let tx_hash = self.submit_withdrawal(withdrawal).await?;
+        Ok(Some(tx_hash))
     }
 }
 
@@ -375,6 +341,40 @@ mod tests {
         Arc::new(SomaBridgeClient::new(mock, BridgeChainId::SomaCustom))
     }
 
+    /// Sentinel tx hash for stub submitters — distinct from anything
+    /// a real submitter would produce so test output makes the source
+    /// obvious.
+    fn stub_tx_hash(nonce: u64) -> alloy::primitives::TxHash {
+        let mut b = [0u8; 32];
+        b[24..32].copy_from_slice(&nonce.to_be_bytes());
+        b[0] = 0xFA; // "fake"
+        b[1] = 0xCE;
+        alloy::primitives::TxHash::from(b)
+    }
+
+    /// Mock submitter that always succeeds; records each call.
+    struct CapturingSubmitter {
+        calls: std::sync::atomic::AtomicUsize,
+        last_nonce: std::sync::Mutex<Option<u64>>,
+    }
+    #[async_trait::async_trait]
+    impl WithdrawalSubmitter for CapturingSubmitter {
+        async fn submit(
+            &self,
+            w: &OutboundWithdrawal,
+        ) -> BridgeResult<Option<alloy::primitives::TxHash>> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            *self.last_nonce.lock().unwrap() = Some(w.nonce);
+            Ok(Some(stub_tx_hash(w.nonce)))
+        }
+    }
+    fn capturing() -> Arc<CapturingSubmitter> {
+        Arc::new(CapturingSubmitter {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            last_nonce: std::sync::Mutex::new(None),
+        })
+    }
+
     /// The relayer must only act on withdrawals that have a cert
     /// attached. A bare PendingWithdrawal (still being signed) is
     /// skipped.
@@ -382,10 +382,10 @@ mod tests {
     async fn scan_skips_unsigned_withdrawals() {
         let client = build_client_with_withdrawals(vec![pw(0, false), pw(1, true)]);
         let tracker = Arc::new(InMemoryRelayedTracker::new());
-        let builder = Arc::new(StubEthTxBuilder);
+        let submitter = capturing();
         let relayer = OutboundRelayer::new(
             client,
-            builder,
+            submitter.clone(),
             tracker.clone(),
             Duration::from_millis(10),
             5,
@@ -393,6 +393,7 @@ mod tests {
         relayer.scan_once().await.unwrap();
         assert!(!tracker.is_relayed(0), "unsigned must not be marked relayed");
         assert!(tracker.is_relayed(1), "cert-attached must be marked relayed");
+        assert_eq!(*submitter.last_nonce.lock().unwrap(), Some(1));
     }
 
     /// Idempotency: a second scan after the first must not re-submit
@@ -401,27 +402,10 @@ mod tests {
     async fn scan_is_idempotent_across_runs() {
         let client = build_client_with_withdrawals(vec![pw(2, true)]);
         let tracker = Arc::new(InMemoryRelayedTracker::new());
-
-        // Count builder invocations.
-        struct CountingBuilder {
-            calls: std::sync::atomic::AtomicUsize,
-        }
-        #[async_trait::async_trait]
-        impl EthTxBuilder for CountingBuilder {
-            async fn build_release_tx(
-                &self,
-                w: &OutboundWithdrawal,
-            ) -> BridgeResult<Option<Vec<u8>>> {
-                self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Ok(Some(vec![0xAA; (8 + w.nonce as usize).min(64)]))
-            }
-        }
-        let builder = Arc::new(CountingBuilder {
-            calls: std::sync::atomic::AtomicUsize::new(0),
-        });
+        let submitter = capturing();
         let relayer = OutboundRelayer::new(
             client.clone(),
-            builder.clone(),
+            submitter.clone(),
             tracker.clone(),
             Duration::from_millis(10),
             5,
@@ -430,43 +414,43 @@ mod tests {
         relayer.scan_once().await.unwrap();
         relayer.scan_once().await.unwrap();
         assert_eq!(
-            builder.calls.load(std::sync::atomic::Ordering::SeqCst),
+            submitter.calls.load(std::sync::atomic::Ordering::SeqCst),
             1,
-            "builder must be called exactly once per nonce"
+            "submitter must be called exactly once per nonce"
         );
     }
 
-    /// Builder errors don't poison the tracker — the same nonce must
-    /// be retried on the next scan.
+    /// Submitter errors don't poison the tracker — the same nonce
+    /// must be retried on the next scan, and only marked relayed once
+    /// a real submission succeeds.
     #[tokio::test]
-    async fn builder_error_leaves_nonce_for_retry() {
+    async fn submitter_error_leaves_nonce_for_retry() {
         let client = build_client_with_withdrawals(vec![pw(3, true)]);
         let tracker = Arc::new(InMemoryRelayedTracker::new());
 
-        struct FlakyBuilder {
-            // Returns Err on first call, Ok(Some(...)) thereafter.
+        struct FlakySubmitter {
             n: std::sync::atomic::AtomicUsize,
         }
         #[async_trait::async_trait]
-        impl EthTxBuilder for FlakyBuilder {
-            async fn build_release_tx(
+        impl WithdrawalSubmitter for FlakySubmitter {
+            async fn submit(
                 &self,
-                _: &OutboundWithdrawal,
-            ) -> BridgeResult<Option<Vec<u8>>> {
+                _w: &OutboundWithdrawal,
+            ) -> BridgeResult<Option<alloy::primitives::TxHash>> {
                 let n = self.n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if n == 0 {
                     Err(BridgeError::Internal("flake".to_string()))
                 } else {
-                    Ok(Some(vec![0x01]))
+                    Ok(Some(stub_tx_hash(0)))
                 }
             }
         }
-        let builder = Arc::new(FlakyBuilder {
+        let submitter = Arc::new(FlakySubmitter {
             n: std::sync::atomic::AtomicUsize::new(0),
         });
         let relayer = OutboundRelayer::new(
             client,
-            builder,
+            submitter,
             tracker.clone(),
             Duration::from_millis(10),
             5,
@@ -475,5 +459,34 @@ mod tests {
         assert!(!tracker.is_relayed(3));
         relayer.scan_once().await.unwrap();
         assert!(tracker.is_relayed(3));
+    }
+
+    /// `Ok(None)` from the submitter (intentional skip) leaves the
+    /// nonce in the unrelayed set — different from `Err` (transient
+    /// retry) and different from `Ok(Some(_))` (success).
+    #[tokio::test]
+    async fn submitter_returning_none_does_not_mark_relayed() {
+        let client = build_client_with_withdrawals(vec![pw(4, true)]);
+        let tracker = Arc::new(InMemoryRelayedTracker::new());
+
+        struct NoneSubmitter;
+        #[async_trait::async_trait]
+        impl WithdrawalSubmitter for NoneSubmitter {
+            async fn submit(
+                &self,
+                _: &OutboundWithdrawal,
+            ) -> BridgeResult<Option<alloy::primitives::TxHash>> {
+                Ok(None)
+            }
+        }
+        let relayer = OutboundRelayer::new(
+            client,
+            Arc::new(NoneSubmitter),
+            tracker.clone(),
+            Duration::from_millis(10),
+            5,
+        );
+        relayer.scan_once().await.unwrap();
+        assert!(!tracker.is_relayed(4));
     }
 }

@@ -319,29 +319,30 @@ impl BridgeNode {
 
                             // Spawn the Eth-side outbound relayer if
                             // configured. Polls Soma for cert-attached
-                            // PendingWithdrawals and (eventually)
-                            // submits the release tx to Ethereum. Today
-                            // logs what it would submit — full Eth tx
-                            // construction waits on the Soma Eth-side
-                            // contract repo finalizing its ABI.
+                            // PendingWithdrawals and submits release
+                            // txs to Ethereum via the operator wallet.
                             if let Some(or_cfg) = self.config.outbound_relayer.clone() {
-                                let tx_builder: Arc<dyn crate::outbound_relayer::EthTxBuilder> =
-                                    Arc::new(crate::outbound_relayer::StubEthTxBuilder);
-                                let tracker: Arc<dyn crate::outbound_relayer::RelayedTracker> =
-                                    Arc::new(crate::outbound_relayer::InMemoryRelayedTracker::new());
-                                let relayer = crate::outbound_relayer::OutboundRelayer::new(
+                                match build_outbound_relayer(
+                                    &or_cfg,
+                                    &self.config.eth_rpc_urls,
                                     Arc::clone(&client),
-                                    tx_builder,
-                                    tracker,
-                                    Duration::from_millis(or_cfg.poll_interval_ms),
-                                    or_cfg.scan_window,
-                                );
-                                handles.push(relayer.start());
-                                info!(
-                                    poll_ms = or_cfg.poll_interval_ms,
-                                    scan_window = or_cfg.scan_window,
-                                    "OutboundRelayer spawned (Eth submission stubbed pending contract ABI)"
-                                );
+                                ) {
+                                    Ok(relayer) => {
+                                        handles.push(relayer.start());
+                                        info!(
+                                            bridge_contract = %or_cfg.bridge_contract_address,
+                                            poll_ms = or_cfg.poll_interval_ms,
+                                            scan_window = or_cfg.scan_window,
+                                            "OutboundRelayer spawned — Eth submission live"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            error = %e,
+                                            "OutboundRelayer config invalid; Eth-side release disabled"
+                                        );
+                                    }
+                                }
                             } else {
                                 info!("no outbound relayer configured; Eth-side release disabled");
                             }
@@ -597,4 +598,45 @@ fn parse_eth_addr(s: &str) -> Option<[u8; 20]> {
     let s = s.strip_prefix("0x").unwrap_or(s);
     let bytes = hex::decode(s).ok()?;
     bytes.try_into().ok()
+}
+
+/// Build a fully-wired outbound relayer from config: parses the
+/// operator wallet, constructs the [`crate::eth_submitter::EthSubmitter`]
+/// against the chosen Eth RPC endpoint, and hands it to a fresh
+/// [`crate::outbound_relayer::OutboundRelayer`].
+fn build_outbound_relayer<C: crate::soma_client::SomaBridgeClientInner + 'static>(
+    cfg: &crate::config::OutboundRelayerConfigBlock,
+    eth_rpc_urls: &[String],
+    soma_client: Arc<crate::soma_client::SomaBridgeClient<C>>,
+) -> crate::error::BridgeResult<crate::outbound_relayer::OutboundRelayer<C>> {
+    let wallet = crate::eth_wallet::EthWallet::from_hex(&cfg.operator_private_key_hex)?;
+    let rpc_url = cfg
+        .eth_submit_rpc_url
+        .clone()
+        .or_else(|| eth_rpc_urls.first().cloned())
+        .ok_or_else(|| {
+            crate::error::BridgeError::ConfigError(
+                "OutboundRelayer: no Eth RPC URL available (set eth_submit_rpc_url or eth_rpc_urls)".to_string(),
+            )
+        })?;
+    let bridge_addr_bytes = parse_eth_addr(&cfg.bridge_contract_address).ok_or_else(|| {
+        crate::error::BridgeError::ConfigError(format!(
+            "OutboundRelayer: bridge_contract_address `{}` is not a valid 20-byte Eth address",
+            cfg.bridge_contract_address
+        ))
+    })?;
+    let bridge_addr = alloy::primitives::Address::from(bridge_addr_bytes);
+
+    let submitter = Arc::new(crate::eth_submitter::EthSubmitter::new(
+        &rpc_url, bridge_addr, wallet,
+    )?);
+    let tracker = Arc::new(crate::outbound_relayer::InMemoryRelayedTracker::new());
+
+    Ok(crate::outbound_relayer::OutboundRelayer::new(
+        soma_client,
+        submitter,
+        tracker,
+        Duration::from_millis(cfg.poll_interval_ms),
+        cfg.scan_window,
+    ))
 }
