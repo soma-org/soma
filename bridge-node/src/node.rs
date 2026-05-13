@@ -255,63 +255,88 @@ impl BridgeNode {
                             // read vault balance) and the executor's
                             // signing_tx (to fire pause actions).
                             if let Some(wd_cfg) = self.config.watchdog.clone() {
-                                let watchdog_config = crate::watchdog::WatchdogConfig {
-                                    usdc_contract_address: wd_cfg
-                                        .usdc_contract_address
-                                        .clone(),
-                                    eth_bridge_contract_address: wd_cfg
-                                        .eth_bridge_contract_address
-                                        .clone(),
-                                    poll_interval: wd_cfg.poll_interval(),
-                                    failure_threshold: wd_cfg.failure_threshold,
-                                    in_flight_tolerance_micro:
-                                        wd_cfg.in_flight_tolerance_micro,
+                                let poll_interval = wd_cfg.poll_interval();
+                                let usdc_addr = wd_cfg.usdc_contract_address.clone();
+                                let bridge_addr =
+                                    wd_cfg.eth_bridge_contract_address.clone();
+
+                                // Real Soma supply reader — closures over
+                                // the production SomaBridgeClient. Replaces
+                                // the stub-at-0 from before PR A landed
+                                // BridgeState.total_usdc_supply.
+                                let soma_supply: crate::watchdog::SomaSupplyReader = {
+                                    let c = Arc::clone(&client);
+                                    Arc::new(move || {
+                                        let c = Arc::clone(&c);
+                                        Box::pin(async move {
+                                            c.get_total_usdc_supply().await
+                                        })
+                                    })
                                 };
-                                // TODO(soma#watchdog-supply): real reader.
-                                // The watchdog needs Σ(USDC minted via
-                                // bridge on Soma) to compare against Σ
-                                // (locked in Eth vault). Soma's
-                                // `BridgeState` doesn't carry a running
-                                // counter today; until it does, the
-                                // closure returns 0 — the watchdog
-                                // *runs* (logging eth_locked each tick)
-                                // but the invariant trivially holds, so
-                                // auto-pause never fires. Filed as a
-                                // P1 follow-on; this gets us the
-                                // poll-loop scaffolding in place.
-                                let soma_supply: crate::watchdog::SomaSupplyReader =
-                                    Arc::new(|| {
-                                        Box::pin(async { Ok::<u128, _>(0u128) })
-                                    });
+                                let soma_paused: crate::watchdog::SomaPausedReader = {
+                                    let c = Arc::clone(&client);
+                                    Arc::new(move || {
+                                        let c = Arc::clone(&c);
+                                        Box::pin(async move {
+                                            c.is_bridge_paused().await
+                                        })
+                                    })
+                                };
+
                                 // TODO(soma#watchdog-nonce): real reader
                                 // off Soma's `BridgeState
                                 // .system_message_seq_nums[EmergencyOp]`.
                                 // Stub at 0 means a fired auto-pause
-                                // collides with manual ops at nonce 0;
-                                // good enough for the wiring landing,
-                                // not for production. (The watchdog's
-                                // fired action ID is the executor's
-                                // problem to land — same nonce twice
-                                // would be rejected on chain.)
+                                // collides with manual ops at nonce 0.
                                 let expected_pause_nonce: Arc<
                                     dyn Fn() -> u64 + Send + Sync,
                                 > = Arc::new(|| 0u64);
-                                let watchdog_committee = Arc::new(
-                                    tokio::sync::RwLock::new(self.committee.clone()),
-                                );
-                                let watchdog = crate::watchdog::BridgeWatchdog::new(
-                                    watchdog_config,
-                                    Arc::clone(&eth_client),
-                                    soma_supply,
-                                    signing_tx.clone(),
-                                    expected_pause_nonce,
-                                    relayer.soma_chain_id.as_u8() as u64,
-                                    watchdog_committee,
-                                );
-                                handles.push(watchdog.start());
+
+                                let watchdog = crate::watchdog::BridgeWatchdog::new()
+                                    .with(Box::new(
+                                        crate::watchdog::EthVaultBalanceObservable::new(
+                                            Arc::clone(&eth_client),
+                                            usdc_addr.clone(),
+                                            bridge_addr.clone(),
+                                            poll_interval,
+                                        ),
+                                    ))
+                                    .with(Box::new(
+                                        crate::watchdog::SomaUsdcSupplyObservable::new(
+                                            Arc::clone(&soma_supply),
+                                            poll_interval,
+                                        ),
+                                    ))
+                                    .with(Box::new(
+                                        crate::watchdog::EthBridgeStatusObservable::new(
+                                            Arc::clone(&eth_client),
+                                            bridge_addr.clone(),
+                                            poll_interval,
+                                        ),
+                                    ))
+                                    .with(Box::new(
+                                        crate::watchdog::SomaBridgeStatusObservable::new(
+                                            soma_paused,
+                                            poll_interval,
+                                        ),
+                                    ))
+                                    .with(Box::new(
+                                        crate::watchdog::ConservationInvariantObservable::new(
+                                            Arc::clone(&eth_client),
+                                            soma_supply,
+                                            usdc_addr,
+                                            bridge_addr.clone(),
+                                            poll_interval,
+                                            wd_cfg.failure_threshold,
+                                            wd_cfg.in_flight_tolerance_micro,
+                                            signing_tx.clone(),
+                                            expected_pause_nonce,
+                                        ),
+                                    ));
+                                handles.extend(watchdog.start());
                                 info!(
-                                    eth_contract = %wd_cfg.eth_bridge_contract_address,
-                                    "BridgeWatchdog spawned"
+                                    eth_contract = %bridge_addr,
+                                    "BridgeWatchdog spawned (5 observables)"
                                 );
                             } else {
                                 info!("no watchdog configured; auto-pause disabled");

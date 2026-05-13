@@ -324,6 +324,7 @@ mod tests {
             recipient_eth_address: [0x42; 20],
             amount: 1_000_000,
             created_at_ms: 0,
+            target_chain: types::bridge::BridgeChainId::EthCustom,
             verified_signatures: cert,
         }
     }

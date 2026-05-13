@@ -305,6 +305,7 @@ mod tests {
                 recipient_eth_address: [9; 20],
                 amount: 1_000_000,
                 created_at_ms: 1_700_000_000_000,
+                target_chain: types::bridge::BridgeChainId::EthCustom,
                 verified_signatures: None,
             },
         );
@@ -339,6 +340,7 @@ mod tests {
                 recipient_eth_address: [9; 20],
                 amount: 1_000_000,
                 created_at_ms: 0,
+                target_chain: types::bridge::BridgeChainId::EthCustom,
                 verified_signatures: Some(types::bridge::WithdrawalCertificate {
                     signatures: Default::default(),
                     attached_at_epoch: 0,

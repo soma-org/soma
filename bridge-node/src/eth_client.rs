@@ -486,6 +486,48 @@ impl EthClient {
         Ok(u128::from_be_bytes(buf))
     }
 
+    /// Call `paused()` on the Eth bridge contract. Returns `true` when
+    /// the OpenZeppelin `PausableUpgradeable` flag is set (the contract
+    /// is currently rejecting deposits + withdrawals).
+    ///
+    /// Used by the watchdog's `EthBridgeStatus` observable to detect
+    /// committee-signed pause/unpause actions that landed on Eth but
+    /// not Soma (or vice versa).
+    pub async fn get_bridge_paused(&self, bridge_contract: &str) -> BridgeResult<bool> {
+        // selector for `paused()` is keccak256("paused()")[..4] = 0x5c975abb.
+        let calldata = "0x5c975abb";
+        let result: String = self
+            .rpc_call(
+                "eth_call",
+                serde_json::json!([
+                    {
+                        "to": bridge_contract,
+                        "data": calldata,
+                    },
+                    "finalized"
+                ]),
+            )
+            .await?;
+        let s = result.strip_prefix("0x").unwrap_or(&result);
+        let bytes = hex::decode(s)
+            .map_err(|e| BridgeError::ProviderError(format!("bad paused() hex: {e}")))?;
+        if bytes.len() != 32 {
+            return Err(BridgeError::ProviderError(format!(
+                "paused() return must be 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        // bool occupies the right-aligned last byte; everything else
+        // must be zero. Reject non-canonical encodings rather than
+        // accept a maybe-malformed reply.
+        if bytes[..31].iter().any(|&b| b != 0) || bytes[31] > 1 {
+            return Err(BridgeError::ProviderError(
+                "paused() return is not a canonical ABI-encoded bool".into(),
+            ));
+        }
+        Ok(bytes[31] == 1)
+    }
+
     /// Get the latest finalized block number.
     pub async fn get_last_finalized_block_id(&self) -> BridgeResult<u64> {
         let block: EthBlock = self

@@ -66,6 +66,9 @@ impl SomaBridgeClientInner for InTestSomaClient {
     async fn is_bridge_paused(&self) -> BridgeResult<bool> {
         Ok(false)
     }
+    async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
+        Ok(0)
+    }
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         Ok(BridgeCommittee::empty())
     }
@@ -339,6 +342,7 @@ async fn withdrawal_end_to_end() {
         recipient_eth_address: [0x42; 20],
         amount: 1_500_000,
         created_at_ms: 1_700_000_000_000,
+        target_chain: types::bridge::BridgeChainId::EthCustom,
         verified_signatures: None,
     };
     // Install on each peer's InTestSomaClient — peers re-fetch and

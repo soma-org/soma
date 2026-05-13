@@ -75,6 +75,12 @@ const UNTIL_SUCCESS_BETWEEN_ROUNDS: Duration = Duration::from_secs(5);
 pub trait SomaBridgeClientInner: Send + Sync + 'static {
     async fn is_bridge_paused(&self) -> BridgeResult<bool>;
 
+    /// Total USDC currently minted on Soma (raw 6-decimal units),
+    /// read from `BridgeState.total_usdc_supply`. The conservation-
+    /// invariant watchdog reads this to compare against the Eth-side
+    /// vault balance — divergence signals custody breach or counterfeit.
+    async fn get_total_usdc_supply(&self) -> BridgeResult<u64>;
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee>;
 
     /// Membership query against `BridgeState.processed_deposit_nonces`.
@@ -167,6 +173,10 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn is_bridge_paused(&self) -> BridgeResult<bool> {
         self.inner.is_bridge_paused().await
+    }
+
+    pub async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
+        self.inner.get_total_usdc_supply().await
     }
 
     pub async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
@@ -365,6 +375,15 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         Ok(state.bridge_state().paused)
     }
 
+    async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
+        let mut c = self.client.lock().await;
+        let state = c
+            .get_latest_system_state()
+            .await
+            .map_err(|s| BridgeError::Internal(format!("get_latest_system_state: {s}")))?;
+        Ok(state.bridge_state().total_usdc_supply)
+    }
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         let mut c = self.client.lock().await;
         let state = c
@@ -473,6 +492,7 @@ pub mod tests {
     /// deposit watermark, etc.
     pub struct MockSomaClient {
         pub paused: std::sync::atomic::AtomicBool,
+        pub total_usdc_supply: AtomicU64,
         pub deposit_nonces_seen: std::sync::Mutex<std::collections::BTreeSet<u64>>,
         pub committee: std::sync::Mutex<BridgeCommittee>,
         /// `nonce -> PendingWithdrawal`. Tests insert here to drive
@@ -493,6 +513,7 @@ pub mod tests {
         pub fn new() -> Self {
             Self {
                 paused: false.into(),
+                total_usdc_supply: 0.into(),
                 deposit_nonces_seen: Default::default(),
                 committee: std::sync::Mutex::new(BridgeCommittee::empty()),
                 pending_withdrawals: Default::default(),
@@ -524,6 +545,7 @@ pub mod tests {
                 recipient_eth_address: [0u8; 20],
                 amount: 1,
                 created_at_ms: 0,
+                target_chain: types::bridge::BridgeChainId::EthCustom,
                 verified_signatures: cert,
             };
             self.pending_withdrawals.lock().unwrap().insert(nonce, pw);
@@ -534,6 +556,10 @@ pub mod tests {
     impl SomaBridgeClientInner for MockSomaClient {
         async fn is_bridge_paused(&self) -> BridgeResult<bool> {
             Ok(self.paused.load(Ordering::SeqCst))
+        }
+
+        async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
+            Ok(self.total_usdc_supply.load(Ordering::SeqCst))
         }
 
         async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
