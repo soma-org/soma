@@ -207,9 +207,27 @@ impl BridgeExecutor {
             return Err(ExecutionFailureStatus::BridgeNonceAlreadyProcessed);
         }
 
+        // Defense in depth: the off-chain bridge nodes only sign
+        // USDC transfers today, so a non-USDC token_type slipping in
+        // here is either a wire-format bug or a malicious tx — reject
+        // before reconstructing the message bytes (which would also
+        // fail signature verification, but failing here gives a
+        // clearer error).
+        if args.token_type != types::bridge::USDC_TOKEN_TYPE {
+            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "BridgeDeposit: unsupported token_type {} (only USDC supported)",
+                args.token_type
+            ))));
+        }
+
         // Build the canonical V2 message bytes the committee signed over.
+        // Must match what the off-chain bridge nodes hashed in
+        // bridge-node/src/types.rs::BridgeAction::Deposit::to_message_bytes.
         let payload = types::bridge::encode_deposit_payload(
+            &args.sender_eth_address,
+            args.target_chain,
             &args.recipient,
+            args.token_type,
             args.amount,
             args.timestamp_ms,
         );
@@ -278,10 +296,17 @@ impl BridgeExecutor {
         store.create_object(record_object);
 
         // Record the nonce in the bounded set (with eviction past the
-        // retention cap). Then commit the mutated SystemState.
-        state
-            .bridge_state_mut()
-            .record_processed_deposit_nonce(args.nonce);
+        // retention cap). Then bump the conservation-invariant supply
+        // counter that the bridge watchdog reads via RPC. Overflow at
+        // u64::MAX of USDC raw units is impossible at any realistic
+        // bridge scale (u64::MAX ≈ 1.8e13 USDC ≈ 18 trillion), but
+        // checked_add anyway since this is custody-critical bookkeeping.
+        let bridge = state.bridge_state_mut();
+        bridge.record_processed_deposit_nonce(args.nonce);
+        bridge.total_usdc_supply = bridge
+            .total_usdc_supply
+            .checked_add(args.amount)
+            .ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
         Self::commit_system_state(store, state_object, &state)?;
 
         Ok(())
@@ -332,9 +357,18 @@ impl BridgeExecutor {
             .checked_add(1)
             .ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
 
-        // (No `total_bridged_usdc` counter — the watchdog reads the live USDC
-        // accumulator total directly. Per-deposit `BridgeRecord` objects
-        // provide the canonical audit trail.)
+        // Debit the conservation-invariant supply counter. A
+        // `checked_sub` failure here is a *real* bug, not just an
+        // overflow guard — it means we're trying to burn USDC the
+        // chain doesn't think it minted, which implies state-machine
+        // corruption. Halting execution is the right call: the
+        // accumulator pre-pass should have caught insufficient-funds
+        // long before this code runs, and the only way to land here
+        // with a stale supply counter is a serialization/migration bug.
+        bridge.total_usdc_supply = bridge
+            .total_usdc_supply
+            .checked_sub(args.amount)
+            .ok_or(ExecutionFailureStatus::BridgeSupplyUnderflow)?;
 
         // Deterministic ID derived from (chain, msg_type, nonce) so any actor
         // off-chain can compute the withdrawal's ObjectID locally and look it
@@ -355,6 +389,7 @@ impl BridgeExecutor {
             recipient_eth_address: args.recipient_eth_address,
             amount: args.amount,
             created_at_ms: timestamp_ms,
+            target_chain: args.target_chain,
             // Cert attached later via `BridgeAttachWithdrawalSignatures`.
             verified_signatures: None,
         };
@@ -732,7 +767,10 @@ impl BridgeExecutor {
         // attacker from smuggling a cert for one withdrawal into another's
         // slot.
         let payload = types::bridge::encode_withdraw_payload(
+            &pending.sender,
+            pending.target_chain,
             &pending.recipient_eth_address,
+            types::bridge::USDC_TOKEN_TYPE,
             pending.amount,
             pending.created_at_ms,
         );

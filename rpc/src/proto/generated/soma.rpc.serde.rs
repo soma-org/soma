@@ -1420,6 +1420,15 @@ impl serde::Serialize for BridgeDeposit {
         if !self.signatures.is_empty() {
             len += 1;
         }
+        if self.sender_eth_address.is_some() {
+            len += 1;
+        }
+        if self.target_chain.is_some() {
+            len += 1;
+        }
+        if self.token_type.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeDeposit", len)?;
         if let Some(v) = self.nonce.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -1447,6 +1456,17 @@ impl serde::Serialize for BridgeDeposit {
         if !self.signatures.is_empty() {
             struct_ser.serialize_field("signatures", &self.signatures)?;
         }
+        if let Some(v) = self.sender_eth_address.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("senderEthAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.target_chain.as_ref() {
+            struct_ser.serialize_field("targetChain", v)?;
+        }
+        if let Some(v) = self.token_type.as_ref() {
+            struct_ser.serialize_field("tokenType", v)?;
+        }
         struct_ser.end()
     }
 }
@@ -1465,6 +1485,12 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
             "timestamp_ms",
             "timestampMs",
             "signatures",
+            "sender_eth_address",
+            "senderEthAddress",
+            "target_chain",
+            "targetChain",
+            "token_type",
+            "tokenType",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -1475,6 +1501,9 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
             Amount,
             TimestampMs,
             Signatures,
+            SenderEthAddress,
+            TargetChain,
+            TokenType,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -1503,6 +1532,9 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                             "amount" => Ok(GeneratedField::Amount),
                             "timestampMs" | "timestamp_ms" => Ok(GeneratedField::TimestampMs),
                             "signatures" => Ok(GeneratedField::Signatures),
+                            "senderEthAddress" | "sender_eth_address" => Ok(GeneratedField::SenderEthAddress),
+                            "targetChain" | "target_chain" => Ok(GeneratedField::TargetChain),
+                            "tokenType" | "token_type" => Ok(GeneratedField::TokenType),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -1530,6 +1562,9 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                 let mut amount__ = None;
                 let mut timestamp_ms__ = None;
                 let mut signatures__ = None;
+                let mut sender_eth_address__ = None;
+                let mut target_chain__ = None;
+                let mut token_type__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Nonce => {
@@ -1576,6 +1611,30 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                             }
                             signatures__ = Some(map_.next_value()?);
                         }
+                        GeneratedField::SenderEthAddress => {
+                            if sender_eth_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("senderEthAddress"));
+                            }
+                            sender_eth_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TargetChain => {
+                            if target_chain__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetChain"));
+                            }
+                            target_chain__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TokenType => {
+                            if token_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("tokenType"));
+                            }
+                            token_type__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -1588,6 +1647,9 @@ impl<'de> serde::Deserialize<'de> for BridgeDeposit {
                     amount: amount__,
                     timestamp_ms: timestamp_ms__,
                     signatures: signatures__.unwrap_or_default(),
+                    sender_eth_address: sender_eth_address__,
+                    target_chain: target_chain__,
+                    token_type: token_type__,
                 })
             }
         }
@@ -2122,6 +2184,9 @@ impl serde::Serialize for BridgeWithdraw {
         if self.recipient_eth_address.is_some() {
             len += 1;
         }
+        if self.target_chain.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeWithdraw", len)?;
         if let Some(v) = self.amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -2132,6 +2197,9 @@ impl serde::Serialize for BridgeWithdraw {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("recipientEthAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.target_chain.as_ref() {
+            struct_ser.serialize_field("targetChain", v)?;
         }
         struct_ser.end()
     }
@@ -2146,12 +2214,15 @@ impl<'de> serde::Deserialize<'de> for BridgeWithdraw {
             "amount",
             "recipient_eth_address",
             "recipientEthAddress",
+            "target_chain",
+            "targetChain",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Amount,
             RecipientEthAddress,
+            TargetChain,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -2176,6 +2247,7 @@ impl<'de> serde::Deserialize<'de> for BridgeWithdraw {
                         match value {
                             "amount" => Ok(GeneratedField::Amount),
                             "recipientEthAddress" | "recipient_eth_address" => Ok(GeneratedField::RecipientEthAddress),
+                            "targetChain" | "target_chain" => Ok(GeneratedField::TargetChain),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -2199,6 +2271,7 @@ impl<'de> serde::Deserialize<'de> for BridgeWithdraw {
             {
                 let mut amount__ = None;
                 let mut recipient_eth_address__ = None;
+                let mut target_chain__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Amount => {
@@ -2217,6 +2290,14 @@ impl<'de> serde::Deserialize<'de> for BridgeWithdraw {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::TargetChain => {
+                            if target_chain__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetChain"));
+                            }
+                            target_chain__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -2225,6 +2306,7 @@ impl<'de> serde::Deserialize<'de> for BridgeWithdraw {
                 Ok(BridgeWithdraw {
                     amount: amount__,
                     recipient_eth_address: recipient_eth_address__,
+                    target_chain: target_chain__,
                 })
             }
         }

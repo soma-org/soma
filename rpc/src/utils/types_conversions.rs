@@ -541,19 +541,40 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             // Bridge transactions
             TransactionKind::BridgeDeposit(args) => {
+                let target_chain_byte = args.target_chain as u8;
+                let target_chain = types::bridge::BridgeChainId::from_u8(target_chain_byte)
+                    .ok_or_else(|| {
+                        SdkTypeConversionError(format!(
+                            "BridgeDeposit: invalid target_chain byte {target_chain_byte}"
+                        ))
+                    })?;
                 TK::BridgeDeposit(types::transaction::BridgeDepositArgs {
                     nonce: args.nonce,
                     eth_tx_hash: args.eth_tx_hash.try_into().unwrap_or([0u8; 32]),
                     recipient: args.recipient.into(),
                     amount: args.amount,
                     timestamp_ms: args.timestamp_ms,
+                    sender_eth_address: args
+                        .sender_eth_address
+                        .try_into()
+                        .unwrap_or([0u8; 20]),
+                    target_chain,
+                    token_type: args.token_type as u8,
                     signatures: rpc_sigs_to_envelope(args.signatures)?,
                 })
             }
             TransactionKind::BridgeWithdraw(args) => {
+                let target_chain_byte = args.target_chain as u8;
+                let target_chain = types::bridge::BridgeChainId::from_u8(target_chain_byte)
+                    .ok_or_else(|| {
+                        SdkTypeConversionError(format!(
+                            "BridgeWithdraw: invalid target_chain byte {target_chain_byte}"
+                        ))
+                    })?;
                 TK::BridgeWithdraw(types::transaction::BridgeWithdrawArgs {
                     amount: args.amount,
                     recipient_eth_address: args.recipient_eth_address.try_into().unwrap_or([0u8; 20]),
+                    target_chain,
                 })
             }
             TransactionKind::BridgeEmergencyPause(args) => {
@@ -1447,6 +1468,7 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             | types::effects::ExecutionFailureStatus::BridgeAlreadyPaused
             | types::effects::ExecutionFailureStatus::BridgeNotPaused
             | types::effects::ExecutionFailureStatus::BridgeAmountZero
+            | types::effects::ExecutionFailureStatus::BridgeSupplyUnderflow
             | types::effects::ExecutionFailureStatus::BridgeBlocklistPayloadTooLarge { .. }
             | types::effects::ExecutionFailureStatus::BridgeUrlTooLong { .. } => {
                 Self::OtherError(value.to_string())

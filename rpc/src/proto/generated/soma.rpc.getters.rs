@@ -5261,6 +5261,9 @@ mod _getter_impls {
                 amount: None,
                 timestamp_ms: None,
                 signatures: Vec::new(),
+                sender_eth_address: None,
+                target_chain: None,
+                token_type: None,
             }
         }
         #[doc(hidden)]
@@ -5298,12 +5301,25 @@ mod _getter_impls {
             self.signatures = field;
             self
         }
+        pub fn with_sender_eth_address(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.sender_eth_address = Some(field.into());
+            self
+        }
+        pub fn with_target_chain(mut self, field: u32) -> Self {
+            self.target_chain = Some(field.into());
+            self
+        }
+        pub fn with_token_type(mut self, field: u32) -> Self {
+            self.token_type = Some(field.into());
+            self
+        }
     }
     impl BridgeWithdraw {
         pub const fn const_default() -> Self {
             Self {
                 amount: None,
                 recipient_eth_address: None,
+                target_chain: None,
             }
         }
         #[doc(hidden)]
@@ -5320,6 +5336,10 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.recipient_eth_address = Some(field.into());
+            self
+        }
+        pub fn with_target_chain(mut self, field: u32) -> Self {
+            self.target_chain = Some(field.into());
             self
         }
     }

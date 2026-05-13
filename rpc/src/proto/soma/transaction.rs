@@ -347,6 +347,9 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 recipient: Some(args.recipient.to_string()),
                 amount: Some(args.amount),
                 timestamp_ms: Some(args.timestamp_ms),
+                sender_eth_address: Some(args.sender_eth_address.clone().into()),
+                target_chain: Some(args.target_chain as u32),
+                token_type: Some(args.token_type as u32),
                 signatures: args.signatures.iter().map(|s| super::PubkeySig {
                     signer_pubkey: Some(s.signer_pubkey.clone().into()),
                     signature: Some(s.signature.clone().into()),
@@ -355,6 +358,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.clone().into()),
+                target_chain: Some(args.target_chain as u32),
             }),
             BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(super::BridgeEmergencyPause {
                 nonce: Some(args.nonce),
@@ -757,6 +761,9 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
                 amount: args.amount.unwrap_or(0),
                 timestamp_ms: args.timestamp_ms.unwrap_or(0),
+                sender_eth_address: args.sender_eth_address.as_deref().unwrap_or_default().to_vec(),
+                target_chain: args.target_chain.unwrap_or(0) as u8,
+                token_type: args.token_type.unwrap_or(0) as u8,
                 signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
                     signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
                     signature: s.signature.as_deref().unwrap_or_default().to_vec(),
@@ -765,6 +772,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
                 amount: args.amount.unwrap_or(0),
                 recipient_eth_address: args.recipient_eth_address.as_deref().unwrap_or_default().to_vec(),
+                target_chain: args.target_chain.unwrap_or(0) as u8,
             }),
             Kind::BridgeEmergencyPause(args) => Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
                 nonce: args.nonce.unwrap_or(0),

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::SomaAddress;
-use types::bridge::BridgeState;
+use types::bridge::{BridgeChainId, BridgeState, USDC_TOKEN_TYPE};
 use types::crypto::{SomaKeyPair, get_key_pair};
 use types::digests::TransactionDigest;
 use types::effects::{
@@ -38,6 +38,25 @@ struct TransactionResult {
 fn get_bridge_state(authority: &AuthorityState) -> BridgeState {
     let state = authority.get_system_state_object_for_testing().unwrap();
     state.bridge_state().clone()
+}
+
+/// Seed `BridgeState.total_usdc_supply` to `amount` so withdraw tests have
+/// enough conservation-invariant balance to burn. The supply counter is
+/// normally incremented only via successful BridgeDeposit; tests that go
+/// straight to BridgeWithdraw must seed it manually or the executor's
+/// `checked_sub` returns `BridgeSupplyUnderflow`.
+async fn seed_bridge_supply(authority: &Arc<AuthorityState>, amount: u64) {
+    use types::SYSTEM_STATE_OBJECT_ID;
+    let mut obj = authority.get_object(&SYSTEM_STATE_OBJECT_ID).await.unwrap();
+    let mut state: SystemState = bcs::from_bytes(obj.data.contents()).unwrap();
+    state.bridge_state_mut().total_usdc_supply = amount;
+    obj.data.update_contents(bcs::to_bytes(&state).unwrap());
+    // `insert_genesis_object` asserts `previous_transaction == genesis_marker`;
+    // restore it so the re-insertion is accepted (we're side-stepping the
+    // normal effects pipeline because there's no public test API for mutating
+    // SystemState directly).
+    obj.previous_transaction = TransactionDigest::genesis_marker();
+    authority.insert_genesis_object(obj).await;
 }
 
 async fn execute_system_tx(
@@ -86,6 +105,9 @@ async fn test_bridge_deposit_mints_usdc() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce: 0,
         eth_tx_hash: [0u8; 32],
+        sender_eth_address: [0u8; 20],
+        target_chain: BridgeChainId::SomaCustom,
+        token_type: USDC_TOKEN_TYPE,
         recipient,
         amount: 1_000_000,
         timestamp_ms: 0,
@@ -120,6 +142,9 @@ async fn test_bridge_deposit_nonce_replay_rejected() {
     let args = BridgeDepositArgs {
         nonce: 42,
         eth_tx_hash: [1u8; 32],
+        sender_eth_address: [0u8; 20],
+        target_chain: BridgeChainId::SomaCustom,
+        token_type: USDC_TOKEN_TYPE,
         recipient,
         amount: 500_000,
         timestamp_ms: 0,
@@ -172,9 +197,14 @@ async fn test_bridge_withdraw_creates_pending_and_emits_withdraw() {
         .set_balance(sender, CoinType::Usdc, starting_usdc)
         .unwrap();
 
+    // Seed bridge.total_usdc_supply so the burn doesn't underflow the
+    // conservation-invariant counter.
+    seed_bridge_supply(&authority_state, withdraw_amount).await;
+
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
         amount: withdraw_amount,
         recipient_eth_address: [0xABu8; 20],
+        target_chain: BridgeChainId::EthCustom,
     });
     let data = TransactionData::new(kind, sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
@@ -245,6 +275,7 @@ async fn test_bridge_withdraw_rejects_zero_amount() {
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
         amount: 0,
         recipient_eth_address: [0x01; 20],
+        target_chain: BridgeChainId::EthCustom,
     });
     let data = TransactionData::new(kind, sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
@@ -324,9 +355,19 @@ async fn test_bridge_deposit_with_real_ecdsa_signatures() {
     let recipient = SomaAddress::random();
     let nonce = 0u64;
     let amount = 5_000_000u64;
+    let sender_eth_address = [0u8; 20];
+    let target_chain = BridgeChainId::SomaCustom;
+    let token_type = USDC_TOKEN_TYPE;
 
     // Build the message that the executor will reconstruct
-    let payload = encode_deposit_payload(&recipient, amount, 0);
+    let payload = encode_deposit_payload(
+        &sender_eth_address,
+        target_chain,
+        &recipient,
+        token_type,
+        amount,
+        0,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -343,6 +384,9 @@ async fn test_bridge_deposit_with_real_ecdsa_signatures() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash: [0xAAu8; 32],
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount,
         timestamp_ms: 0,
@@ -398,9 +442,19 @@ async fn test_bridge_deposit_wrong_signature_rejected() {
     let recipient = SomaAddress::random();
     let nonce = 0u64;
     let amount = 5_000_000u64;
+    let sender_eth_address = [0u8; 20];
+    let target_chain = BridgeChainId::SomaCustom;
+    let token_type = USDC_TOKEN_TYPE;
 
     // Build the correct message
-    let payload = encode_deposit_payload(&recipient, amount, 0);
+    let payload = encode_deposit_payload(
+        &sender_eth_address,
+        target_chain,
+        &recipient,
+        token_type,
+        amount,
+        0,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -420,6 +474,9 @@ async fn test_bridge_deposit_wrong_signature_rejected() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash: [0xBBu8; 32],
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount,
         timestamp_ms: 0,
@@ -461,8 +518,18 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
     let recipient = SomaAddress::random();
     let nonce = 42u64;
     let amount = 1_000_000u64;
+    let sender_eth_address = [0u8; 20];
+    let target_chain = BridgeChainId::SomaCustom;
+    let token_type = USDC_TOKEN_TYPE;
 
-    let payload = encode_deposit_payload(&recipient, amount, 0);
+    let payload = encode_deposit_payload(
+        &sender_eth_address,
+        target_chain,
+        &recipient,
+        token_type,
+        amount,
+        0,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -479,6 +546,9 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash: [0xCCu8; 32],
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount,
         timestamp_ms: 0,
@@ -491,6 +561,9 @@ async fn test_bridge_nonce_replay_with_real_ecdsa() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce, // same nonce
         eth_tx_hash: [0xCCu8; 32],
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount,
         timestamp_ms: 0,
@@ -945,7 +1018,17 @@ async fn test_zero_amount_deposit_rejected() {
         .await;
 
     let recipient = SomaAddress::random();
-    let payload = encode_deposit_payload(&recipient, 0, 0); // amount = 0
+    let sender_eth_address = [0u8; 20];
+    let target_chain = BridgeChainId::SomaCustom;
+    let token_type = USDC_TOKEN_TYPE;
+    let payload = encode_deposit_payload(
+        &sender_eth_address,
+        target_chain,
+        &recipient,
+        token_type,
+        0,
+        0,
+    ); // amount = 0
     let msg = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -958,6 +1041,9 @@ async fn test_zero_amount_deposit_rejected() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce: 0,
         eth_tx_hash: [0; 32],
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount: 0,
         timestamp_ms: 0,
@@ -1060,8 +1146,18 @@ async fn test_bridge_deposit_creates_audit_record() {
     let nonce = 7u64;
     let amount = 5_000_000u64;
     let eth_tx_hash = [0xDEu8; 32];
+    let sender_eth_address = [0u8; 20];
+    let target_chain = BridgeChainId::SomaCustom;
+    let token_type = USDC_TOKEN_TYPE;
 
-    let payload = encode_deposit_payload(&recipient, amount, 0);
+    let payload = encode_deposit_payload(
+        &sender_eth_address,
+        target_chain,
+        &recipient,
+        token_type,
+        amount,
+        0,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcDeposit,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -1074,6 +1170,9 @@ async fn test_bridge_deposit_creates_audit_record() {
     let kind = TransactionKind::BridgeDeposit(BridgeDepositArgs {
         nonce,
         eth_tx_hash,
+        sender_eth_address,
+        target_chain,
+        token_type,
         recipient,
         amount,
         timestamp_ms: 0,
@@ -1125,9 +1224,15 @@ async fn create_pending_withdrawal(
         .set_balance(sender, CoinType::Usdc, amount * 2 + 100_000_000)
         .unwrap();
 
+    // Seed bridge.total_usdc_supply so the burn doesn't underflow the
+    // conservation-invariant counter — in production this would have been
+    // credited by prior BridgeDeposit txs.
+    seed_bridge_supply(authority_state, amount).await;
+
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
         amount,
         recipient_eth_address: recipient_eth,
+        target_chain: BridgeChainId::EthCustom,
     });
     let data = TransactionData::new(kind, sender, vec![]);
     let tx = to_sender_signed_transaction(data, sender_key);
@@ -1191,7 +1296,14 @@ async fn test_attach_withdrawal_signatures_happy_path() {
     // V2 token-transfer payload includes the on-chain timestamp_ms; we read
     // it from the PendingWithdrawal so signed bytes match what the executor
     // reconstructs from authoritative state.
-    let payload = encode_withdraw_payload(&recipient_eth, amount, pending.created_at_ms);
+    let payload = encode_withdraw_payload(
+        &pending.sender,
+        pending.target_chain,
+        &pending.recipient_eth_address,
+        USDC_TOKEN_TYPE,
+        pending.amount,
+        pending.created_at_ms,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcWithdraw,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -1260,7 +1372,14 @@ async fn test_attach_withdrawal_signatures_idempotent() {
     // V2 message bytes must include the on-chain `created_at_ms`.
     let pre = authority_state.get_object(&withdrawal_id).await.unwrap();
     let pending_pre: PendingWithdrawal = pre.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
-    let payload = encode_withdraw_payload(&[0xEEu8; 20], 1_000_000, pending_pre.created_at_ms);
+    let payload = encode_withdraw_payload(
+        &pending_pre.sender,
+        pending_pre.target_chain,
+        &pending_pre.recipient_eth_address,
+        USDC_TOKEN_TYPE,
+        pending_pre.amount,
+        pending_pre.created_at_ms,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcWithdraw,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -1346,7 +1465,14 @@ async fn test_attach_withdrawal_signatures_below_threshold_rejected() {
     let withdrawal_id = derive_bridge_record_id(SOMA_BRIDGE_CHAIN_ID, BridgeMessageType::UsdcWithdraw, nonce);
     let pre = authority_state.get_object(&withdrawal_id).await.unwrap();
     let pending_pre: PendingWithdrawal = pre.deserialize_contents(ObjectType::PendingWithdrawal).unwrap();
-    let payload = encode_withdraw_payload(&[0xFFu8; 20], 1_000_000, pending_pre.created_at_ms);
+    let payload = encode_withdraw_payload(
+        &pending_pre.sender,
+        pending_pre.target_chain,
+        &pending_pre.recipient_eth_address,
+        USDC_TOKEN_TYPE,
+        pending_pre.amount,
+        pending_pre.created_at_ms,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcWithdraw,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -1404,7 +1530,14 @@ async fn test_attach_withdrawal_signatures_wrong_message_rejected() {
 
     // Sign a message for a DIFFERENT amount than the on-chain withdrawal.
     let wrong_amount = 999_999u64;
-    let bad_payload = encode_withdraw_payload(&[0x11u8; 20], wrong_amount, 0);
+    let bad_payload = encode_withdraw_payload(
+        &SomaAddress::ZERO,
+        BridgeChainId::EthCustom,
+        &[0x11u8; 20],
+        USDC_TOKEN_TYPE,
+        wrong_amount,
+        0,
+    );
     let bad_message = encode_bridge_message(
         BridgeMessageType::UsdcWithdraw,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,
@@ -1450,7 +1583,14 @@ async fn test_attach_withdrawal_signatures_unknown_nonce_rejected() {
     // doesn't exist must fail with ObjectNotFound — there's no on-chain
     // record to attach to, and an attacker can't conjure one by signing.
     let nonce = 42u64;
-    let payload = encode_withdraw_payload(&[0u8; 20], 0, 0);
+    let payload = encode_withdraw_payload(
+        &SomaAddress::ZERO,
+        BridgeChainId::EthCustom,
+        &[0u8; 20],
+        USDC_TOKEN_TYPE,
+        0,
+        0,
+    );
     let message = encode_bridge_message(
         BridgeMessageType::UsdcWithdraw,
         TOKEN_TRANSFER_MESSAGE_VERSION_V2,

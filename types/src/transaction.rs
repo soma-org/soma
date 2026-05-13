@@ -262,6 +262,18 @@ pub struct BridgeDepositArgs {
     /// at which the source-chain deposit was emitted. Mirrors Sui's
     /// `TokenTransferPayloadV2.timestamp_ms`.
     pub timestamp_ms: u64,
+    /// V2 wire-format field — Eth address that locked USDC on Eth.
+    /// At the `senderAddress` slot in the signed payload (length=20).
+    /// The on-chain executor needs this to reconstruct the canonical
+    /// signed bytes; it has no other source for the Eth-side sender.
+    pub sender_eth_address: [u8; 20],
+    /// V2 wire-format field — destination chain (always a Soma chain).
+    /// At the `targetChain` slot in the signed payload.
+    pub target_chain: crate::bridge::BridgeChainId,
+    /// V2 wire-format field — token id. Always [`crate::bridge::USDC_TOKEN_TYPE`]
+    /// today; the executor asserts this to harden against a future
+    /// multi-token expansion silently slipping through.
+    pub token_type: u8,
     /// Independent 65-byte recoverable secp256k1 signatures from the
     /// committee. Order doesn't matter — verifier ecrecovers each and
     /// looks up the recovered pubkey in `BridgeState.bridge_committee.members`.
@@ -276,6 +288,11 @@ pub struct BridgeDepositArgs {
 pub struct BridgeWithdrawArgs {
     pub amount: u64,
     pub recipient_eth_address: [u8; 20],
+    /// V2 wire-format field — destination Eth chain (typically `EthMainnet`
+    /// or `EthSepolia`). Stored on the resulting `PendingWithdrawal` so the
+    /// later `BridgeAttachWithdrawalSignatures` executor can reconstruct
+    /// the exact bytes the committee signed over.
+    pub target_chain: crate::bridge::BridgeChainId,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]

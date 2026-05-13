@@ -225,6 +225,15 @@ pub struct BridgeDepositArgs {
     pub recipient: Address,
     pub amount: u64,
     pub timestamp_ms: u64,
+    /// V2 wire-format field — 20-byte Eth address that locked USDC.
+    #[serde(default)]
+    pub sender_eth_address: Vec<u8>,
+    /// V2 wire-format field — destination chain id (byte value).
+    #[serde(default)]
+    pub target_chain: u8,
+    /// V2 wire-format field — token id. Always 3 (USDC) today.
+    #[serde(default)]
+    pub token_type: u8,
     pub signatures: Vec<PubkeySig>,
 }
 
@@ -232,6 +241,9 @@ pub struct BridgeDepositArgs {
 pub struct BridgeWithdrawArgs {
     pub amount: u64,
     pub recipient_eth_address: Vec<u8>,
+    /// V2 wire-format field — destination Eth chain id (byte value).
+    #[serde(default)]
+    pub target_chain: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]

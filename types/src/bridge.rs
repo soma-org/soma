@@ -525,6 +525,30 @@ pub struct BridgeState {
     /// clear-on-success behavior).
     #[serde(default)]
     pub bridge_registrations: BTreeMap<SomaAddress, BridgeRegistration>,
+    /// Running total of USDC minted on Soma minus USDC burned, in raw
+    /// 6-decimal units. Bumped by `BridgeDeposit` (Eth→Soma mint) and
+    /// debited by `BridgeWithdraw` (Soma→Eth burn). Exists for the
+    /// watchdog's conservation invariant:
+    ///
+    /// ```text
+    /// total_usdc_supply ≤ Σ(USDC locked in Eth vault) + tolerance_in_flight
+    /// ```
+    ///
+    /// A divergence indicates either a real custody breach (Eth-side
+    /// drain) or a counterfeit (Soma-side mint without a matching
+    /// deposit). The watchdog reads this field directly via RPC; see
+    /// `bridge-node/src/watchdog.rs`.
+    ///
+    /// USDC-only today (no per-token map). When/if a second token
+    /// lands this becomes a `BTreeMap<TokenType, u64>`; the migration
+    /// is straightforward because no consumers exist outside the
+    /// watchdog + executor.
+    ///
+    /// **Underflow is a real bug.** A `checked_sub` failure on burn
+    /// means we're trying to burn more USDC than the chain thinks it
+    /// has minted — this should halt execution, not silently saturate.
+    #[serde(default)]
+    pub total_usdc_supply: u64,
 }
 
 /// A validator's pre-registered bridge keypair + endpoint, awaiting
@@ -549,6 +573,7 @@ impl BridgeState {
             processed_deposit_nonces: BTreeSet::new(),
             system_message_seq_nums: BTreeMap::new(),
             bridge_registrations: BTreeMap::new(),
+            total_usdc_supply: 0,
         }
     }
 
@@ -777,6 +802,11 @@ pub struct PendingWithdrawal {
     pub recipient_eth_address: [u8; 20],
     pub amount: u64,
     pub created_at_ms: u64,
+    /// V2 wire-format field — destination Eth chain. The
+    /// `BridgeAttachWithdrawalSignatures` executor reads this to
+    /// reconstruct the canonical signed bytes the committee signed
+    /// over. Originates from `BridgeWithdrawArgs.target_chain`.
+    pub target_chain: BridgeChainId,
     /// Aggregated committee signatures over the canonical withdrawal
     /// message bytes. `None` until a `BridgeAttachWithdrawalSignatures`
     /// tx attaches a quorum cert; `Some` afterward, at which point the

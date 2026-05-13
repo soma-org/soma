@@ -4223,6 +4223,18 @@ pub struct BridgeDeposit {
     /// Labeled-pubkey signature envelope.
     #[prost(message, repeated, tag = "8")]
     pub signatures: ::prost::alloc::vec::Vec<PubkeySig>,
+    /// V2 wire-format field — Eth address that locked USDC on Eth.
+    /// 20 raw bytes; on-chain executor reconstructs the canonical
+    /// signed payload using this slot.
+    #[prost(bytes = "bytes", optional, tag = "9")]
+    pub sender_eth_address: ::core::option::Option<::prost::bytes::Bytes>,
+    /// V2 wire-format field — destination chain id (always a Soma chain).
+    /// Single byte; values per types::bridge::BridgeChainId.
+    #[prost(uint32, optional, tag = "10")]
+    pub target_chain: ::core::option::Option<u32>,
+    /// V2 wire-format field — token id. Always 3 (USDC) today.
+    #[prost(uint32, optional, tag = "11")]
+    pub token_type: ::core::option::Option<u32>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4233,6 +4245,10 @@ pub struct BridgeWithdraw {
     pub amount: ::core::option::Option<u64>,
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub recipient_eth_address: ::core::option::Option<::prost::bytes::Bytes>,
+    /// V2 wire-format field — destination Eth chain id.
+    /// Single byte; values per types::bridge::BridgeChainId.
+    #[prost(uint32, optional, tag = "4")]
+    pub target_chain: ::core::option::Option<u32>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

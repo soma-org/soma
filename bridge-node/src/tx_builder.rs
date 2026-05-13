@@ -65,14 +65,9 @@ fn action_to_transaction_kind(
             // by (nonce, eth_tx_hash) and event_idx isn't in the
             // signed payload.
             eth_event_idx: _,
-            // sender_eth_address / target_chain / token_type are
-            // Sui-parity wire-format fields. The on-chain Soma
-            // executor reconstructs the canonical signed bytes from
-            // its own state (the on-chain `PendingDeposit` carries
-            // these), so we drop them from the tx args.
-            sender_eth_address: _,
-            target_chain: _,
-            token_type: _,
+            sender_eth_address,
+            target_chain,
+            token_type,
             recipient,
             amount,
             timestamp_ms,
@@ -82,6 +77,9 @@ fn action_to_transaction_kind(
             recipient: *recipient,
             amount: *amount,
             timestamp_ms: *timestamp_ms,
+            sender_eth_address: *sender_eth_address,
+            target_chain: *target_chain,
+            token_type: *token_type,
             signatures,
         }),
 

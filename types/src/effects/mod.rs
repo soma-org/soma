@@ -1121,6 +1121,14 @@ pub enum ExecutionFailureStatus {
     #[error("Bridge transfer amount must be non-zero.")]
     BridgeAmountZero,
 
+    /// `BridgeState.total_usdc_supply` underflowed on a burn. This is a
+    /// state-machine corruption indicator: the accumulator pre-pass
+    /// verifies the sender holds the funds, so reaching the burn path
+    /// with a supply counter below `args.amount` means the field
+    /// drifted from reality. Halt rather than saturate.
+    #[error("Bridge USDC supply counter underflow on burn — state inconsistency.")]
+    BridgeSupplyUnderflow,
+
     /// A `BridgeUpdateCommitteeBlocklist` carried more than the per-tx cap
     /// of `MAX_BLOCKLIST_ENTRIES_PER_TX` addresses. Sui parity: gRPC
     /// `validate_list_size(255)` defense in depth.

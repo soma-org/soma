@@ -191,6 +191,7 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::BridgeAlreadyPaused => (ExecutionErrorKind::OtherError, Some("Bridge already paused".into())),
             E::BridgeNotPaused => (ExecutionErrorKind::OtherError, Some("Bridge not paused".into())),
             E::BridgeAmountZero => (ExecutionErrorKind::OtherError, Some("Bridge amount must be non-zero".into())),
+            E::BridgeSupplyUnderflow => (ExecutionErrorKind::OtherError, Some("Bridge USDC supply underflow".into())),
             E::BridgeBlocklistPayloadTooLarge { got, max } => (
                 ExecutionErrorKind::OtherError,
                 Some(format!("Bridge blocklist payload too large ({got}/{max})")),
@@ -743,11 +744,15 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 recipient: Some(args.recipient.to_string()),
                 amount: Some(args.amount),
                 timestamp_ms: Some(args.timestamp_ms),
+                sender_eth_address: Some(args.sender_eth_address.to_vec().into()),
+                target_chain: Some(args.target_chain.as_u8() as u32),
+                token_type: Some(args.token_type as u32),
                 signatures: envelope_to_proto(args.signatures),
             }),
             K::BridgeWithdraw(args) => Kind::BridgeWithdraw(BridgeWithdraw {
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.to_vec().into()),
+                target_chain: Some(args.target_chain.as_u8() as u32),
             }),
             K::BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(BridgeEmergencyPause {
                 nonce: Some(args.nonce),

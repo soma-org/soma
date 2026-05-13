@@ -6395,6 +6395,24 @@ mod _field_impls {
             number: 8i32,
             message_fields: Some(PubkeySig::FIELDS),
         };
+        pub const SENDER_ETH_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "sender_eth_address",
+            json_name: "senderEthAddress",
+            number: 9i32,
+            message_fields: None,
+        };
+        pub const TARGET_CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "target_chain",
+            json_name: "targetChain",
+            number: 10i32,
+            message_fields: None,
+        };
+        pub const TOKEN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "token_type",
+            json_name: "tokenType",
+            number: 11i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for BridgeDeposit {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -6404,6 +6422,9 @@ mod _field_impls {
             Self::AMOUNT_FIELD,
             Self::TIMESTAMP_MS_FIELD,
             Self::SIGNATURES_FIELD,
+            Self::SENDER_ETH_ADDRESS_FIELD,
+            Self::TARGET_CHAIN_FIELD,
+            Self::TOKEN_TYPE_FIELD,
         ];
     }
     impl BridgeDeposit {
@@ -6450,6 +6471,18 @@ mod _field_impls {
             self.path.push(BridgeDeposit::SIGNATURES_FIELD.name);
             PubkeySigFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn sender_eth_address(mut self) -> String {
+            self.path.push(BridgeDeposit::SENDER_ETH_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_chain(mut self) -> String {
+            self.path.push(BridgeDeposit::TARGET_CHAIN_FIELD.name);
+            self.finish()
+        }
+        pub fn token_type(mut self) -> String {
+            self.path.push(BridgeDeposit::TOKEN_TYPE_FIELD.name);
+            self.finish()
+        }
     }
     impl BridgeWithdraw {
         pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
@@ -6464,11 +6497,18 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
+        pub const TARGET_CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "target_chain",
+            json_name: "targetChain",
+            number: 4i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for BridgeWithdraw {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::AMOUNT_FIELD,
             Self::RECIPIENT_ETH_ADDRESS_FIELD,
+            Self::TARGET_CHAIN_FIELD,
         ];
     }
     impl BridgeWithdraw {
@@ -6497,6 +6537,10 @@ mod _field_impls {
         }
         pub fn recipient_eth_address(mut self) -> String {
             self.path.push(BridgeWithdraw::RECIPIENT_ETH_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_chain(mut self) -> String {
+            self.path.push(BridgeWithdraw::TARGET_CHAIN_FIELD.name);
             self.finish()
         }
     }

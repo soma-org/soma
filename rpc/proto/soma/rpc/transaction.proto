@@ -177,6 +177,15 @@ message BridgeDeposit {
   optional uint64 timestamp_ms = 7;
   // Labeled-pubkey signature envelope.
   repeated PubkeySig signatures = 8;
+  // V2 wire-format field — Eth address that locked USDC on Eth.
+  // 20 raw bytes; on-chain executor reconstructs the canonical
+  // signed payload using this slot.
+  optional bytes sender_eth_address = 9;
+  // V2 wire-format field — destination chain id (always a Soma chain).
+  // Single byte; values per types::bridge::BridgeChainId.
+  optional uint32 target_chain = 10;
+  // V2 wire-format field — token id. Always 3 (USDC) today.
+  optional uint32 token_type = 11;
 }
 
 message BridgeWithdraw {
@@ -184,6 +193,9 @@ message BridgeWithdraw {
   // no payment coin object is read. Field 1 (payment_coin) was removed.
   optional uint64 amount = 2;
   optional bytes recipient_eth_address = 3;
+  // V2 wire-format field — destination Eth chain id.
+  // Single byte; values per types::bridge::BridgeChainId.
+  optional uint32 target_chain = 4;
 }
 
 message BridgeEmergencyPause {
