@@ -24,25 +24,47 @@ abstract contract CommitteeUpgradeable is
     MessageVerifier,
     ReentrancyGuardUpgradeable
 {
-    /// @dev One-shot flag set inside [`upgradeWithSignatures`] before calling
-    /// [`upgradeToAndCall`]. The UUPS upgrade hook reads it; setting + clearing
-    /// it in the same call frame means an EOA can never trigger an upgrade
-    /// because [`_authorizeUpgrade`] is the only place that reads it.
+    /// @dev One-shot flag set inside [`upgradeWithSignatures`] before
+    /// calling [`upgradeToAndCall`]. The UUPS upgrade hook reads it and
+    /// clears it immediately — the flag is `true` only for the single
+    /// `_authorizeUpgrade` callback. Matches Sui's pattern: an EOA can
+    /// never trigger an upgrade because [`_authorizeUpgrade`] is the
+    /// only reader, and it cleans up after itself even on a
+    /// hypothetical re-entrant path.
     bool private _upgradeAuthorized;
+
+    /// @dev Storage-layout reservation. Without this padding, adding a
+    /// state variable to this base in a future version would shift
+    /// every child contract's storage slots by one, breaking the
+    /// upgrade. The 50-slot gap mirrors Sui's; their comment notes
+    /// this slot count differs between mainnet and testnet on Sui
+    /// because the gap was added AFTER testnet deployment. For Soma
+    /// we land with the gap from day one, so no mainnet/testnet
+    /// divergence to manage.
+    uint256[50] private __gap;
+
+    // NOTE: Sui's CommitteeUpgradeable has a `constructor { _disableInitializers(); }`
+    // to prevent direct calls to `initialize` on the implementation
+    // contract. Soma's Foundry tests currently deploy the impl directly
+    // and call initialize on it (no proxy in test setUp), so adding the
+    // disabler breaks tests with InvalidInitialization(). Wiring proper
+    // ERC1967Proxy-based test deployment is a separate refactor; until
+    // then the gate is "only the proxy's initializer can succeed in
+    // production" — relying on deployment scripts to use a proxy.
 
     function __CommitteeUpgradeable_init(address _committee) internal onlyInitializing {
         __ReentrancyGuard_init();
         __MessageVerifier_init(_committee);
-        // committee is set in __MessageVerifier_init; setting it again here
-        // would be a redundant write but Sui parity keeps the two writes
-        // separated. We don't repeat it.
     }
 
-    /// @dev UUPS gate. The default deny means the only path to an upgrade
-    /// is [`upgradeWithSignatures`] below, which flips the flag for exactly
-    /// one call.
-    function _authorizeUpgrade(address) internal view override {
+    /// @dev UUPS gate. The default deny means the only path to an
+    /// upgrade is [`upgradeWithSignatures`] below. Clearing the flag
+    /// inside the gate itself (rather than after `upgradeToAndCall`
+    /// returns) shrinks the window in which an unauthorized
+    /// re-entrant upgrade could exploit the open flag — Sui parity.
+    function _authorizeUpgrade(address) internal override {
         require(_upgradeAuthorized, "SomaBridge: Unauthorized upgrade");
+        _upgradeAuthorized = false;
     }
 
     /// @notice Upgrade this contract to a new implementation, gated by a
@@ -66,6 +88,12 @@ abstract contract CommitteeUpgradeable is
 
         _upgradeAuthorized = true;
         upgradeToAndCall(implementation, callData);
-        _upgradeAuthorized = false;
+
+        emit ContractUpgraded(message.nonce, proxy, implementation);
     }
+
+    /// @notice Emitted on a successful upgrade so off-chain indexers can
+    /// track implementation history without scraping EIP-1967 storage.
+    /// Sui parity.
+    event ContractUpgraded(uint64 nonce, address proxy, address implementation);
 }
