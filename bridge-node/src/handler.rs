@@ -145,14 +145,14 @@ impl<SC: SomaBridgeClientInner> BridgeRequestHandler<SC> {
                 "withdrawal nonce {nonce} already has cert attached"
             )));
         }
-        // For now the target chain is hardcoded to the canonical Eth side
-        // (`EthCustom`) since Soma only bridges to one Eth deployment; once
-        // `PendingWithdrawal` grows a `target_chain` field we read it
-        // from `pw`. Token type is always USDC.
+        // Token type is always USDC today; the chain enforces this in
+        // the bridge executor. target_chain comes from the on-chain
+        // PendingWithdrawal — the user who initiated the burn picked
+        // the destination Eth chain at burn time.
         let action = BridgeAction::Withdrawal {
             nonce: pw.nonce,
             sender: pw.sender,
-            target_chain: types::bridge::BridgeChainId::EthCustom,
+            target_chain: pw.target_chain,
             recipient_eth_address: pw.recipient_eth_address,
             token_type: types::bridge::USDC_TOKEN_TYPE,
             amount: pw.amount,
