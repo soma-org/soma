@@ -81,6 +81,13 @@ pub trait SomaBridgeClientInner: Send + Sync + 'static {
     /// vault balance — divergence signals custody breach or counterfeit.
     async fn get_total_usdc_supply(&self) -> BridgeResult<u64>;
 
+    /// Next withdrawal nonce the chain would assign — i.e. one past
+    /// the highest withdrawal nonce that has been created. The
+    /// outbound relayer reads this to bound its scan window from
+    /// "look at every PendingWithdrawal from 0 to N" without having
+    /// to guess a fixed upper bound.
+    async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64>;
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee>;
 
     /// Membership query against `BridgeState.processed_deposit_nonces`.
@@ -177,6 +184,10 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
         self.inner.get_total_usdc_supply().await
+    }
+
+    pub async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
+        self.inner.get_next_withdrawal_nonce().await
     }
 
     pub async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
@@ -384,6 +395,15 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         Ok(state.bridge_state().total_usdc_supply)
     }
 
+    async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
+        let mut c = self.client.lock().await;
+        let state = c
+            .get_latest_system_state()
+            .await
+            .map_err(|s| BridgeError::Internal(format!("get_latest_system_state: {s}")))?;
+        Ok(state.bridge_state().next_withdrawal_nonce)
+    }
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         let mut c = self.client.lock().await;
         let state = c
@@ -560,6 +580,14 @@ pub mod tests {
 
         async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
             Ok(self.total_usdc_supply.load(Ordering::SeqCst))
+        }
+
+        async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
+            // Mock uses the highest installed withdrawal nonce + 1 as
+            // a plausible "next nonce" so the relayer's scan window
+            // covers everything the test installed.
+            let pending = self.pending_withdrawals.lock().unwrap();
+            Ok(pending.keys().copied().max().map(|n| n + 1).unwrap_or(0))
         }
 
         async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {

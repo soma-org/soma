@@ -69,6 +69,17 @@ impl SomaBridgeClientInner for InTestSomaClient {
     async fn get_total_usdc_supply(&self) -> BridgeResult<u64> {
         Ok(0)
     }
+    async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
+        Ok(self
+            .pending
+            .lock()
+            .unwrap()
+            .keys()
+            .copied()
+            .max()
+            .map(|n| n + 1)
+            .unwrap_or(0))
+    }
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         Ok(BridgeCommittee::empty())
     }

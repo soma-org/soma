@@ -204,12 +204,15 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
     /// withdrawal not in the tracker.
     #[instrument(level = "info", skip_all)]
     async fn scan_once(&self) -> BridgeResult<()> {
-        // We don't have a "next_withdrawal_nonce" reader yet; for the
-        // skeleton, walk a small fixed range. Production replaces the
-        // upper bound with a chain-state read (BridgeState
-        // .next_withdrawal_nonce).
-        let upper = self.scan_window;
-        for nonce in 0..upper {
+        // Read the chain's `BridgeState.next_withdrawal_nonce` so we
+        // only walk the live range. `scan_window` caps how far back
+        // we look on each tick — a node restarted after a long
+        // offline period catches up over multiple ticks rather than
+        // burning one giant scan. Anything older requires WAL replay.
+        let next = self.soma_client.get_next_withdrawal_nonce().await?;
+        let upper = next;
+        let lower = upper.saturating_sub(self.scan_window);
+        for nonce in lower..upper {
             if self.tracker.is_relayed(nonce) {
                 continue;
             }
