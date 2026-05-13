@@ -351,6 +351,7 @@ impl BridgeNode {
                                     &or_cfg,
                                     &self.config.eth_rpc_urls,
                                     Arc::clone(&client),
+                                    Arc::clone(&wal),
                                 ) {
                                     Ok(relayer) => {
                                         handles.push(relayer.start());
@@ -633,6 +634,7 @@ fn build_outbound_relayer<C: crate::soma_client::SomaBridgeClientInner + 'static
     cfg: &crate::config::OutboundRelayerConfigBlock,
     eth_rpc_urls: &[String],
     soma_client: Arc<crate::soma_client::SomaBridgeClient<C>>,
+    wal: Arc<crate::storage::BridgeOrchestratorTables>,
 ) -> crate::error::BridgeResult<crate::outbound_relayer::OutboundRelayer<C>> {
     let wallet = crate::eth_wallet::EthWallet::from_hex(&cfg.operator_private_key_hex)?;
     let rpc_url = cfg
@@ -655,7 +657,10 @@ fn build_outbound_relayer<C: crate::soma_client::SomaBridgeClientInner + 'static
     let submitter = Arc::new(crate::eth_submitter::EthSubmitter::new(
         &rpc_url, bridge_addr, wallet,
     )?);
-    let tracker = Arc::new(crate::outbound_relayer::InMemoryRelayedTracker::new());
+    // WAL-backed tracker: a restart sees the same relayed set the
+    // previous run finished with, so already-landed withdrawals don't
+    // re-submit and burn operator gas on Eth-side reverts.
+    let tracker = Arc::new(crate::outbound_relayer::WalRelayedTracker::new(wal));
 
     Ok(crate::outbound_relayer::OutboundRelayer::new(
         soma_client,

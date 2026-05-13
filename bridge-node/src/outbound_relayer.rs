@@ -145,6 +145,46 @@ impl RelayedTracker for InMemoryRelayedTracker {
     }
 }
 
+/// WAL-backed implementation. Reads/writes the
+/// [`crate::storage::BridgeOrchestratorTables::relayed_outbound`]
+/// column so a restart sees the same relayed set the previous run
+/// finished with. Production should use this; the in-memory variant
+/// is for tests where a tempdir-backed WAL would just add noise.
+///
+/// Errors on read/write degrade gracefully: `is_relayed` returning
+/// `false` on a RocksDB read failure means we'll re-submit (the
+/// Eth-side `isMessageProcessed[nonce]` check still prevents
+/// double-release, just at the cost of gas). `mark_relayed` failures
+/// log but don't propagate — the next tick's read will see the
+/// missing entry and re-submit; correctness preserved, gas wasted.
+pub struct WalRelayedTracker {
+    tables: Arc<crate::storage::BridgeOrchestratorTables>,
+}
+
+impl WalRelayedTracker {
+    pub fn new(tables: Arc<crate::storage::BridgeOrchestratorTables>) -> Self {
+        Self { tables }
+    }
+}
+
+impl RelayedTracker for WalRelayedTracker {
+    fn is_relayed(&self, nonce: u64) -> bool {
+        match self.tables.is_outbound_relayed(nonce) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(error = %e, nonce, "WAL relayed-tracker read failed; treating as not-relayed");
+                false
+            }
+        }
+    }
+
+    fn mark_relayed(&self, nonce: u64) {
+        if let Err(e) = self.tables.mark_outbound_relayed(nonce) {
+            warn!(error = %e, nonce, "WAL relayed-tracker mark failed; restart will retry");
+        }
+    }
+}
+
 /// The outbound relayer. Polls Soma for completed PendingWithdrawals
 /// and hands each one to the [`WithdrawalSubmitter`], which in
 /// production calls `eth_sendRawTransaction` on the operator's Eth
@@ -492,5 +532,88 @@ mod tests {
         );
         relayer.scan_once().await.unwrap();
         assert!(!tracker.is_relayed(4));
+    }
+
+    /// The WAL-backed tracker round-trips across a "restart" — close
+    /// the table handle and reopen it; previously-relayed nonces must
+    /// still be marked relayed. Without WAL persistence the relayer
+    /// would re-submit every withdrawal in its scan window on each
+    /// restart and burn operator gas on Eth-side `isMessageProcessed`
+    /// reverts.
+    #[tokio::test]
+    async fn wal_tracker_survives_restart() {
+        let path = tempfile::tempdir().expect("tempdir").keep();
+
+        // Run 1: mark a nonce as relayed.
+        {
+            let wal = crate::storage::BridgeOrchestratorTables::open(&path)
+                .expect("open WAL");
+            let tracker = WalRelayedTracker::new(wal);
+            assert!(!tracker.is_relayed(7));
+            tracker.mark_relayed(7);
+            assert!(tracker.is_relayed(7));
+            // drop closes the DB handle
+        }
+
+        // Run 2: reopen the same path. The previously-marked nonce
+        // must still be present.
+        let wal = crate::storage::BridgeOrchestratorTables::open(&path)
+            .expect("reopen WAL");
+        let tracker = WalRelayedTracker::new(wal);
+        assert!(
+            tracker.is_relayed(7),
+            "nonce marked relayed in run 1 must persist into run 2"
+        );
+        assert!(
+            !tracker.is_relayed(99),
+            "unrelated nonce must not be falsely marked"
+        );
+    }
+
+    /// A full scan-then-restart trip: scan once with a WAL tracker,
+    /// then construct a fresh relayer on the same WAL path and scan
+    /// again — the submitter must be called exactly once total.
+    #[tokio::test]
+    async fn wal_tracker_prevents_resubmit_after_restart() {
+        let path = tempfile::tempdir().expect("tempdir").keep();
+        let pws = vec![pw(11, true)];
+
+        // Run 1: scan, expect one submit, marked relayed.
+        let submit_count_1 = {
+            let wal = crate::storage::BridgeOrchestratorTables::open(&path)
+                .expect("open WAL");
+            let client = build_client_with_withdrawals(pws.clone());
+            let submitter = capturing();
+            let relayer = OutboundRelayer::new(
+                client,
+                submitter.clone(),
+                Arc::new(WalRelayedTracker::new(wal)),
+                Duration::from_millis(10),
+                32,
+            );
+            relayer.scan_once().await.unwrap();
+            submitter.calls.load(std::sync::atomic::Ordering::SeqCst)
+        };
+        assert_eq!(submit_count_1, 1);
+
+        // Run 2: reopen WAL, fresh relayer, scan again. The submitter
+        // must NOT be called because the WAL says nonce 11 is relayed.
+        let wal = crate::storage::BridgeOrchestratorTables::open(&path)
+            .expect("reopen WAL");
+        let client = build_client_with_withdrawals(pws);
+        let submitter = capturing();
+        let relayer = OutboundRelayer::new(
+            client,
+            submitter.clone(),
+            Arc::new(WalRelayedTracker::new(wal)),
+            Duration::from_millis(10),
+            32,
+        );
+        relayer.scan_once().await.unwrap();
+        assert_eq!(
+            submitter.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "post-restart scan must NOT re-submit an already-relayed withdrawal"
+        );
     }
 }

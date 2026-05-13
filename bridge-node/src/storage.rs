@@ -51,6 +51,16 @@ pub struct BridgeOrchestratorTables {
     /// Soma-side cursor: highest checkpoint we've processed for outbound
     /// withdrawal observation. Single global value (no contract sharding).
     pub soma_cursor: DBMap<(), u64>,
+
+    /// Outbound withdrawal nonces this node has already submitted to
+    /// Eth (via `transferBridgedTokensWithSignatures`). The value is
+    /// unused — only key membership matters; we'd use a set if RocksDB
+    /// had one. Persisted so a restart doesn't re-submit a previously-
+    /// relayed withdrawal. Without this the Eth-side
+    /// `isMessageProcessed[nonce]` check would still block the
+    /// duplicate from changing state, but the operator wallet would
+    /// still pay gas for the reverted tx every restart.
+    pub relayed_outbound: DBMap<u64, ()>,
 }
 
 impl BridgeOrchestratorTables {
@@ -141,6 +151,20 @@ impl BridgeOrchestratorTables {
         self.soma_cursor
             .get(&())
             .map_err(|e| BridgeError::Internal(format!("WAL get_soma_cursor: {e}")))
+    }
+
+    /// Mark a withdrawal nonce as relayed to Eth. Idempotent.
+    pub fn mark_outbound_relayed(&self, nonce: u64) -> BridgeResult<()> {
+        self.relayed_outbound
+            .insert(&nonce, &())
+            .map_err(|e| BridgeError::Internal(format!("WAL mark_outbound_relayed: {e}")))
+    }
+
+    /// `true` iff `nonce` is already in the relayed set.
+    pub fn is_outbound_relayed(&self, nonce: u64) -> BridgeResult<bool> {
+        self.relayed_outbound
+            .contains_key(&nonce)
+            .map_err(|e| BridgeError::Internal(format!("WAL is_outbound_relayed: {e}")))
     }
 }
 
