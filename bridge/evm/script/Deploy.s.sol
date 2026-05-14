@@ -2,7 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Upgrades} from "@openzeppelin/openzeppelin-foundry-upgrades/Upgrades.sol";
+import {Options} from "@openzeppelin/openzeppelin-foundry-upgrades/Options.sol";
 
 import "../contracts/BridgeCommittee.sol";
 import "../contracts/BridgeLimiter.sol";
@@ -134,16 +135,25 @@ contract Deploy is Script {
         // ============================================================
         vm.startBroadcast();
 
-        // 3a) BridgeCommittee — UUPS proxy. Constructor calls
-        //     _disableInitializers on the impl, so initialization MUST
-        //     happen through the proxy (proxy storage is what counts).
+        // OZ Upgrades plugin validation: skip the ones that don't
+        // apply to a UUPS-with-_disableInitializers-constructor impl.
+        // We deliberately do NOT skip the storage-layout / UUPS-shape
+        // checks — those are the point of using the plugin.
+        Options memory opts;
+        opts.unsafeAllow = "constructor";
+
+        // 3a) BridgeCommittee — UUPS proxy via OZ Upgrades plugin.
+        //     The plugin runs storage-layout + UUPS-shape validation
+        //     at deploy time and refuses to compile if the impl is
+        //     unsafe (selfdestruct, raw delegatecall in impl, etc.).
         BridgeCommittee committee = BridgeCommittee(
-            _proxy(
-                address(new BridgeCommittee()),
+            Upgrades.deployUUPSProxy(
+                "BridgeCommittee.sol",
                 abi.encodeCall(
                     BridgeCommittee.initialize,
                     (members, stakes, ethChainId)
-                )
+                ),
+                opts
             )
         );
 
@@ -151,22 +161,23 @@ contract Deploy is Script {
         //     is locked in at construction.
         BridgeVault vault = new BridgeVault(usdc);
 
-        // 3c) BridgeLimiter — UUPS proxy.
+        // 3c) BridgeLimiter — UUPS proxy via plugin.
         BridgeLimiter limiter = BridgeLimiter(
-            _proxy(
-                address(new BridgeLimiter()),
+            Upgrades.deployUUPSProxy(
+                "BridgeLimiter.sol",
                 abi.encodeCall(
                     BridgeLimiter.initialize,
                     (address(committee), limiterLimit)
-                )
+                ),
+                opts
             )
         );
 
         // 3d) SomaBridge — UUPS proxy, wires committee + usdc + vault
         //     + limiter together with the supported source-chain list.
         SomaBridge somaBridge = SomaBridge(
-            _proxy(
-                address(new SomaBridge()),
+            Upgrades.deployUUPSProxy(
+                "SomaBridge.sol",
                 abi.encodeCall(
                     SomaBridge.initialize,
                     (
@@ -176,7 +187,8 @@ contract Deploy is Script {
                         address(limiter),
                         supportedSomaChains
                     )
-                )
+                ),
+                opts
             )
         );
 
@@ -200,13 +212,5 @@ contract Deploy is Script {
         console.log("SOMA_BRIDGE_PROXY=", address(somaBridge));
         console.log("DEPLOYMENT_BLOCK=", block.number);
         console.log(unicode"✓ deployment complete");
-    }
-
-    /// Deploy a UUPS implementation behind an ERC1967Proxy and return
-    /// the proxy address. Same helper used in `SomaBridgeTest.t.sol` —
-    /// production and tests deploy contracts the same way.
-    function _proxy(address impl, bytes memory initData) internal returns (address) {
-        ERC1967Proxy p = new ERC1967Proxy(impl, initData);
-        return address(p);
     }
 }
