@@ -38,9 +38,10 @@ use types::multiaddr::Multiaddr;
 use types::object::{ObjectID, ObjectRef, Owner};
 use types::system_state::validator::Validator;
 use types::system_state::{SystemState, SystemStateTrait as _};
+use types::bridge::BridgePubkey;
 use types::transaction::{
-    AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
-    UpdateValidatorMetadataArgs,
+    AddValidatorArgs, BridgeRegisterBridgeKeyArgs, RemoveValidatorArgs, Transaction,
+    TransactionData, TransactionKind, UpdateValidatorMetadataArgs,
 };
 use types::validator_info::GenesisValidatorInfo;
 use url::{ParseError, Url};
@@ -124,6 +125,45 @@ pub enum SomaValidatorCommand {
         tx_args: TxProcessingArgs,
     },
 
+    /// Pre-register this validator's bridge keypair so they're eligible for
+    /// the next epoch's bridge committee rotation. Must be called before
+    /// the bridge can sign on this validator's behalf.
+    ///
+    /// The on-chain `BridgeRegisterBridgeKey` tx stores a `(BridgePubkey,
+    /// http_url)` entry keyed by the validator's Soma address (the tx
+    /// signer). At the next epoch boundary, the bridge committee is
+    /// rebuilt from active validators whose registration is present — so
+    /// a validator that joins consensus without calling this command
+    /// will be skipped over by the rotation and won't accumulate
+    /// signing power on the Eth side.
+    ///
+    /// The bridge key is a *separate* secp256k1 keypair from the
+    /// validator's consensus/account keys. It signs Eth-side bridge
+    /// messages (UsdcWithdraw certs, blocklist updates, etc.) using
+    /// recoverable secp256k1 sigs so the SomaBridge contract can
+    /// `ecrecover` and check committee membership without storing
+    /// the pubkey verbatim. Keep the private key alongside the
+    /// bridge-node daemon (typically `bridge.key`); the validator
+    /// node itself never needs it.
+    #[clap(name = "register-bridge-key")]
+    RegisterBridgeKey {
+        /// Path to the 33-byte compressed secp256k1 public key file (the
+        /// raw bytes, NOT a Soma keystore — this is the bridge key, not
+        /// the validator's gas/consensus key). Hex prefix is tolerated;
+        /// length must be exactly 33.
+        #[clap(long)]
+        bridge_pubkey: PathBuf,
+
+        /// Public HTTPS URL this validator's bridge-node daemon listens on
+        /// for the peer-broadcast sig-exchange endpoint. Each entry in
+        /// `BridgeState.bridge_registrations` carries this URL; peers
+        /// resolve it to fetch sigs.
+        #[clap(long)]
+        http_url: String,
+
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -244,7 +284,39 @@ impl SomaValidatorCommand {
                 execute_tx(context, sender, kind, tx_args).await
             }
 
-}
+            SomaValidatorCommand::RegisterBridgeKey { bridge_pubkey, http_url, tx_args } => {
+                // Only validators that are already part of the active set
+                // can register a bridge key: the on-chain executor rejects
+                // the tx otherwise, and surfacing the error here saves
+                // operators a wasted gas round-trip + bond-allocation step.
+                check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
+
+                // Load the 33-byte compressed secp256k1 pubkey from disk,
+                // validating curve membership before we build the tx.
+                let (pubkey, pubkey_hex) = load_bridge_pubkey(&bridge_pubkey)?;
+
+                // Build the tx args. The signer (this CLI's active address)
+                // is implicit — the executor reads it from the tx sender
+                // and uses it as the BTreeMap key in `bridge_registrations`.
+                let kind = TransactionKind::BridgeRegisterBridgeKey(
+                    BridgeRegisterBridgeKeyArgs {
+                        bridge_pubkey: pubkey,
+                        http_url: http_url.clone(),
+                    },
+                );
+
+                // Show the operator exactly what's about to go on chain so
+                // they can sanity-check before the tx is signed/submitted.
+                // A wrong pubkey here means the validator silently fails
+                // to produce valid bridge sigs next epoch.
+                eprintln!("{}", "Registering bridge key:".green().bold());
+                eprintln!("  bridge_pubkey: 0x{}", pubkey_hex);
+                eprintln!("  http_url:      {}", http_url);
+                eprintln!();
+
+                execute_tx(context, sender, kind, tx_args).await
+            }
+        }
     }
 }
 
@@ -450,6 +522,69 @@ fn make_validator_info(
             "validator.info".to_string(),
         ],
     })
+}
+
+/// Load and validate a bridge pubkey from a file.
+///
+/// The file is expected to contain a 33-byte compressed secp256k1 public
+/// key. We accept two formats to keep operator workflows flexible:
+///
+///   1. Hex-encoded text (with or without a leading `0x`, trailing
+///      whitespace tolerated) — what `bridge-node generate-key` writes
+///      and what most operators paste.
+///   2. Raw 33 bytes — what a one-liner like
+///      `cat /dev/urandom | head -c33 > bridge.pub` would produce
+///      (mostly useful in tests; not realistic in prod, but cheap to
+///      support and removes one footgun).
+///
+/// Returns the parsed [`BridgePubkey`] plus its lowercase hex
+/// representation so the caller can echo it back to the operator for
+/// confirmation. The hex echo is critical for operator UX: it's the
+/// only feedback they get before the tx hits the chain that they
+/// loaded the *right* key file (and not, say, last week's key from a
+/// rotated keypair).
+fn load_bridge_pubkey(path: &PathBuf) -> Result<(BridgePubkey, String)> {
+    let raw = fs::read(path)
+        .map_err(|e| anyhow!("failed to read bridge pubkey file {:?}: {}", path, e))?;
+
+    // Try hex first. We trim ASCII whitespace + an optional `0x` prefix.
+    // If the file is exactly 33 bytes AND not valid hex, we fall through
+    // to the raw-bytes branch — but a 33-byte hex string would only
+    // decode to ~16.5 bytes anyway, so there's no ambiguity in practice.
+    let bytes: Vec<u8> = if let Ok(text) = std::str::from_utf8(&raw) {
+        let trimmed = text.trim();
+        let stripped = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        match hex::decode(stripped) {
+            Ok(decoded) => decoded,
+            // Fall back to raw bytes if hex parse fails (e.g. the file
+            // is binary but happens to be valid UTF-8 by accident).
+            Err(_) => raw.clone(),
+        }
+    } else {
+        // Non-UTF-8 → must be raw bytes.
+        raw.clone()
+    };
+
+    if bytes.len() != 33 {
+        bail!(
+            "bridge pubkey file {:?} decoded to {} bytes; expected exactly 33 (compressed secp256k1)",
+            path,
+            bytes.len()
+        );
+    }
+
+    // `BridgePubkey::from_bytes` round-trips through the secp256k1
+    // curve check, so this rejects e.g. an all-zero pubkey or a
+    // 33-byte string whose first byte isn't a valid tag (0x02/0x03).
+    let pubkey = BridgePubkey::from_bytes(&bytes).map_err(|e| {
+        anyhow!(
+            "bridge pubkey is not a valid secp256k1 compressed point: {}",
+            e
+        )
+    })?;
+
+    let hex_str = hex::encode(pubkey.as_bytes());
+    Ok((pubkey, hex_str))
 }
 
 /// Build a JoinCommittee (AddValidator) transaction from validator info file
