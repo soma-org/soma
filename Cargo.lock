@@ -1904,9 +1904,11 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "toml 0.8.23",
  "tonic 0.14.5",
  "tower 0.5.3",
  "tracing",
+ "tracing-subscriber",
  "types",
  "wiremock",
 ]

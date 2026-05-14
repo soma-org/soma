@@ -54,6 +54,10 @@ arc-swap = { workspace = true }
 clap = { workspace = true }
 sha2 = "0.10"
 
+# Bridge-node daemon binary deps.
+toml = { workspace = true }
+tracing-subscriber = { workspace = true }
+
 # RocksDB-backed WAL (Stage 6b: pending actions + Eth/Soma cursors persisted
 # across restarts so the bridge node doesn't re-scan from genesis on reboot).
 store = { workspace = true }
@@ -75,3 +79,11 @@ tower = { workspace = true }
 [[bin]]
 name = "bridge-committee-export"
 path = "src/bin/bridge_committee_export.rs"
+
+# The bridge-node daemon — loads a TOML config, fetches the live
+# committee from a Soma fullnode, and spawns every subsystem
+# (Eth syncer, HTTP sig-exchange, executor, outbound relayer, watchdog).
+# See `src/main.rs` for the CLI surface and shutdown contract.
+[[bin]]
+name = "bridge-node"
+path = "src/main.rs"
