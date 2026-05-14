@@ -1258,6 +1258,36 @@ pub enum ExecutionFailureStatus {
     NotAProviderInbox { object_id: ObjectID },
 
     //
+    // Offering errors
+    //
+    /// `RegisterOffering` rejected because an Offering object already
+    /// exists for (signer, model_id). Use `UpdateOffering`.
+    #[error("Offering already registered for this (provider, model_id)")]
+    OfferingAlreadyExists,
+
+    /// `UpdateOffering` / `DeactivateOffering` could not load the
+    /// Offering object — caller must register first.
+    #[error("Offering not registered for this (provider, model_id)")]
+    OfferingNotFound,
+
+    /// Caller is not the provider who registered the offering, or
+    /// `args.offering_id` does not match `Offering::derive_id(signer, model_id)`.
+    #[error("Offering update caller is not the registering provider")]
+    OfferingCallerMismatch,
+
+    /// `model_id` is not present (or not active) in the protocol-config
+    /// `ModelRegistry` at the executor's protocol version. Providers
+    /// can only register offerings against models the protocol blesses.
+    #[error("Offering rejected: model_id {model_id} not in protocol ModelRegistry")]
+    OfferingUnknownModel { model_id: String },
+
+    /// `OpenChannel` referenced a `model_id` that doesn't have an
+    /// active offering registered by `args.payee`. The offering object
+    /// must exist + be active before any channel can open against it.
+    #[error("OpenChannel: no active offering by {payee} for model {model_id}")]
+    ChannelOfferingMissing { payee: SomaAddress, model_id: String },
+
+    //
     // Post-execution errors
     //
     /// Generic SOMA error that wraps other error types

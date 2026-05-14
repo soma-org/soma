@@ -83,7 +83,7 @@ async fn chat_completions(
     };
     let (provider, card) = pick;
 
-    let slot = match state.router.ensure_channel(&provider).await {
+    let slot = match state.router.ensure_channel(&provider, &model).await {
         Ok(s) => s,
         Err(e) => return err(
             StatusCode::INTERNAL_SERVER_ERROR,

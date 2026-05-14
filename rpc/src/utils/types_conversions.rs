@@ -87,6 +87,7 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::DelegationAccumulator => ObjectType::DelegationAccumulator,
             types::object::ObjectType::Provider => ObjectType::Provider,
             types::object::ObjectType::ProviderInbox => ObjectType::ProviderInbox,
+            types::object::ObjectType::Offering => ObjectType::Offering,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -120,6 +121,7 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::DelegationAccumulator => types::object::ObjectType::DelegationAccumulator,
             ObjectType::Provider => types::object::ObjectType::Provider,
             ObjectType::ProviderInbox => types::object::ObjectType::ProviderInbox,
+            ObjectType::Offering => types::object::ObjectType::Offering,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -630,6 +632,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     authorized_signer: args.authorized_signer.into(),
                     token: args.token,
                     deposit_amount: args.deposit_amount,
+                    model_id: args.model_id,
                 })
             }
             TransactionKind::Settle(args) => {
@@ -644,6 +647,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                         args.channel_id,
                     )),
                     cumulative_amount: args.cumulative_amount,
+                    cumulative_prompt_tokens: args.cumulative_prompt_tokens,
+                    cumulative_completion_tokens: args.cumulative_completion_tokens,
+                    cumulative_cache_read_tokens: args.cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens: args.cumulative_cache_write_tokens,
+                    cumulative_requests: args.cumulative_requests,
                     voucher_signature,
                 })
             }
@@ -672,11 +680,56 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
             TransactionKind::RateChannel(args) => {
+                let reason_code = match args.reason_code {
+                    0 => types::transaction::RatingReasonCode::Quality,
+                    1 => types::transaction::RatingReasonCode::TtftBreach,
+                    2 => types::transaction::RatingReasonCode::TtotBreach,
+                    3 => types::transaction::RatingReasonCode::NoResponse,
+                    _ => types::transaction::RatingReasonCode::Other,
+                };
                 TK::RateChannel(types::transaction::RateChannelArgs {
                     channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
                         args.channel_id,
                     )),
                     negative: args.negative,
+                    reason_code,
+                })
+            }
+
+            // Per-(provider, model) offerings
+            TransactionKind::RegisterOffering(args) => {
+                TK::RegisterOffering(types::transaction::RegisterOfferingArgs {
+                    model_id: args.model_id,
+                    prompt_micros_per_1k: args.prompt_micros_per_1k,
+                    completion_micros_per_1k: args.completion_micros_per_1k,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k,
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k,
+                    request_micros: args.request_micros,
+                    ttft_bound_ms: args.ttft_bound_ms,
+                    ttot_bound_ms: args.ttot_bound_ms,
+                })
+            }
+            TransactionKind::UpdateOffering(args) => {
+                TK::UpdateOffering(types::transaction::UpdateOfferingArgs {
+                    offering_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.offering_id,
+                    )),
+                    model_id: args.model_id,
+                    prompt_micros_per_1k: args.prompt_micros_per_1k,
+                    completion_micros_per_1k: args.completion_micros_per_1k,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k,
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k,
+                    request_micros: args.request_micros,
+                    ttft_bound_ms: args.ttft_bound_ms,
+                    ttot_bound_ms: args.ttot_bound_ms,
+                })
+            }
+            TransactionKind::DeactivateOffering(args) => {
+                TK::DeactivateOffering(types::transaction::DeactivateOfferingArgs {
+                    offering_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.offering_id,
+                    )),
+                    model_id: args.model_id,
                 })
             }
 
@@ -1555,6 +1608,22 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::NotAProviderInbox { object_id } => {
                 Self::NotAProviderInbox { object_id: object_id.into() }
             }
+
+            // Per-(provider, model) Offering errors — dedicated rpc::types variants.
+            types::effects::ExecutionFailureStatus::OfferingAlreadyExists => {
+                Self::OfferingAlreadyExists
+            }
+            types::effects::ExecutionFailureStatus::OfferingNotFound => Self::OfferingNotFound,
+            types::effects::ExecutionFailureStatus::OfferingCallerMismatch => {
+                Self::OfferingCallerMismatch
+            }
+            types::effects::ExecutionFailureStatus::OfferingUnknownModel { model_id } => {
+                Self::OfferingUnknownModel { model_id }
+            }
+            types::effects::ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id,
+            } => Self::ChannelOfferingMissing { payee: payee.into(), model_id },
         }
     }
 }
@@ -1731,6 +1800,16 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             }
             ExecutionError::NotAProviderInbox { object_id } => {
                 Self::NotAProviderInbox { object_id: object_id.into() }
+            }
+
+            ExecutionError::OfferingAlreadyExists => Self::OfferingAlreadyExists,
+            ExecutionError::OfferingNotFound => Self::OfferingNotFound,
+            ExecutionError::OfferingCallerMismatch => Self::OfferingCallerMismatch,
+            ExecutionError::OfferingUnknownModel { model_id } => {
+                Self::OfferingUnknownModel { model_id }
+            }
+            ExecutionError::ChannelOfferingMissing { payee, model_id } => {
+                Self::ChannelOfferingMissing { payee: payee.into(), model_id }
             }
 
             _ => unreachable!("sdk shouldn't have a variant that the mono repo doesn't"),

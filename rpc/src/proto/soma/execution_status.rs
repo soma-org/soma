@@ -240,6 +240,21 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 ExecutionErrorKind::NotAProviderInbox,
                 Some(ErrorDetails::ObjectId(object_id.to_string())),
             ),
+
+            E::OfferingAlreadyExists => (ExecutionErrorKind::OfferingAlreadyExists, None),
+            E::OfferingNotFound => (ExecutionErrorKind::OfferingNotFound, None),
+            E::OfferingCallerMismatch => (ExecutionErrorKind::OfferingCallerMismatch, None),
+            E::OfferingUnknownModel { model_id } => (
+                ExecutionErrorKind::OfferingUnknownModel,
+                Some(ErrorDetails::OtherError(format!("model_id={}", model_id))),
+            ),
+            E::ChannelOfferingMissing { payee, model_id } => (
+                ExecutionErrorKind::ChannelOfferingMissing,
+                Some(ErrorDetails::OtherError(format!(
+                    "payee={}, model_id={}",
+                    payee, model_id
+                ))),
+            ),
         };
 
         Self { description, kind: Some(kind.into()), error_details }
@@ -598,6 +613,34 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 } else {
                     Err(TryFromProtoError::missing("object_id for NotAProviderInbox"))
                 }
+            }
+
+            // Per-(provider, model) Offering errors.
+            K::OfferingAlreadyExists => Ok(Self::OfferingAlreadyExists),
+            K::OfferingNotFound => Ok(Self::OfferingNotFound),
+            K::OfferingCallerMismatch => Ok(Self::OfferingCallerMismatch),
+            K::OfferingUnknownModel => {
+                let model_id =
+                    if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                        s.strip_prefix("model_id=").unwrap_or(s).to_string()
+                    } else {
+                        String::new()
+                    };
+                Ok(Self::OfferingUnknownModel { model_id })
+            }
+            K::ChannelOfferingMissing => {
+                use crate::types::Address;
+                let (mut payee, mut model_id) = (Address::ZERO, String::new());
+                if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                    for part in s.split(", ") {
+                        if let Some(v) = part.strip_prefix("payee=") {
+                            payee = v.parse().unwrap_or(Address::ZERO);
+                        } else if let Some(v) = part.strip_prefix("model_id=") {
+                            model_id = v.to_string();
+                        }
+                    }
+                }
+                Ok(Self::ChannelOfferingMissing { payee, model_id })
             }
         }
     }

@@ -5922,6 +5922,24 @@ mod _field_impls {
             number: 56i32,
             message_fields: Some(UpdateProvider::FIELDS),
         };
+        pub const REGISTER_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "register_offering",
+            json_name: "registerOffering",
+            number: 58i32,
+            message_fields: Some(RegisterOffering::FIELDS),
+        };
+        pub const UPDATE_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "update_offering",
+            json_name: "updateOffering",
+            number: 59i32,
+            message_fields: Some(UpdateOffering::FIELDS),
+        };
+        pub const DEACTIVATE_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "deactivate_offering",
+            json_name: "deactivateOffering",
+            number: 62i32,
+            message_fields: Some(DeactivateOffering::FIELDS),
+        };
         pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
             name: "settlement",
             json_name: "settlement",
@@ -5982,6 +6000,9 @@ mod _field_impls {
             Self::RATE_CHANNEL_FIELD,
             Self::REGISTER_PROVIDER_FIELD,
             Self::UPDATE_PROVIDER_FIELD,
+            Self::REGISTER_OFFERING_FIELD,
+            Self::UPDATE_OFFERING_FIELD,
+            Self::DEACTIVATE_OFFERING_FIELD,
             Self::SETTLEMENT_FIELD,
             Self::BALANCE_TRANSFER_FIELD,
         ];
@@ -6201,6 +6222,18 @@ mod _field_impls {
         pub fn update_provider(mut self) -> UpdateProviderFieldPathBuilder {
             self.path.push(TransactionKind::UPDATE_PROVIDER_FIELD.name);
             UpdateProviderFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn register_offering(mut self) -> RegisterOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::REGISTER_OFFERING_FIELD.name);
+            RegisterOfferingFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn update_offering(mut self) -> UpdateOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::UPDATE_OFFERING_FIELD.name);
+            UpdateOfferingFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn deactivate_offering(mut self) -> DeactivateOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::DEACTIVATE_OFFERING_FIELD.name);
+            DeactivateOfferingFieldPathBuilder::new_with_base(self.path)
         }
         pub fn settlement(mut self) -> SettlementFieldPathBuilder {
             self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
@@ -8975,6 +9008,12 @@ mod _field_impls {
             number: 5i32,
             message_fields: None,
         };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 6i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for OpenChannel {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -8982,6 +9021,7 @@ mod _field_impls {
             Self::AUTHORIZED_SIGNER_FIELD,
             Self::TOKEN_FIELD,
             Self::DEPOSIT_AMOUNT_FIELD,
+            Self::MODEL_ID_FIELD,
         ];
     }
     impl OpenChannel {
@@ -9020,6 +9060,10 @@ mod _field_impls {
             self.path.push(OpenChannel::DEPOSIT_AMOUNT_FIELD.name);
             self.finish()
         }
+        pub fn model_id(mut self) -> String {
+            self.path.push(OpenChannel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
     }
     impl Settle {
         pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
@@ -9040,12 +9084,47 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
+        pub const CUMULATIVE_PROMPT_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_prompt_tokens",
+            json_name: "cumulativePromptTokens",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_COMPLETION_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_completion_tokens",
+            json_name: "cumulativeCompletionTokens",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_CACHE_READ_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_cache_read_tokens",
+            json_name: "cumulativeCacheReadTokens",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_CACHE_WRITE_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_cache_write_tokens",
+            json_name: "cumulativeCacheWriteTokens",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_REQUESTS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_requests",
+            json_name: "cumulativeRequests",
+            number: 8i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Settle {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::CHANNEL_ID_FIELD,
             Self::CUMULATIVE_AMOUNT_FIELD,
             Self::VOUCHER_SIGNATURE_FIELD,
+            Self::CUMULATIVE_PROMPT_TOKENS_FIELD,
+            Self::CUMULATIVE_COMPLETION_TOKENS_FIELD,
+            Self::CUMULATIVE_CACHE_READ_TOKENS_FIELD,
+            Self::CUMULATIVE_CACHE_WRITE_TOKENS_FIELD,
+            Self::CUMULATIVE_REQUESTS_FIELD,
         ];
     }
     impl Settle {
@@ -9078,6 +9157,26 @@ mod _field_impls {
         }
         pub fn voucher_signature(mut self) -> String {
             self.path.push(Settle::VOUCHER_SIGNATURE_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_prompt_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_PROMPT_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_completion_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_COMPLETION_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_cache_read_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_CACHE_READ_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_cache_write_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_CACHE_WRITE_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_requests(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_REQUESTS_FIELD.name);
             self.finish()
         }
     }
@@ -9124,9 +9223,18 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
+        pub const PAYEE_FIELD: &'static MessageField = &MessageField {
+            name: "payee",
+            json_name: "payee",
+            number: 2i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for WithdrawAfterTimeout {
-        const FIELDS: &'static [&'static MessageField] = &[Self::CHANNEL_ID_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::PAYEE_FIELD,
+        ];
     }
     impl WithdrawAfterTimeout {
         pub fn path_builder() -> WithdrawAfterTimeoutFieldPathBuilder {
@@ -9150,6 +9258,10 @@ mod _field_impls {
         }
         pub fn channel_id(mut self) -> String {
             self.path.push(WithdrawAfterTimeout::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn payee(mut self) -> String {
+            self.path.push(WithdrawAfterTimeout::PAYEE_FIELD.name);
             self.finish()
         }
     }
@@ -9226,11 +9338,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const REASON_CODE_FIELD: &'static MessageField = &MessageField {
+            name: "reason_code",
+            json_name: "reasonCode",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for RateChannel {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::CHANNEL_ID_FIELD,
             Self::NEGATIVE_FIELD,
+            Self::REASON_CODE_FIELD,
         ];
     }
     impl RateChannel {
@@ -9259,6 +9378,300 @@ mod _field_impls {
         }
         pub fn negative(mut self) -> String {
             self.path.push(RateChannel::NEGATIVE_FIELD.name);
+            self.finish()
+        }
+        pub fn reason_code(mut self) -> String {
+            self.path.push(RateChannel::REASON_CODE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RegisterOffering {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PROMPT_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "prompt_micros_per_1k",
+            json_name: "promptMicrosPer1k",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const COMPLETION_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "completion_micros_per_1k",
+            json_name: "completionMicrosPer1k",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const CACHE_READ_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_read_micros_per_1k",
+            json_name: "cacheReadMicrosPer1k",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CACHE_WRITE_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_write_micros_per_1k",
+            json_name: "cacheWriteMicrosPer1k",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const REQUEST_MICROS_FIELD: &'static MessageField = &MessageField {
+            name: "request_micros",
+            json_name: "requestMicros",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const TTFT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttft_bound_ms",
+            json_name: "ttftBoundMs",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const TTOT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttot_bound_ms",
+            json_name: "ttotBoundMs",
+            number: 8i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RegisterOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::PROMPT_MICROS_PER_1K_FIELD,
+            Self::COMPLETION_MICROS_PER_1K_FIELD,
+            Self::CACHE_READ_MICROS_PER_1K_FIELD,
+            Self::CACHE_WRITE_MICROS_PER_1K_FIELD,
+            Self::REQUEST_MICROS_FIELD,
+            Self::TTFT_BOUND_MS_FIELD,
+            Self::TTOT_BOUND_MS_FIELD,
+        ];
+    }
+    impl RegisterOffering {
+        pub fn path_builder() -> RegisterOfferingFieldPathBuilder {
+            RegisterOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct RegisterOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RegisterOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(RegisterOffering::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn prompt_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::PROMPT_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn completion_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::COMPLETION_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_read_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::CACHE_READ_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_write_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::CACHE_WRITE_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn request_micros(mut self) -> String {
+            self.path.push(RegisterOffering::REQUEST_MICROS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttft_bound_ms(mut self) -> String {
+            self.path.push(RegisterOffering::TTFT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttot_bound_ms(mut self) -> String {
+            self.path.push(RegisterOffering::TTOT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+    }
+    impl UpdateOffering {
+        pub const OFFERING_ID_FIELD: &'static MessageField = &MessageField {
+            name: "offering_id",
+            json_name: "offeringId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PROMPT_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "prompt_micros_per_1k",
+            json_name: "promptMicrosPer1k",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const COMPLETION_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "completion_micros_per_1k",
+            json_name: "completionMicrosPer1k",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CACHE_READ_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_read_micros_per_1k",
+            json_name: "cacheReadMicrosPer1k",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const CACHE_WRITE_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_write_micros_per_1k",
+            json_name: "cacheWriteMicrosPer1k",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const REQUEST_MICROS_FIELD: &'static MessageField = &MessageField {
+            name: "request_micros",
+            json_name: "requestMicros",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const TTFT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttft_bound_ms",
+            json_name: "ttftBoundMs",
+            number: 8i32,
+            message_fields: None,
+        };
+        pub const TTOT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttot_bound_ms",
+            json_name: "ttotBoundMs",
+            number: 9i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for UpdateOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OFFERING_ID_FIELD,
+            Self::MODEL_ID_FIELD,
+            Self::PROMPT_MICROS_PER_1K_FIELD,
+            Self::COMPLETION_MICROS_PER_1K_FIELD,
+            Self::CACHE_READ_MICROS_PER_1K_FIELD,
+            Self::CACHE_WRITE_MICROS_PER_1K_FIELD,
+            Self::REQUEST_MICROS_FIELD,
+            Self::TTFT_BOUND_MS_FIELD,
+            Self::TTOT_BOUND_MS_FIELD,
+        ];
+    }
+    impl UpdateOffering {
+        pub fn path_builder() -> UpdateOfferingFieldPathBuilder {
+            UpdateOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct UpdateOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl UpdateOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn offering_id(mut self) -> String {
+            self.path.push(UpdateOffering::OFFERING_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(UpdateOffering::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn prompt_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::PROMPT_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn completion_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::COMPLETION_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_read_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::CACHE_READ_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_write_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::CACHE_WRITE_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn request_micros(mut self) -> String {
+            self.path.push(UpdateOffering::REQUEST_MICROS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttft_bound_ms(mut self) -> String {
+            self.path.push(UpdateOffering::TTFT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttot_bound_ms(mut self) -> String {
+            self.path.push(UpdateOffering::TTOT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+    }
+    impl DeactivateOffering {
+        pub const OFFERING_ID_FIELD: &'static MessageField = &MessageField {
+            name: "offering_id",
+            json_name: "offeringId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for DeactivateOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OFFERING_ID_FIELD,
+            Self::MODEL_ID_FIELD,
+        ];
+    }
+    impl DeactivateOffering {
+        pub fn path_builder() -> DeactivateOfferingFieldPathBuilder {
+            DeactivateOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct DeactivateOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl DeactivateOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn offering_id(mut self) -> String {
+            self.path.push(DeactivateOffering::OFFERING_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(DeactivateOffering::MODEL_ID_FIELD.name);
             self.finish()
         }
     }

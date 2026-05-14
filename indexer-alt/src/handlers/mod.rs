@@ -26,6 +26,8 @@ pub mod soma_channel_events;
 pub mod soma_channel_ratings;
 pub mod soma_channels;
 pub mod soma_epoch_state;
+pub mod soma_inference_settlements;
+pub mod soma_offerings;
 pub mod soma_providers;
 pub mod soma_tx_details;
 pub mod soma_validators;

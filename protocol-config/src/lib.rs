@@ -10,6 +10,11 @@ use protocol_config_macros::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
+pub mod model_registry;
+pub use model_registry::{
+    Modality, ModelFeature, ModelRegistry, ModelRegistryEntry, TokenizerFamily,
+};
+
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
 /// V7 (Stage 14c.1): `ObjectOut::AccumulatorWriteV1` variant added

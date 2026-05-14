@@ -24,16 +24,28 @@ use types::digests::TransactionDigest;
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{CoinType, ObjectID};
 use types::transaction::{
-    OpenChannelArgs, RateChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, Transaction,
-    TransactionKind, WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RateChannelArgs, RatingReasonCode, RequestCloseArgs, SettleArgs, TopUpArgs,
+    Transaction, TransactionKind, WithdrawAfterTimeoutArgs,
 };
+
+/// Cumulative usage breakdown signed alongside a voucher. Mirrors the
+/// fields on `types::channel::VoucherV1` so callers can name them once.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VoucherUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub requests: u64,
+}
 
 use crate::transaction_builder::TransactionBuilder;
 use crate::wallet_context::WalletContext;
 
-/// Sign a voucher authorizing `cumulative_amount` on `channel_id`,
-/// returning the canonical wire form (`GenericSignature`) ready to
-/// embed in a `SettleArgs`.
+/// Sign a voucher authorizing `cumulative_amount` (with the
+/// accompanying `usage` breakdown) on `channel_id`, returning the
+/// canonical wire form (`GenericSignature`) ready to embed in a
+/// `SettleArgs`.
 ///
 /// `signer` must be the channel's `authorized_signer` (typically the
 /// payer's address, or a hot-key delegate).
@@ -46,13 +58,34 @@ pub async fn sign_voucher<K: AccountKeystore>(
     signer: &SomaAddress,
     channel_id: ObjectID,
     cumulative_amount: u64,
+    usage: VoucherUsage,
 ) -> anyhow::Result<GenericSignature> {
-    let voucher = Voucher::new(channel_id, cumulative_amount);
+    let voucher = Voucher::new(
+        channel_id,
+        cumulative_amount,
+        usage.prompt_tokens,
+        usage.completion_tokens,
+        usage.cache_read_tokens,
+        usage.cache_write_tokens,
+        usage.requests,
+    );
     let sig: Signature = keystore
         .sign_secure::<Voucher>(signer, &voucher, Intent::soma_app(IntentScope::PaymentVoucher))
         .await
         .map_err(|e| anyhow::anyhow!("voucher signing failed: {}", e))?;
     Ok(sig.into())
+}
+
+/// Back-compat helper for callers that only care about `cumulative_amount`
+/// — signs a voucher with all usage fields zero. Suitable for tests and
+/// for clients that haven't yet adopted the per-model usage breakdown.
+pub async fn sign_voucher_amount_only<K: AccountKeystore>(
+    keystore: &K,
+    signer: &SomaAddress,
+    channel_id: ObjectID,
+    cumulative_amount: u64,
+) -> anyhow::Result<GenericSignature> {
+    sign_voucher(keystore, signer, channel_id, cumulative_amount, VoucherUsage::default()).await
 }
 
 /// Verify a voucher's signature against the channel's
@@ -142,12 +175,14 @@ pub async fn open_channel(
     authorized_signer: SomaAddress,
     coin_type: CoinType,
     deposit_amount: u64,
+    model_id: String,
 ) -> anyhow::Result<ObjectID> {
     let kind = TransactionKind::OpenChannel(OpenChannelArgs {
         payee,
         authorized_signer,
         token: coin_type,
         deposit_amount,
+        model_id,
     });
     let tx = build_signed(ctx, sender, kind).await?;
     let tx_digest = *tx.digest();
@@ -166,6 +201,11 @@ pub async fn settle(
     let kind = TransactionKind::Settle(SettleArgs {
         channel_id: voucher.channel_id(),
         cumulative_amount: voucher.cumulative_amount(),
+        cumulative_prompt_tokens: voucher.cumulative_prompt_tokens(),
+        cumulative_completion_tokens: voucher.cumulative_completion_tokens(),
+        cumulative_cache_read_tokens: voucher.cumulative_cache_read_tokens(),
+        cumulative_cache_write_tokens: voucher.cumulative_cache_write_tokens(),
+        cumulative_requests: voucher.cumulative_requests(),
         voucher_signature,
     });
     let tx = build_signed(ctx, sender, kind).await?;
@@ -209,8 +249,13 @@ pub async fn rate(
     sender: SomaAddress,
     channel_id: ObjectID,
     negative: bool,
+    reason_code: RatingReasonCode,
 ) -> anyhow::Result<()> {
-    let kind = TransactionKind::RateChannel(RateChannelArgs { channel_id, negative });
+    let kind = TransactionKind::RateChannel(RateChannelArgs {
+        channel_id,
+        negative,
+        reason_code,
+    });
     let tx = build_signed(ctx, sender, kind).await?;
     let _ = ctx.execute_transaction_must_succeed(tx).await;
     Ok(())
@@ -307,10 +352,10 @@ mod tests {
         let (signer_addr, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
         let payer = SomaAddress::random();
         let payee = SomaAddress::random();
-        let channel = Channel::new(payer, payee, signer_addr, CoinType::Usdc, 1_000);
+        let channel = Channel::new_for_testing(payer, payee, signer_addr, CoinType::Usdc, 1_000);
 
         let channel_id = ObjectID::random();
-        let voucher = Voucher::new(channel_id, 250);
+        let voucher = Voucher::new_amount_only(channel_id, 250);
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let sig: GenericSignature = Signature::new_secure(&intent_msg, &kp).into();

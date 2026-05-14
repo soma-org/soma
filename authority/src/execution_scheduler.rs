@@ -176,6 +176,19 @@ impl ExecutionScheduler {
             .into_iter()
             .zip(availability)
             .filter_map(|(key, available)| if !available { Some(key) } else { None })
+            // Lazy-create shared inputs (ProviderInbox for the first OpenChannel against a
+            // payee, Offering snapshotted by an OpenChannel before the payee has registered)
+            // are declared as inputs but may not yet exist on chain. The input loader passes
+            // these through as `NotYetCreated`; the executor handles the absent case
+            // directly (creating the inbox, failing OpenChannel with `ChannelOfferingMissing`
+            // for missing offerings). The scheduler would otherwise block forever waiting
+            // for an object that will never appear at the declared `initial_shared_version`.
+            // Detect this case by asking the cache whether the object exists at all — if
+            // not, it's NotYetCreated and there's nothing to wait for.
+            .filter(|key| {
+                let object_id = key.id().id();
+                self.object_cache_read.get_object(&object_id).is_some()
+            })
             .collect();
         if missing_input_keys.is_empty() {
             debug!(?tx_digest, "Input objects already available");

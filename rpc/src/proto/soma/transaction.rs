@@ -411,10 +411,16 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 authorized_signer: Some(args.authorized_signer.to_string()),
                 token: Some(args.token.to_string()),
                 deposit_amount: Some(args.deposit_amount),
+                model_id: Some(args.model_id.clone()),
             }),
             Settle(args) => Kind::Settle(super::Settle {
                 channel_id: Some(args.channel_id.to_string()),
                 cumulative_amount: Some(args.cumulative_amount),
+                cumulative_prompt_tokens: Some(args.cumulative_prompt_tokens),
+                cumulative_completion_tokens: Some(args.cumulative_completion_tokens),
+                cumulative_cache_read_tokens: Some(args.cumulative_cache_read_tokens),
+                cumulative_cache_write_tokens: Some(args.cumulative_cache_write_tokens),
+                cumulative_requests: Some(args.cumulative_requests),
                 voucher_signature: Some(args.voucher_signature.clone().into()),
             }),
             RequestClose(args) => Kind::RequestClose(super::RequestClose {
@@ -422,6 +428,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             }),
             WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(super::WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
+                payee: Some(args.payee.to_string()),
             }),
             TopUp(args) => Kind::TopUp(super::TopUp {
                 channel_id: Some(args.channel_id.to_string()),
@@ -431,6 +438,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             RateChannel(args) => Kind::RateChannel(super::RateChannel {
                 channel_id: Some(args.channel_id.to_string()),
                 negative: Some(args.negative),
+                reason_code: Some(args.reason_code as u32),
             }),
 
             // Provider registry
@@ -488,6 +496,33 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                         amount: Some(*amount),
                     })
                     .collect(),
+            }),
+
+            // Per-(provider, model) offering tx kinds.
+            RegisterOffering(args) => Kind::RegisterOffering(super::RegisterOffering {
+                model_id: Some(args.model_id.clone()),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            UpdateOffering(args) => Kind::UpdateOffering(super::UpdateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id.clone()),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            DeactivateOffering(args) => Kind::DeactivateOffering(super::DeactivateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id.clone()),
             }),
         };
 
@@ -833,7 +868,16 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 ));
             }
 
-            // Payment-channel variants
+            // Payment-channel variants. Proto schema (Mar 2026) does
+            // not yet carry `model_id` / `cumulative_*` token fields /
+            // `reason_code` — they're plumbed at the rpc::types layer
+            // and on chain. Until the proto regen, this conversion
+            // surfaces a request that hits the chain executor with
+            // legacy-shaped args (model_id empty, usage breakdown 0).
+            // Such a tx will be rejected by the executor (no offering
+            // for empty model_id) — which is the correct safety
+            // posture pre-codegen: explicit failure rather than a
+            // silent zero-binding.
             Kind::OpenChannel(args) => Self::OpenChannel(crate::types::OpenChannelArgs {
                 payee: args
                     .payee
@@ -856,6 +900,10 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 deposit_amount: args
                     .deposit_amount
                     .ok_or_else(|| TryFromProtoError::missing("deposit_amount"))?,
+                model_id: args
+                    .model_id
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
             }),
 
             Kind::Settle(args) => Self::Settle(crate::types::SettleArgs {
@@ -868,6 +916,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 cumulative_amount: args
                     .cumulative_amount
                     .ok_or_else(|| TryFromProtoError::missing("cumulative_amount"))?,
+                cumulative_prompt_tokens: args.cumulative_prompt_tokens.unwrap_or(0),
+                cumulative_completion_tokens: args.cumulative_completion_tokens.unwrap_or(0),
+                cumulative_cache_read_tokens: args.cumulative_cache_read_tokens.unwrap_or(0),
+                cumulative_cache_write_tokens: args.cumulative_cache_write_tokens.unwrap_or(0),
+                cumulative_requests: args.cumulative_requests.unwrap_or(0),
                 voucher_signature: args
                     .voucher_signature
                     .as_deref()
@@ -892,11 +945,12 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
-                    // payee not yet wired through the proto schema —
-                    // RPC clients hitting this path operate on
-                    // older-style args. Use ZERO as a placeholder;
-                    // the proto schema gets updated in a follow-up.
-                    payee: crate::types::Address::ZERO,
+                    payee: args
+                        .payee
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("payee"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("payee", e))?,
                 })
             }
 
@@ -928,7 +982,63 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 negative: args
                     .negative
                     .ok_or_else(|| TryFromProtoError::missing("negative"))?,
+                reason_code: args.reason_code.unwrap_or(0) as u8,
             }),
+
+            Kind::RegisterOffering(args) => {
+                Self::RegisterOffering(crate::types::RegisterOfferingArgs {
+                    model_id: args
+                        .model_id
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                    prompt_micros_per_1k: args
+                        .prompt_micros_per_1k
+                        .ok_or_else(|| TryFromProtoError::missing("prompt_micros_per_1k"))?,
+                    completion_micros_per_1k: args
+                        .completion_micros_per_1k
+                        .ok_or_else(|| TryFromProtoError::missing("completion_micros_per_1k"))?,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k.unwrap_or(0),
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k.unwrap_or(0),
+                    request_micros: args.request_micros.unwrap_or(0),
+                    ttft_bound_ms: args.ttft_bound_ms.unwrap_or(0),
+                    ttot_bound_ms: args.ttot_bound_ms.unwrap_or(0),
+                })
+            }
+
+            Kind::UpdateOffering(args) => Self::UpdateOffering(crate::types::UpdateOfferingArgs {
+                offering_id: args
+                    .offering_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("offering_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("offering_id", e))?,
+                model_id: args
+                    .model_id
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                prompt_micros_per_1k: args.prompt_micros_per_1k.unwrap_or(0),
+                completion_micros_per_1k: args.completion_micros_per_1k.unwrap_or(0),
+                cache_read_micros_per_1k: args.cache_read_micros_per_1k.unwrap_or(0),
+                cache_write_micros_per_1k: args.cache_write_micros_per_1k.unwrap_or(0),
+                request_micros: args.request_micros.unwrap_or(0),
+                ttft_bound_ms: args.ttft_bound_ms.unwrap_or(0),
+                ttot_bound_ms: args.ttot_bound_ms.unwrap_or(0),
+            }),
+
+            Kind::DeactivateOffering(args) => Self::DeactivateOffering(
+                crate::types::DeactivateOfferingArgs {
+                    offering_id: args
+                        .offering_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("offering_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("offering_id", e))?,
+                    model_id: args
+                        .model_id
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                },
+            ),
 
             Kind::RegisterProvider(args) => {
                 Self::RegisterProvider(crate::types::RegisterProviderArgs {

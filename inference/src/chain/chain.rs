@@ -40,6 +40,7 @@ impl ChannelSurface for ChainChannelSurface {
         payee: SomaAddress,
         coin_type: CoinType,
         deposit_amount: u64,
+        model_id: String,
     ) -> Result<ObjectID, ChainError> {
         sdk::channel::open_channel(
             &self.ctx,
@@ -48,6 +49,7 @@ impl ChannelSurface for ChainChannelSurface {
             self.signer, // authorized_signer == payer for the demo
             coin_type,
             deposit_amount,
+            model_id,
         )
         .await
         .map_err(|e| ChainError::Tx(format!("open_channel: {e}")))

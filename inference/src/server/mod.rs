@@ -8,7 +8,7 @@
 pub mod auth;
 pub mod backend;
 pub mod config;
-mod handler;
+pub mod handler;
 pub mod ledger;
 
 use std::path::PathBuf;
@@ -272,6 +272,7 @@ mod tests {
             _payee: SomaAddress,
             _coin_type: CoinType,
             _deposit_amount: u64,
+            _model_id: String,
         ) -> Result<ObjectID, ChainError> {
             unimplemented!()
         }
@@ -344,7 +345,7 @@ mod tests {
         // Seed the ledger directly via a stand-in channel — we pre-set
         // last_settled_at_amount and cumulative_authorized_micros to
         // exercise the progress-filter logic.
-        let chan_a_obj = Channel::new(
+        let chan_a_obj = Channel::new_for_testing(
             SomaAddress::random(),
             ed25519_addr_for_sig(&sig_a),
             ed25519_addr_for_sig(&sig_a),
@@ -355,11 +356,12 @@ mod tests {
         {
             let mut g = slot_a.lock().await;
             g.state.cumulative_authorized_micros = 75;
+            g.state.last_signed_cumulative_amount = 75;
             g.state.last_settled_at_amount = 50;
             g.state.last_onchain_sig = Some(sig_a.clone());
         }
 
-        let chan_b_obj = Channel::new(
+        let chan_b_obj = Channel::new_for_testing(
             SomaAddress::random(),
             ed25519_addr_for_sig(&sig_b),
             ed25519_addr_for_sig(&sig_b),
@@ -370,6 +372,7 @@ mod tests {
         {
             let mut g = slot_b.lock().await;
             g.state.cumulative_authorized_micros = 90;
+            g.state.last_signed_cumulative_amount = 90;
             g.state.last_settled_at_amount = 90;
             g.state.last_onchain_sig = Some(sig_b.clone());
         }
@@ -398,6 +401,7 @@ mod tests {
         {
             let mut g = slot_a.lock().await;
             g.state.cumulative_authorized_micros = 200;
+            g.state.last_signed_cumulative_amount = 200;
         }
         run_settle_pass(chain.as_ref(), &ledger, channel.as_ref()).await;
         let calls = chain.settles.lock().unwrap();

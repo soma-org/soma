@@ -133,6 +133,11 @@ message TransactionKind {
     RegisterProvider register_provider = 55;
     UpdateProvider update_provider = 56;
 
+    // Per-(provider, model) offering transactions (2026-05-13).
+    RegisterOffering register_offering = 58;
+    UpdateOffering update_offering = 59;
+    DeactivateOffering deactivate_offering = 62;
+
     // Per-commit accumulator settlement system transaction (Stage 6a).
     Settlement settlement = 60;
 
@@ -568,6 +573,11 @@ message OpenChannel {
   // Stage 8: deposit is debited from the sender's accumulator
   // balance, not a coin object. Field 4 (deposit_coin) was removed.
   optional uint64 deposit_amount = 5;
+  // 2026-05-13: canonical model_id from the protocol ModelRegistry.
+  // Channel binds to this model for its lifetime; executor snapshots
+  // the matching (payee, model_id) offering's price + SLA into the
+  // channel at open. Empty string is rejected by the executor.
+  optional string model_id = 6;
 }
 
 // Submit a voucher to the channel for partial payment. Channel
@@ -584,6 +594,15 @@ message Settle {
   // `authorized_signer`. Encoded via `GenericSignature` so MultiSig
   // signers work transparently. Bytes form is `flag || sig || pk`.
   optional bytes voucher_signature = 3;
+  // 2026-05-13: voucher-side cumulative usage breakdown. The
+  // executor reconstructs the full Voucher (incl. these) for
+  // signature verification, so the wire bytes must match the
+  // payer-signed values.
+  optional uint64 cumulative_prompt_tokens = 4;
+  optional uint64 cumulative_completion_tokens = 5;
+  optional uint64 cumulative_cache_read_tokens = 6;
+  optional uint64 cumulative_cache_write_tokens = 7;
+  optional uint64 cumulative_requests = 8;
 }
 
 // Payer-only: start the forced-close grace timer. The Clock's
@@ -598,6 +617,11 @@ message RequestClose {
 message WithdrawAfterTimeout {
   // Channel object ID (hex string).
   optional string channel_id = 1;
+  // Payee address (hex string) — must match the channel's payee.
+  // Carried in args so the validator can declare the per-payee
+  // `ProviderInbox` shared input from the tx kind alone, without
+  // first reading the channel object during input declaration.
+  optional string payee = 2;
 }
 
 // Payer-only: add `amount` to the channel's deposit, debited from
@@ -623,6 +647,39 @@ message RateChannel {
   optional string channel_id = 1;
   // True = thumbs down, False = thumbs up.
   optional bool negative = 2;
+  // 2026-05-13: reason code (0=Quality, 1=TtftBreach, 2=TtotBreach,
+  // 3=NoResponse, 255=Other). Unknown values project to Other on
+  // the receive side for forward-compat.
+  optional uint32 reason_code = 3;
+}
+
+// Per-(provider, model) offering tx kinds (2026-05-13).
+message RegisterOffering {
+  optional string model_id = 1;
+  optional uint64 prompt_micros_per_1k = 2;
+  optional uint64 completion_micros_per_1k = 3;
+  optional uint64 cache_read_micros_per_1k = 4;
+  optional uint64 cache_write_micros_per_1k = 5;
+  optional uint64 request_micros = 6;
+  optional uint32 ttft_bound_ms = 7;
+  optional uint32 ttot_bound_ms = 8;
+}
+
+message UpdateOffering {
+  optional string offering_id = 1;
+  optional string model_id = 2;
+  optional uint64 prompt_micros_per_1k = 3;
+  optional uint64 completion_micros_per_1k = 4;
+  optional uint64 cache_read_micros_per_1k = 5;
+  optional uint64 cache_write_micros_per_1k = 6;
+  optional uint64 request_micros = 7;
+  optional uint32 ttft_bound_ms = 8;
+  optional uint32 ttot_bound_ms = 9;
+}
+
+message DeactivateOffering {
+  optional string offering_id = 1;
+  optional string model_id = 2;
 }
 
 // Register the signer as a provider on-chain. Creates a Provider

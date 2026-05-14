@@ -81,6 +81,11 @@ pub struct Router {
     /// `cfg.routing.indexer_url` is set; weighted routing falls back
     /// to price-only with a warning when this is `None`.
     indexer: Option<IndexerClient>,
+    /// somacode-style trusted-providers filter. `Some` when
+    /// `cfg.trusted_providers_url` is configured; the filter is
+    /// applied before scoring to limit the candidate set to addresses
+    /// approved on the points service's authorized list.
+    trusted: Option<Arc<crate::proxy::TrustedProviders>>,
 }
 
 struct CacheState {
@@ -105,6 +110,18 @@ impl Router {
             .indexer_url
             .as_ref()
             .map(|url| IndexerClient::new(url.clone()));
+        let trusted = if cfg.trusted_providers_only {
+            cfg.trusted_providers_url.as_ref().map(|url| {
+                let t = Arc::new(crate::proxy::TrustedProviders::new(
+                    url.clone(),
+                    cfg.trusted_providers_refresh_secs,
+                ));
+                t.spawn_refresher();
+                t
+            })
+        } else {
+            None
+        };
         Self {
             registry,
             chain,
@@ -117,12 +134,22 @@ impl Router {
                 providers: Vec::new(),
             })),
             indexer,
+            trusted,
         }
     }
 
     pub async fn refresh_providers(&self) -> anyhow::Result<()> {
         let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
         let mut providers = Vec::new();
+        // TODO (Step 5): once soma-graphql exposes
+        // `provider_model_offerings_ranked` as a top-level query, replace
+        // this per-provider HTTP `/v1/models` fan-out with one GraphQL
+        // call that returns `(provider_address, endpoint, model_id,
+        // prompt_micros_per_1k, completion_micros_per_1k, ...)` rows for
+        // every active offering. The `/v1/models` HTTP endpoint stays
+        // useful as a liveness probe only — skip providers whose probe
+        // fails. The chain-side Offering objects are already on-chain
+        // authoritative, so the indexer view is just a fast bulk read.
         for rec in recs {
             match self.fetch_provider_info(&rec.endpoint).await {
                 Ok(info) => providers.push(info),
@@ -187,6 +214,16 @@ impl Router {
         let mut candidates: Vec<(ProviderInfo, ModelCard)> = Vec::new();
         for p in &g.providers {
             if let Some(c) = p.catalog.iter().find(|c| c.id == model) {
+                // Trusted-providers gate (somacode default). When the
+                // filter is configured but the candidate isn't on the
+                // current authorized snapshot, skip. `is_allowed`
+                // returns `true` if no snapshot has yet loaded, so
+                // cold-start doesn't lock everyone out.
+                if let Some(t) = &self.trusted {
+                    if !t.is_allowed(&p.address).await {
+                        continue;
+                    }
+                }
                 candidates.push((p.clone(), c.clone()));
             }
         }
@@ -278,6 +315,7 @@ impl Router {
     pub async fn ensure_channel(
         &self,
         provider: &ProviderInfo,
+        model_id: &str,
     ) -> anyhow::Result<Arc<tokio::sync::Mutex<ChannelSlot>>> {
         if let Some(id) = self.store.read_pointer(&provider.address).await {
             if let Ok(chan) = self.chain.get(id).await {
@@ -317,13 +355,16 @@ impl Router {
                 }
             }
         }
-        // Lazy on-chain open.
+        // Lazy on-chain open — bind to the requested model_id so the
+        // chain executor snapshots the provider's offering for this
+        // model onto the new channel.
         let id = self
             .chain
             .open(
                 provider.address,
                 CoinType::Usdc,
                 self.cfg.default_deposit_micros,
+                model_id.to_string(),
             )
             .await
             .context("open_channel")?;

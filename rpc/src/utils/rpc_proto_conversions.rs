@@ -270,6 +270,20 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 ExecutionErrorKind::NotAProviderInbox,
                 Some(object_id.to_hex()),
             ),
+
+            // Offering errors: dedicated kinds. Detail strings preserve
+            // any inline fields so the client can surface useful messages.
+            E::OfferingAlreadyExists => (ExecutionErrorKind::OfferingAlreadyExists, None),
+            E::OfferingNotFound => (ExecutionErrorKind::OfferingNotFound, None),
+            E::OfferingCallerMismatch => (ExecutionErrorKind::OfferingCallerMismatch, None),
+            E::OfferingUnknownModel { model_id } => (
+                ExecutionErrorKind::OfferingUnknownModel,
+                Some(format!("model_id={}", model_id)),
+            ),
+            E::ChannelOfferingMissing { payee, model_id } => (
+                ExecutionErrorKind::ChannelOfferingMissing,
+                Some(format!("payee={}, model_id={}", payee, model_id)),
+            ),
         };
 
         message.set_kind(kind);
@@ -793,10 +807,16 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 authorized_signer: Some(args.authorized_signer.to_string()),
                 token: Some(coin_type_label(args.token).to_string()),
                 deposit_amount: Some(args.deposit_amount),
+                model_id: Some(args.model_id),
             }),
             K::Settle(args) => Kind::Settle(Settle {
                 channel_id: Some(args.channel_id.to_string()),
                 cumulative_amount: Some(args.cumulative_amount),
+                cumulative_prompt_tokens: Some(args.cumulative_prompt_tokens),
+                cumulative_completion_tokens: Some(args.cumulative_completion_tokens),
+                cumulative_cache_read_tokens: Some(args.cumulative_cache_read_tokens),
+                cumulative_cache_write_tokens: Some(args.cumulative_cache_write_tokens),
+                cumulative_requests: Some(args.cumulative_requests),
                 voucher_signature: Some(args.voucher_signature.as_ref().to_vec().into()),
             }),
             K::RequestClose(args) => Kind::RequestClose(RequestClose {
@@ -804,6 +824,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
             K::WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
+                payee: Some(args.payee.to_string()),
             }),
             K::TopUp(args) => Kind::TopUp(TopUp {
                 channel_id: Some(args.channel_id.to_string()),
@@ -813,6 +834,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::RateChannel(args) => Kind::RateChannel(RateChannel {
                 channel_id: Some(args.channel_id.to_string()),
                 negative: Some(args.negative),
+                reason_code: Some(args.reason_code as u32),
             }),
 
             // Provider registry tx kinds.
@@ -822,6 +844,33 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::UpdateProvider(args) => Kind::UpdateProvider(UpdateProvider {
                 provider_id: Some(args.provider_id.to_string()),
                 endpoint: Some(args.endpoint),
+            }),
+
+            // Per-(provider, model) offering tx kinds.
+            K::RegisterOffering(args) => Kind::RegisterOffering(RegisterOffering {
+                model_id: Some(args.model_id),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            K::UpdateOffering(args) => Kind::UpdateOffering(UpdateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            K::DeactivateOffering(args) => Kind::DeactivateOffering(DeactivateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id),
             }),
 
             K::BalanceTransfer(args) => Kind::BalanceTransfer(BalanceTransfer {

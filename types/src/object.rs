@@ -697,6 +697,13 @@ pub enum ObjectType {
     /// payee) channel count to prevent open-loop state-bloat
     /// griefing. See [`crate::provider_inbox::ProviderInbox`].
     ProviderInbox,
+    /// Per-(provider, model) offering — the price sheet a provider
+    /// publishes for a specific model in the protocol-config
+    /// ModelRegistry. Created by `RegisterOffering`, mutated by
+    /// `UpdateOffering`/`DeactivateOffering`. One object per
+    /// (provider_address, model_id) pair, deterministically addressed
+    /// via `Offering::derive_id`. See [`crate::offering::Offering`].
+    Offering,
 }
 
 impl fmt::Display for ObjectType {
@@ -713,6 +720,7 @@ impl fmt::Display for ObjectType {
             ObjectType::DelegationAccumulator => write!(f, "DelegationAccumulator"),
             ObjectType::Provider => write!(f, "Provider"),
             ObjectType::ProviderInbox => write!(f, "ProviderInbox"),
+            ObjectType::Offering => write!(f, "Offering"),
         }
     }
 }
@@ -734,6 +742,7 @@ impl FromStr for ObjectType {
             "DelegationAccumulator" => Ok(ObjectType::DelegationAccumulator),
             "Provider" => Ok(ObjectType::Provider),
             "ProviderInbox" => Ok(ObjectType::ProviderInbox),
+            "Offering" => Ok(ObjectType::Offering),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

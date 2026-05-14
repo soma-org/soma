@@ -34,6 +34,7 @@ pub mod multiaddr;
 pub mod multisig;
 pub mod mutex_table;
 pub mod object;
+pub mod offering;
 pub mod parameters;
 pub mod peer_id;
 pub mod provider;

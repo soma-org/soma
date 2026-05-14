@@ -11,6 +11,16 @@ pub struct Config {
     pub provider_cache_ttl_secs: u64,
     /// How the router picks among providers offering the same model.
     pub routing: RoutingConfig,
+    /// When `true`, the router restricts its candidate set to the
+    /// provider addresses returned by
+    /// `GET <trusted_providers_url>/v1/providers/authorized`.
+    /// somacode flips this on by default; advanced users opt out via
+    /// `--include-untrusted`. When `trusted_providers_url` is `None`
+    /// the flag is a no-op (filter is open).
+    pub trusted_providers_only: bool,
+    pub trusted_providers_url: Option<String>,
+    /// Refresh cadence for the trusted-providers fetch.
+    pub trusted_providers_refresh_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +86,13 @@ impl Default for Config {
             default_deposit_micros: 5_000_000,
             provider_cache_ttl_secs: 30,
             routing: RoutingConfig::default(),
+            // Default-on: somacode-style routing is the production
+            // posture. Power users override via --include-untrusted.
+            // When no `trusted_providers_url` is configured, this
+            // flag is a no-op (filter is open).
+            trusted_providers_only: true,
+            trusted_providers_url: None,
+            trusted_providers_refresh_secs: 600,
         }
     }
 }

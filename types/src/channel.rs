@@ -56,6 +56,13 @@ pub enum Channel {
 }
 
 /// V1 layout of [`Channel`]. See [`Channel`] for the wrapper.
+///
+/// **One model per channel** — `model_id` plus the price/SLA snapshot
+/// columns are frozen at `OpenChannel` time from the matching
+/// [`crate::offering::Offering`] object. The provider may freely update
+/// the offering afterward; this channel's settlement math is
+/// deterministic regardless. Buyer opens a fresh channel to get the
+/// new price.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelV1 {
     /// Address that opened the channel and owns the deposit (gets
@@ -97,6 +104,29 @@ pub struct ChannelV1 {
     /// request. The grace period elapses when
     /// `current_clock_ts - ts >= channel_grace_period_ms`.
     pub close_requested_at_ms: Option<TimestampMs>,
+
+    /// Canonical model_id from the protocol-config `ModelRegistry`
+    /// snapshotted at open time. This channel may only serve requests
+    /// for this specific model; pre-flight checks at the inference
+    /// server bind on it.
+    pub model_id: String,
+
+    /// Snapshot of `Offering.prompt_micros_per_1k` at open time.
+    pub prompt_micros_per_1k: u64,
+    /// Snapshot of `Offering.completion_micros_per_1k` at open time.
+    pub completion_micros_per_1k: u64,
+    /// Snapshot of `Offering.cache_read_micros_per_1k` at open time.
+    pub cache_read_micros_per_1k: u64,
+    /// Snapshot of `Offering.cache_write_micros_per_1k` at open time.
+    pub cache_write_micros_per_1k: u64,
+    /// Snapshot of `Offering.request_micros` at open time.
+    pub request_micros: u64,
+    /// Snapshot of `Offering.ttft_bound_ms` at open time. Used by the
+    /// proxy as the SLA threshold for auto-emitting
+    /// `RateChannel(reason_code=TtftBreach)` events.
+    pub ttft_bound_ms: u32,
+    /// Snapshot of `Offering.ttot_bound_ms` at open time.
+    pub ttot_bound_ms: u32,
 }
 
 /// Off-chain payment voucher signed by the channel's
@@ -121,16 +151,60 @@ pub enum Voucher {
 }
 
 /// V1 layout of [`Voucher`].
+///
+/// `cumulative_amount` is the only field consulted by the on-chain
+/// executor (settle math). The remaining cumulative-usage fields are
+/// signed alongside it for auditability — the indexer materializes
+/// them per channel so off-chain oracle views can compute per-model
+/// throughput, $/token effective rates, etc. without re-deriving from
+/// the price snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VoucherV1 {
     pub channel_id: ObjectID,
     pub cumulative_amount: u64,
+    pub cumulative_prompt_tokens: u64,
+    pub cumulative_completion_tokens: u64,
+    pub cumulative_cache_read_tokens: u64,
+    pub cumulative_cache_write_tokens: u64,
+    pub cumulative_requests: u64,
 }
 
 impl Voucher {
-    /// Construct a fresh v1 voucher.
-    pub const fn new(channel_id: ObjectID, cumulative_amount: u64) -> Self {
-        Self::V1(VoucherV1 { channel_id, cumulative_amount })
+    /// Construct a fresh v1 voucher with explicit usage breakdown.
+    /// Most callers should use this form. Settlement only consults
+    /// `cumulative_amount`; the rest is auditable metadata.
+    pub const fn new(
+        channel_id: ObjectID,
+        cumulative_amount: u64,
+        cumulative_prompt_tokens: u64,
+        cumulative_completion_tokens: u64,
+        cumulative_cache_read_tokens: u64,
+        cumulative_cache_write_tokens: u64,
+        cumulative_requests: u64,
+    ) -> Self {
+        Self::V1(VoucherV1 {
+            channel_id,
+            cumulative_amount,
+            cumulative_prompt_tokens,
+            cumulative_completion_tokens,
+            cumulative_cache_read_tokens,
+            cumulative_cache_write_tokens,
+            cumulative_requests,
+        })
+    }
+
+    /// Voucher with no usage breakdown — useful in tests and for the
+    /// `WithdrawAfterTimeout` codepath that doesn't need detail.
+    pub const fn new_amount_only(channel_id: ObjectID, cumulative_amount: u64) -> Self {
+        Self::V1(VoucherV1 {
+            channel_id,
+            cumulative_amount,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
+        })
     }
 
     /// `channel_id` of the voucher, regardless of variant.
@@ -144,6 +218,36 @@ impl Voucher {
     pub fn cumulative_amount(&self) -> u64 {
         match self {
             Self::V1(v) => v.cumulative_amount,
+        }
+    }
+
+    pub fn cumulative_prompt_tokens(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_prompt_tokens,
+        }
+    }
+
+    pub fn cumulative_completion_tokens(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_completion_tokens,
+        }
+    }
+
+    pub fn cumulative_cache_read_tokens(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_cache_read_tokens,
+        }
+    }
+
+    pub fn cumulative_cache_write_tokens(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_cache_write_tokens,
+        }
+    }
+
+    pub fn cumulative_requests(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.cumulative_requests,
         }
     }
 }
@@ -242,7 +346,7 @@ impl HttpVoucher {
     /// equivalent — the same `(channel_id, cumulative_amount)` pair
     /// the provider would settle with on the chain.
     pub fn to_voucher(&self) -> Voucher {
-        Voucher::new(self.channel_id(), self.cumulative_amount())
+        Voucher::new_amount_only(self.channel_id(), self.cumulative_amount())
     }
 
     pub fn channel_id(&self) -> ObjectID {
@@ -282,6 +386,23 @@ impl HttpVoucher {
     }
 }
 
+/// Snapshot of an offering's price + SLA columns at the moment a
+/// channel is opened against it. The executor builds one of these
+/// from the loaded `Offering` shared input and hands it to
+/// `Channel::new`. Decoupling the shape from `ChannelV1`'s constructor
+/// keeps the call sites readable when the field count grows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferingSnapshot {
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
 impl Channel {
     /// Construct a fresh v1 channel for `OpenChannel` execution.
     /// `settled_amount` starts at 0 and `close_requested_at_ms` at None.
@@ -291,6 +412,7 @@ impl Channel {
         authorized_signer: SomaAddress,
         token: CoinType,
         deposit: u64,
+        offering: OfferingSnapshot,
     ) -> Self {
         Self::V1(ChannelV1 {
             payer,
@@ -300,7 +422,46 @@ impl Channel {
             deposit,
             settled_amount: 0,
             close_requested_at_ms: None,
+            model_id: offering.model_id,
+            prompt_micros_per_1k: offering.prompt_micros_per_1k,
+            completion_micros_per_1k: offering.completion_micros_per_1k,
+            cache_read_micros_per_1k: offering.cache_read_micros_per_1k,
+            cache_write_micros_per_1k: offering.cache_write_micros_per_1k,
+            request_micros: offering.request_micros,
+            ttft_bound_ms: offering.ttft_bound_ms,
+            ttot_bound_ms: offering.ttot_bound_ms,
         })
+    }
+
+    /// Construct a test channel with default-zero price snapshot.
+    /// Convenience for downstream tests and SDK fixtures that don't
+    /// care about pricing — they pass `model_id` for binding but
+    /// don't exercise settlement math. Intentionally not cfg-gated so
+    /// downstream crates' tests can call it without a feature flag.
+    pub fn new_for_testing(
+        payer: SomaAddress,
+        payee: SomaAddress,
+        authorized_signer: SomaAddress,
+        token: CoinType,
+        deposit: u64,
+    ) -> Self {
+        Self::new(
+            payer,
+            payee,
+            authorized_signer,
+            token,
+            deposit,
+            OfferingSnapshot {
+                model_id: "test/model".to_string(),
+                prompt_micros_per_1k: 0,
+                completion_micros_per_1k: 0,
+                cache_read_micros_per_1k: 0,
+                cache_write_micros_per_1k: 0,
+                request_micros: 0,
+                ttft_bound_ms: 0,
+                ttot_bound_ms: 0,
+            },
+        )
     }
 
     pub fn payer(&self) -> SomaAddress {
@@ -342,6 +503,54 @@ impl Channel {
     pub fn close_requested_at_ms(&self) -> Option<TimestampMs> {
         match self {
             Self::V1(c) => c.close_requested_at_ms,
+        }
+    }
+
+    pub fn model_id(&self) -> &str {
+        match self {
+            Self::V1(c) => c.model_id.as_str(),
+        }
+    }
+
+    pub fn prompt_micros_per_1k(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.prompt_micros_per_1k,
+        }
+    }
+
+    pub fn completion_micros_per_1k(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.completion_micros_per_1k,
+        }
+    }
+
+    pub fn cache_read_micros_per_1k(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.cache_read_micros_per_1k,
+        }
+    }
+
+    pub fn cache_write_micros_per_1k(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.cache_write_micros_per_1k,
+        }
+    }
+
+    pub fn request_micros(&self) -> u64 {
+        match self {
+            Self::V1(c) => c.request_micros,
+        }
+    }
+
+    pub fn ttft_bound_ms(&self) -> u32 {
+        match self {
+            Self::V1(c) => c.ttft_bound_ms,
+        }
+    }
+
+    pub fn ttot_bound_ms(&self) -> u32 {
+        match self {
+            Self::V1(c) => c.ttot_bound_ms,
         }
     }
 
@@ -450,7 +659,7 @@ mod tests {
     /// the leading byte is the V1 enum tag.
     #[test]
     fn channel_bcs_round_trip() {
-        let ch = Channel::new(
+        let ch = Channel::new_for_testing(
             SomaAddress::random(),
             SomaAddress::random(),
             SomaAddress::random(),
@@ -471,7 +680,7 @@ mod tests {
     #[test]
     fn as_channel_rejects_unknown_variant() {
         let id = ObjectID::random();
-        let ch = Channel::new(
+        let ch = Channel::new_for_testing(
             SomaAddress::random(),
             SomaAddress::random(),
             SomaAddress::random(),
@@ -493,7 +702,7 @@ mod tests {
     /// be stable.
     #[test]
     fn voucher_bcs_round_trip() {
-        let v = Voucher::new(ObjectID::random(), 12_345);
+        let v = Voucher::new_amount_only(ObjectID::random(), 12_345);
         let bytes = bcs::to_bytes(&v).expect("Voucher serializes");
         assert_eq!(bytes[0], ENUM_V1_TAG, "leading byte must be the V1 tag");
         let decoded: Voucher = bcs::from_bytes(&bytes).expect("Voucher deserializes");
@@ -527,7 +736,7 @@ mod tests {
     #[test]
     fn object_channel_helpers() {
         let id = ObjectID::random();
-        let ch = Channel::new(
+        let ch = Channel::new_for_testing(
             SomaAddress::random(),
             SomaAddress::random(),
             SomaAddress::random(),
@@ -545,7 +754,7 @@ mod tests {
     #[test]
     fn set_channel_data_round_trips() {
         let id = ObjectID::random();
-        let ch1 = Channel::new(
+        let ch1 = Channel::new_for_testing(
             SomaAddress::ZERO,
             SomaAddress::ZERO,
             SomaAddress::ZERO,
@@ -584,7 +793,7 @@ mod tests {
     #[test]
     fn voucher_signs_and_verifies() {
         let (signer_addr, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
-        let voucher = Voucher::new(ObjectID::random(), 42);
+        let voucher = Voucher::new_amount_only(ObjectID::random(), 42);
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
 
@@ -599,7 +808,7 @@ mod tests {
     fn voucher_rejected_for_wrong_author() {
         let (_, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
         let other = SomaAddress::random();
-        let voucher = Voucher::new(ObjectID::random(), 1);
+        let voucher = Voucher::new_amount_only(ObjectID::random(), 1);
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let sig = Signature::new_secure(&intent_msg, &kp);
@@ -613,13 +822,13 @@ mod tests {
     #[test]
     fn voucher_rejected_after_tampering() {
         let (signer_addr, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
-        let original = Voucher::new(ObjectID::random(), 100);
+        let original = Voucher::new_amount_only(ObjectID::random(), 100);
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), original);
         let sig = Signature::new_secure(&intent_msg, &kp);
 
         // Forge a higher amount but use the same signature — must reject.
-        let tampered = Voucher::new(original.channel_id(), 9999);
+        let tampered = Voucher::new_amount_only(original.channel_id(), 9999);
         let tampered_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), tampered);
         sig.verify_secure(&tampered_msg, signer_addr, sig.scheme())
@@ -636,14 +845,14 @@ mod tests {
         let chan_b = ObjectID::random();
         assert_ne!(chan_a, chan_b);
 
-        let voucher_a = Voucher::new(chan_a, 50);
+        let voucher_a = Voucher::new_amount_only(chan_a, 50);
         let intent_msg_a =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher_a);
         let sig_a = Signature::new_secure(&intent_msg_a, &kp);
 
         // The same `cumulative_amount=50` for chan_b must not verify
         // with `sig_a` — the channel_id is part of the hashed payload.
-        let voucher_b = Voucher::new(chan_b, 50);
+        let voucher_b = Voucher::new_amount_only(chan_b, 50);
         let intent_msg_b =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher_b);
         sig_a
@@ -656,7 +865,7 @@ mod tests {
     /// Sanity check that PaymentVoucher is its own domain.
     #[test]
     fn voucher_domain_separated_from_other_scopes() {
-        let voucher = Voucher::new(ObjectID::ZERO, 0);
+        let voucher = Voucher::new_amount_only(ObjectID::ZERO, 0);
         let im_voucher =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         // ProofOfPossession over the same struct shape (BCS bytes are

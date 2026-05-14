@@ -50,7 +50,7 @@ async fn sign_voucher(
     channel_id: ObjectID,
     cumulative_amount: u64,
 ) -> GenericSignature {
-    let voucher = Voucher::new(channel_id, cumulative_amount);
+    let voucher = Voucher::new_amount_only(channel_id, cumulative_amount);
     let sig: Signature = test_cluster
         .wallet
         .config
@@ -65,6 +65,45 @@ async fn sign_voucher(
     sig.into()
 }
 
+const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+
+/// Ensure the payee has an on-chain offering for the test model so
+/// OpenChannel can snapshot it. Idempotent.
+async fn register_default_offering(
+    test_cluster: &test_cluster::TestCluster,
+    payee: SomaAddress,
+) {
+    use types::offering::Offering;
+    let offering_id = Offering::derive_id(payee, TEST_MODEL);
+    if test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_object_store().get_object(&offering_id).is_some())
+    {
+        return;
+    }
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payee,
+        TransactionKind::RegisterOffering(types::transaction::RegisterOfferingArgs {
+            model_id: TEST_MODEL.to_string(),
+            prompt_micros_per_1k: 3_000,
+            completion_micros_per_1k: 15_000,
+            cache_read_micros_per_1k: 300,
+            cache_write_micros_per_1k: 3_000,
+            request_micros: 0,
+            ttft_bound_ms: 1_500,
+            ttot_bound_ms: 50,
+        }),
+    );
+    let r = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(
+        r.effects.status().is_ok(),
+        "RegisterOffering must succeed: status={:?}",
+        r.effects.status()
+    );
+}
+
 /// Submit `OpenChannel` and return the new channel's ObjectID.
 async fn open_channel(
     test_cluster: &test_cluster::TestCluster,
@@ -72,6 +111,7 @@ async fn open_channel(
     payee: SomaAddress,
     deposit_amount: u64,
 ) -> ObjectID {
+    register_default_offering(test_cluster, payee).await;
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
@@ -80,14 +120,27 @@ async fn open_channel(
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount,
+            model_id: TEST_MODEL.to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok(), "OpenChannel must succeed");
+    // OpenChannel may also lazily-create a `ProviderInbox`; match
+    // explicitly on object type rather than picking the first shared
+    // object out of the effects.
     let created = response.effects.created();
     let chan_oref = created
         .iter()
-        .find(|(_oref, owner)| owner.is_shared())
+        .find(|((id, _, _), owner)| {
+            owner.is_shared()
+                && test_cluster.fullnode_handle.soma_node.with(|node| {
+                    node.state()
+                        .get_object_store()
+                        .get_object(id)
+                        .map(|o| *o.type_() == types::object::ObjectType::Channel)
+                        .unwrap_or(false)
+                })
+        })
         .expect("OpenChannel creates a shared Channel object");
     chan_oref.0.0
 }
@@ -142,6 +195,11 @@ async fn submit_settle(
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
             voucher_signature,
         }),
     );

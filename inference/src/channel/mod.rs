@@ -28,6 +28,40 @@ pub struct RequestMeta<'a> {
     pub request_id: &'a str,
 }
 
+/// Per-request usage breakdown reported by an upstream OpenAI-compatible
+/// provider. The relay extracts this from the `usage` block in the
+/// streaming `[DONE]` chunk (or from the non-streaming JSON body) and
+/// passes it to [`PaymentChannel::reconcile`] / `post_flight`, which
+/// bump cumulative counters on the channel state. The on-chain voucher
+/// the next `authorize` call signs carries the running totals.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RequestUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+}
+
+impl RequestUsage {
+    /// Project an OpenAI-flavored `usage` block onto per-channel
+    /// counters. Cached prompt tokens live in `prompt_tokens_details`
+    /// (Anthropic-compatible providers populate that field) — we map
+    /// `cached_tokens` onto `cache_read_tokens` and `cache_write_tokens`
+    /// directly through.
+    pub fn from_openai(u: &crate::openai::Usage) -> Self {
+        let (cache_read, cache_write) = match &u.prompt_tokens_details {
+            Some(d) => (d.cached_tokens, d.cache_write_tokens),
+            None => (0, 0),
+        };
+        Self {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            cache_read_tokens: cache_read,
+            cache_write_tokens: cache_write,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ChannelError {
     #[error("auth header missing or malformed")]
@@ -73,6 +107,7 @@ pub trait PaymentChannel: Send + Sync + 'static {
         state: &mut Self::ProviderState,
         meta: &RequestMeta<'_>,
         actual_cost_micros: u64,
+        usage: RequestUsage,
     ) -> Result<(), ChannelError>;
 
     async fn reconcile(
@@ -80,6 +115,7 @@ pub trait PaymentChannel: Send + Sync + 'static {
         state: &mut Self::ClientState,
         request_id: &str,
         actual_cost_micros: u64,
+        usage: RequestUsage,
     );
 
     /// Returns the latest on-chain `Voucher` + signature held by the

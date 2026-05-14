@@ -123,6 +123,13 @@ pub enum ExecutionError {
     ChannelInboxPayeeMismatch { declared: Address, actual: Address },
     NotAProviderInbox { object_id: Address },
 
+    // Per-(provider, model) Offering errors
+    OfferingAlreadyExists,
+    OfferingNotFound,
+    OfferingCallerMismatch,
+    OfferingUnknownModel { model_id: String },
+    ChannelOfferingMissing { payee: Address, model_id: String },
+
     // Generic error for cases not covered by specific variants
     OtherError(String),
 }

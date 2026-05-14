@@ -51,18 +51,43 @@ impl Processor for SomaChannelEvents {
             let pre_chan = pre.iter().find_map(|o| o.as_channel().map(|c| (o.id(), c)));
             let post_chan = post.iter().find_map(|o| o.as_channel().map(|c| (o.id(), c)));
 
+            // 2026-05-13: per-tx usage deltas (only populated for Settle)
+            // and rating reason code (only populated for RateChannel).
+            let mut tokens_in_delta = 0i64;
+            let mut tokens_out_delta = 0i64;
+            let mut cache_read_delta = 0i64;
+            let mut cache_write_delta = 0i64;
+            let mut requests_delta = 0i64;
+            let mut rating_reason_code: Option<i16> = None;
+
             let (channel_id, kind_label, delta) = match kind {
                 TransactionKind::OpenChannel(_) => {
                     let Some((id, chan)) = post_chan else { continue };
                     (id, "open", chan.deposit() as i64)
                 }
-                TransactionKind::Settle(_) => {
+                TransactionKind::Settle(args) => {
                     let Some((id, post_c)) = post_chan else { continue };
                     let pre_settled = pre_chan
                         .as_ref()
                         .map(|(_, c)| c.settled_amount())
                         .unwrap_or(0);
                     let delta = post_c.settled_amount().saturating_sub(pre_settled) as i64;
+                    // Voucher-signed cumulative usage rides on the
+                    // SettleArgs. The handler stores them as
+                    // *deltas* (post-cum minus pre-cum) — but the
+                    // pre-state cumulative isn't tracked on chain.
+                    // Until the indexer maintains a per-channel
+                    // running counter, we store the *cumulative*
+                    // value from args as the "delta" — readers
+                    // wanting per-tx deltas must subtract the
+                    // previous Settle row's value. This is good
+                    // enough for the per-model oracle view since
+                    // the latest row carries the full cumulative.
+                    tokens_in_delta = args.cumulative_prompt_tokens as i64;
+                    tokens_out_delta = args.cumulative_completion_tokens as i64;
+                    cache_read_delta = args.cumulative_cache_read_tokens as i64;
+                    cache_write_delta = args.cumulative_cache_write_tokens as i64;
+                    requests_delta = args.cumulative_requests as i64;
                     (id, "settle", delta)
                 }
                 TransactionKind::TopUp(args) => {
@@ -83,6 +108,7 @@ impl Processor for SomaChannelEvents {
                     // delta field. delta=0 — no value flow.
                     let kind_label =
                         if args.negative { "rate_negative" } else { "rate_positive" };
+                    rating_reason_code = Some(args.reason_code as u8 as i16);
                     (args.channel_id, kind_label, 0)
                 }
                 _ => continue,
@@ -95,6 +121,12 @@ impl Processor for SomaChannelEvents {
                 kind: kind_label.to_string(),
                 delta,
                 timestamp_ms,
+                tokens_in_delta,
+                tokens_out_delta,
+                cache_read_delta,
+                cache_write_delta,
+                requests_delta,
+                rating_reason_code,
             });
         }
 

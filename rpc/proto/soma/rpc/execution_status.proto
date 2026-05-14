@@ -280,6 +280,22 @@ message ExecutionError {
     CHANNEL_INBOX_PAYEE_MISMATCH = 91;
     // Object at ProviderInbox::derive_id(payee) was not a ProviderInbox.
     NOT_A_PROVIDER_INBOX = 92;
+
+    //
+    // Per-(provider, model) offering errors
+    //
+    // RegisterOffering for a (signer, model_id) that already has a row.
+    OFFERING_ALREADY_EXISTS = 100;
+    // UpdateOffering / DeactivateOffering with no on-chain row for the pair.
+    OFFERING_NOT_FOUND = 101;
+    // Update/Deactivate offering_id != derive_id(signer, model_id), or
+    // attempt to mutate an offering owned by a different provider.
+    OFFERING_CALLER_MISMATCH = 102;
+    // Register/Update against a model_id absent from the protocol-config
+    // ModelRegistry at the active version.
+    OFFERING_UNKNOWN_MODEL = 103;
+    // OpenChannel against a (payee, model_id) pair with no active Offering.
+    CHANNEL_OFFERING_MISSING = 104;
   }
 
   optional ExecutionErrorKind kind = 2;

@@ -42,8 +42,49 @@ use inference::chain::memory::MemoryDiscovery;
 use inference::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
 use inference::channel::{PaymentChannel as _, RunningTab};
 use inference::server::ledger::Ledger;
+use types::effects::TransactionEffectsAPI as _;
 
-const TEST_MODEL: &str = "test-org/test-model";
+const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+
+/// Submit a `RegisterOffering` for `payee` against `TEST_MODEL` so the
+/// OpenChannel path can find an offering to snapshot. Idempotent: if
+/// the offering already exists on chain we exit cleanly.
+async fn register_test_offering(
+    test_cluster: &test_cluster::TestCluster,
+    payee: SomaAddress,
+) {
+    use types::offering::Offering;
+    let offering_id = Offering::derive_id(payee, TEST_MODEL);
+    if test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_object_store().get_object(&offering_id).is_some())
+    {
+        return;
+    }
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payee,
+        types::transaction::TransactionKind::RegisterOffering(
+            types::transaction::RegisterOfferingArgs {
+                model_id: TEST_MODEL.to_string(),
+                prompt_micros_per_1k: 200,
+                completion_micros_per_1k: 400,
+                cache_read_micros_per_1k: 0,
+                cache_write_micros_per_1k: 0,
+                request_micros: 0,
+                ttft_bound_ms: 60_000,
+                ttot_bound_ms: 10_000,
+            },
+        ),
+    );
+    let r = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(
+        r.effects.status().is_ok(),
+        "RegisterOffering: {:?}",
+        r.effects.status()
+    );
+}
 
 fn wallet_for_path(path: &std::path::Path) -> WalletContext {
     WalletContext::new(path).expect("WalletContext from cluster's client.yaml")
@@ -137,6 +178,11 @@ async fn proxy_provider_full_stack_against_real_chain() {
         .await
         .unwrap();
 
+    // Register an on-chain offering for the provider against TEST_MODEL —
+    // OpenChannel's executor reads it to snapshot prices + SLA bounds onto
+    // the channel.
+    register_test_offering(&test_cluster, provider_addr).await;
+
     // --- 6. Boot the provider ------------------------------------------------
     // SAFETY: tests are single-threaded WRT env vars at this point (we
     // haven't spawned any task that reads env). The provider only
@@ -183,6 +229,9 @@ async fn proxy_provider_full_stack_against_real_chain() {
         default_deposit_micros: 1_000_000,
         provider_cache_ttl_secs: 60,
         routing: Default::default(),
+        trusted_providers_only: false,
+        trusted_providers_url: None,
+        trusted_providers_refresh_secs: 600,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({
@@ -218,14 +267,13 @@ async fn proxy_provider_full_stack_against_real_chain() {
     );
 
     // --- 9. Assert the proxy lazily opened a channel on-chain ---------------
-    // Proxy is stateless on disk now — derive the channel id from the
-    // provider's in-memory ledger (it sees every channel that signs a
-    // request).
-    let snapshot = ledger.snapshot().await;
-    let (channel_id, _) = snapshot
-        .first()
-        .cloned()
-        .expect("provider ledger has at least one channel after one request");
+    // The provider task owns its own `Ledger` instance pointing at the same
+    // dir — in-memory state isn't shared, but the disk-persisted slots are.
+    // Read the slot from disk to find the channel id + held signature.
+    let provider_channels_dir = ledger_dir.path().join("provider").join("channels");
+    let state = read_first_provider_slot(&provider_channels_dir)
+        .expect("provider should have persisted at least one channel ledger entry");
+    let channel_id = state.channel_id;
     let chan_before = provider_chain.get(channel_id).await.unwrap();
     assert_eq!(chan_before.payer(), payer);
     assert_eq!(chan_before.payee(), provider_addr);
@@ -235,20 +283,12 @@ async fn proxy_provider_full_stack_against_real_chain() {
         "no Settle has been submitted yet"
     );
 
-    // --- 10. Trigger Settle directly via the SDK (mirrors what the
-    //         provider's SIGTERM hook would do). Pulls the latest sig
-    //         out of the in-memory ledger we wired into the provider. -------
-    let provider_state = ledger
-        .slot(&channel_id)
-        .await
-        .expect("provider ledger has a slot for the channel after one request");
-    let final_pair = {
-        let g = provider_state.lock().await;
-        provider_channel
-            .final_settlement(&g.state)
-            .expect("provider holds an on-chain sig after one request")
-    };
-    let (voucher, sig) = final_pair;
+    // --- 10. Trigger Settle directly via the SDK using the persisted
+    //         provider state. Mirrors what the provider's SIGTERM hook
+    //         or auto-settle ticker would do. ----------------------------
+    let (voucher, sig) = provider_channel
+        .final_settlement(&state)
+        .expect("provider holds an on-chain sig after one request");
     sdk::channel::settle(&provider_wallet, provider_addr, voucher, sig)
         .await
         .expect("provider settle on-chain");
@@ -275,6 +315,30 @@ fn pick_free_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
+}
+
+/// Read the first persisted provider slot off disk. The provider's
+/// `Ledger` writes one JSON file per `(channel_id)` slot into
+/// `<soma_home>/provider/channels/`. Tests don't share the provider's
+/// in-memory `Ledger` (different `Arc`), so reading from disk is the
+/// canonical way to assert against provider-side state.
+fn read_first_provider_slot(
+    dir: &std::path::Path,
+) -> Option<inference::channel::running_tab::TabProviderState> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for e in entries.flatten() {
+        if e.path().extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = std::fs::read(e.path()).ok()?;
+        if let Ok(s) = serde_json::from_slice::<
+            inference::channel::running_tab::TabProviderState,
+        >(&bytes)
+        {
+            return Some(s);
+        }
+    }
+    None
 }
 
 async fn wait_for_url(url: &str) {
@@ -393,6 +457,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         })
         .await
         .unwrap();
+    register_test_offering(&test_cluster, provider_addr).await;
 
     // SAFETY: tests are single-threaded WRT env vars at this point.
     unsafe { std::env::set_var("OPENROUTER_API_KEY", "test-key"); }
@@ -435,6 +500,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         default_deposit_micros: 1_000_000,
         provider_cache_ttl_secs: 60,
         routing: Default::default(),
+        trusted_providers_only: false,
+        trusted_providers_url: None,
+        trusted_providers_refresh_secs: 600,
     };
     let proxy_v1_home = TempDir::new().unwrap();
     let proxy_v1_handle = tokio::spawn({
@@ -517,6 +585,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         default_deposit_micros: 1_000_000,
         provider_cache_ttl_secs: 60,
         routing: Default::default(),
+        trusted_providers_only: false,
+        trusted_providers_url: None,
+        trusted_providers_refresh_secs: 600,
     };
     let proxy_v2_home = TempDir::new().unwrap();
     let proxy_v2_handle = tokio::spawn({

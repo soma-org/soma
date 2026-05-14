@@ -132,11 +132,17 @@ async fn run_non_streaming(
     match state.backend.chat_completions(chat, headers).await {
         Ok(v) => {
             let usage_val = v.get("usage").cloned();
-            let actual = usage_val
+            let parsed_usage = usage_val
                 .as_ref()
-                .and_then(|u| serde_json::from_value::<crate::openai::Usage>(u.clone()).ok())
-                .map(|u| pricing::realized_for_usage(&card, &u))
+                .and_then(|u| serde_json::from_value::<crate::openai::Usage>(u.clone()).ok());
+            let actual = parsed_usage
+                .as_ref()
+                .map(|u| pricing::realized_for_usage(&card, u))
                 .unwrap_or(0);
+            let usage_breakdown = parsed_usage
+                .as_ref()
+                .map(crate::channel::RequestUsage::from_openai)
+                .unwrap_or_default();
             if let Some(holder) = slot {
                 if let Some(mut guard) = holder.take() {
                     let meta = crate::channel::RequestMeta {
@@ -146,7 +152,10 @@ async fn run_non_streaming(
                         timestamp_ms: now_ms(),
                         request_id: &prep.request_id,
                     };
-                    let _ = state.channel.post_flight(&mut guard.state, &meta, actual).await;
+                    let _ = state
+                        .channel
+                        .post_flight(&mut guard.state, &meta, actual, usage_breakdown)
+                        .await;
                     let _ = state.ledger.persist(&mut *guard).await;
                 }
             }
@@ -231,6 +240,10 @@ async fn run_streaming(
                     prep_for_task.worst_case_micros
                 }
             };
+            let usage_breakdown = found_usage
+                .as_ref()
+                .map(crate::channel::RequestUsage::from_openai)
+                .unwrap_or_default();
             let meta = crate::channel::RequestMeta {
                 method: &prep_for_task.method,
                 path: &prep_for_task.path,
@@ -238,7 +251,10 @@ async fn run_streaming(
                 timestamp_ms: now_ms(),
                 request_id: &prep_for_task.request_id,
             };
-            let _ = state_for_task.channel.post_flight(&mut guard.state, &meta, actual).await;
+            let _ = state_for_task
+                .channel
+                .post_flight(&mut guard.state, &meta, actual, usage_breakdown)
+                .await;
             let _ = state_for_task.ledger.persist(&mut *guard).await;
             tracing::info!(
                 request_id = %prep_for_task.request_id,

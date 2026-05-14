@@ -152,6 +152,15 @@ pub enum TransactionKind {
     RegisterProvider(RegisterProviderArgs),
     UpdateProvider(UpdateProviderArgs),
 
+    // Per-(provider, model) offering ops. The set of valid `model_id`
+    // values is governed by the protocol-config `ModelRegistry`
+    // (validator consensus). Pricing is provider-controlled and can be
+    // updated freely; existing channels are unaffected (they snapshot
+    // the price at OpenChannel time).
+    RegisterOffering(RegisterOfferingArgs),
+    UpdateOffering(UpdateOfferingArgs),
+    DeactivateOffering(DeactivateOfferingArgs),
+
     /// Stage 7: stateless value transfer — debits sender's
     /// accumulator balance, credits each recipient's. No owned
     /// coin objects involved on either side. Sender pays gas
@@ -312,6 +321,15 @@ pub struct BridgeEmergencyPauseArgs {
 /// deposit is drawn from the sender's accumulator balance rather than
 /// a coin object — the executor emits a single `Withdraw` event for
 /// `deposit_amount` against the signer in the chosen `token`.
+///
+/// `model_id` binds the channel to a specific entry in the
+/// protocol-config `ModelRegistry`. The executor looks up the matching
+/// `(payee, model_id)` offering at open time and snapshots its prices +
+/// SLA bounds onto the channel — so settlement math is fixed for the
+/// channel's life regardless of how the provider updates the menu
+/// later. The scheduler declares
+/// `Offering::derive_id(payee, model_id)` as a read-only shared input
+/// for this kind.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct OpenChannelArgs {
     pub payee: SomaAddress,
@@ -320,15 +338,37 @@ pub struct OpenChannelArgs {
     pub authorized_signer: SomaAddress,
     pub token: crate::object::CoinType,
     pub deposit_amount: u64,
+    /// Canonical model_id from the protocol-config ModelRegistry.
+    /// Channel is bound to this single model for its entire lifetime.
+    pub model_id: String,
 }
 
 /// Args for `Settle`. Voucher signature is over
-/// `IntentMessage<Voucher{channel_id, cumulative_amount}>` with
-/// `IntentScope::PaymentVoucher`.
+/// `IntentMessage<Voucher{...}>` with `IntentScope::PaymentVoucher`.
+///
+/// The voucher carries `cumulative_amount` (the total $ the payee may
+/// claim through the end of this request batch) plus a per-channel
+/// usage breakdown — cumulative input/output/cache tokens and request
+/// count. The breakdown is informational at the protocol layer (the
+/// executor settles on `cumulative_amount`), but it's persisted by the
+/// indexer to power per-model price/latency oracle queries that need
+/// to know exactly how many tokens flowed through each channel.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct SettleArgs {
     pub channel_id: ObjectID,
     pub cumulative_amount: u64,
+    /// Cumulative prompt tokens served on this channel through this
+    /// settlement. Monotonic across settles (same property as
+    /// `cumulative_amount`).
+    pub cumulative_prompt_tokens: u64,
+    /// Cumulative completion tokens.
+    pub cumulative_completion_tokens: u64,
+    /// Cumulative cache-read tokens.
+    pub cumulative_cache_read_tokens: u64,
+    /// Cumulative cache-write tokens.
+    pub cumulative_cache_write_tokens: u64,
+    /// Cumulative request count.
+    pub cumulative_requests: u64,
     /// Voucher signature, produced via
     /// [`crate::crypto::Signature::new_secure`] by the channel's
     /// `authorized_signer`. Wrapped as `GenericSignature` to allow
@@ -364,6 +404,36 @@ pub struct RateChannelArgs {
     /// (thumbs up). Both values are recorded; the view aggregates
     /// the negative *rate* across rated volume.
     pub negative: bool,
+    /// Why the payer flagged this channel. Auto-emitted by proxies
+    /// for `TtftBreach` / `TtotBreach` / `NoResponse`; user-driven
+    /// rates carry `Quality` or `Other`. Indexer aggregates per
+    /// `(payee, model_id, reason_code)` so we can see *what* is going
+    /// wrong, not just *that* something is. Unknown values are stored
+    /// verbatim (forward-compat for future codes).
+    pub reason_code: RatingReasonCode,
+}
+
+/// Why a payer rated a channel the way they did. Encoded as a `u8`
+/// over the wire (variants below) so the protocol can grow new
+/// reason codes without breaking existing readers — unknown codes
+/// project to `Other`.
+#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum RatingReasonCode {
+    /// Manual buyer rating — quality complaint or compliment. Default
+    /// for user-driven rates.
+    #[default]
+    Quality = 0,
+    /// Provider exceeded the offering's declared `ttft_bound_ms` on at
+    /// least one request served by this channel.
+    TtftBreach = 1,
+    /// Provider exceeded the offering's declared `ttot_bound_ms`.
+    TtotBreach = 2,
+    /// Upstream returned no response within the bounded retry window.
+    NoResponse = 3,
+    /// Catch-all for proxy/operator-emitted codes the buyer doesn't
+    /// otherwise classify. Forward-compat sink for unknown enum tags.
+    Other = 255,
 }
 
 /// Args for `WithdrawAfterTimeout`. Payer-only. Reads Clock and
@@ -426,6 +496,57 @@ pub struct RegisterProviderArgs {
 pub struct UpdateProviderArgs {
     pub provider_id: ObjectID,
     pub endpoint: String,
+}
+
+/// Args for `RegisterOffering`. Signer becomes the offering's
+/// `provider`; `Offering::derive_id(signer, model_id)` is the canonical
+/// id of the resulting shared object. Re-registration fails — use
+/// `UpdateOffering` to change prices/SLA, or `DeactivateOffering` to
+/// retire the row.
+///
+/// The executor verifies `model_id` is an active entry in the
+/// protocol-config `ModelRegistry` at the executor's protocol version,
+/// so providers can't register prices against models that don't exist
+/// or have been deprecated.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RegisterOfferingArgs {
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+/// Args for `UpdateOffering`. Mutates the prices + SLA on an existing
+/// `(signer, model_id)` offering. `offering_id` is carried in the args
+/// so the scheduler can declare the shared input from the kind alone;
+/// the executor verifies `offering_id == Offering::derive_id(signer, model_id)`
+/// (and rejects `model_id` ≠ `offering.model_id`).
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateOfferingArgs {
+    pub offering_id: ObjectID,
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+/// Args for `DeactivateOffering`. Flips `active = false` on the
+/// offering. New channels can't open against it; existing channels are
+/// unaffected. Reactivation requires a fresh `RegisterOffering` after
+/// the executor garbage-collects the prior row (future protocol
+/// version — for now `Deactivate` is sticky).
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct DeactivateOfferingArgs {
+    pub offering_id: ObjectID,
+    pub model_id: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -570,6 +691,16 @@ impl TransactionKind {
         )
     }
 
+    /// True for any per-(provider, model) offering tx kind.
+    pub fn is_offering_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
+        )
+    }
+
     /// Channel ops that need an existing Channel as a shared input
     /// (everything except `OpenChannel`, which creates one). The
     /// boolean is `true` if the op mutates the Channel object,
@@ -592,6 +723,26 @@ impl TransactionKind {
     fn provider_id_input(&self) -> Option<ObjectID> {
         match self {
             TransactionKind::UpdateProvider(args) => Some(args.provider_id),
+            _ => None,
+        }
+    }
+
+    /// Per-(provider, model) offering shared-input declarations. The
+    /// boolean is `true` if the op mutates the Offering.
+    ///
+    /// `OpenChannel` declares the offering as *read-only* — we need to
+    /// load it to snapshot prices onto the new channel, but we never
+    /// mutate it. `Update`/`Deactivate` declare it mutable. `Register`
+    /// is omitted (same lazy-create pattern as `RegisterProvider` for
+    /// the Provider object).
+    fn offering_id_input(&self) -> Option<(ObjectID, bool)> {
+        match self {
+            TransactionKind::OpenChannel(args) => Some((
+                crate::offering::Offering::derive_id(args.payee, &args.model_id),
+                false,
+            )),
+            TransactionKind::UpdateOffering(args) => Some((args.offering_id, true)),
+            TransactionKind::DeactivateOffering(args) => Some((args.offering_id, true)),
             _ => None,
         }
     }
@@ -646,18 +797,29 @@ impl TransactionKind {
     pub fn requires_clock_read(&self) -> bool {
         matches!(
             self,
-            TransactionKind::RequestClose(_) | TransactionKind::WithdrawAfterTimeout(_)
+            TransactionKind::RequestClose(_)
+                | TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
         )
     }
 
     /// True for txs that need to read SystemState (e.g., for protocol
     /// parameters) without mutating it. `WithdrawAfterTimeout` reads
     /// `channel_grace_period_ms`; `OpenChannel` reads
-    /// `max_channels_per_pair` to enforce the per-pair cap.
+    /// `max_channels_per_pair` to enforce the per-pair cap and the
+    /// protocol version to validate the model registry; offering ops
+    /// read protocol version to validate `model_id` against the
+    /// version-pinned registry.
     pub fn requires_system_state_read(&self) -> bool {
         matches!(
             self,
-            TransactionKind::WithdrawAfterTimeout(_) | TransactionKind::OpenChannel(_)
+            TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::OpenChannel(_)
+                | TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
         )
     }
 
@@ -776,6 +938,18 @@ impl TransactionKind {
             });
         }
 
+        // Offering ops (and OpenChannel) declare a per-(provider, model)
+        // Offering as a shared input. OpenChannel reads it (snapshot
+        // prices onto the channel); Update/Deactivate mutate. Register
+        // is omitted — same pattern as RegisterProvider for the Provider.
+        if let Some((offering_id, mutable)) = self.offering_id_input() {
+            objects.push(SharedInputObject {
+                id: offering_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
+            });
+        }
+
         // OpenChannel / WithdrawAfterTimeout mutate the per-payee
         // ProviderInbox (increment or decrement the open-channel
         // count for the signer/payer). The inbox is created lazily
@@ -865,6 +1039,16 @@ impl TransactionKind {
                 id: provider_id,
                 initial_shared_version: crate::object::OBJECT_START_VERSION,
                 mutable: true,
+            });
+        }
+
+        // Offering: OpenChannel reads, Update/Deactivate mutate, Register
+        // is lazy-create (omitted). See `shared_input_objects` for detail.
+        if let Some((offering_id, mutable)) = self.offering_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: offering_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
             });
         }
 
@@ -2189,6 +2373,14 @@ pub enum ObjectReadResultKind {
     DeletedSharedObject(Version, TransactionDigest),
     /// A shared object in a cancelled transaction. The sequence number embeds cancellation reason
     CancelledTransactionSharedObject(Version),
+    /// A shared object that the transaction declared as input, but which doesn't yet exist on
+    /// chain. Used for lazy-create patterns (e.g. `ProviderInbox` created by the first
+    /// `OpenChannel` for a payee, `Offering` read by `OpenChannel` but only existing once the
+    /// payee has registered it). The carried version is the `initial_shared_version` declared at
+    /// input time. Consumers that filter the input set into a concrete object map should drop
+    /// this variant; executors that look up the input via `read_object` will simply see `None`
+    /// and handle the missing-object case themselves.
+    NotYetCreated(Version),
 }
 
 impl std::fmt::Debug for ObjectReadResultKind {
@@ -2202,6 +2394,9 @@ impl std::fmt::Debug for ObjectReadResultKind {
             }
             ObjectReadResultKind::CancelledTransactionSharedObject(seq) => {
                 write!(f, "CancelledTransactionSharedObject({})", seq.value())
+            }
+            ObjectReadResultKind::NotYetCreated(version) => {
+                write!(f, "NotYetCreated({})", version.value())
             }
         }
     }
@@ -2231,6 +2426,14 @@ impl ObjectReadResult {
             panic!("only shared objects can be CancelledTransactionSharedObject");
         }
 
+        if let (
+            InputObjectKind::ImmOrOwnedObject(_),
+            ObjectReadResultKind::NotYetCreated(_),
+        ) = (&input_object_kind, &object)
+        {
+            panic!("only shared objects can be NotYetCreated");
+        }
+
         Self { input_object_kind, object }
     }
 
@@ -2243,6 +2446,7 @@ impl ObjectReadResult {
             ObjectReadResultKind::Object(object) => Some(object),
             ObjectReadResultKind::DeletedSharedObject(_, _) => None,
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
+            ObjectReadResultKind::NotYetCreated(_) => None,
         }
     }
 
@@ -2258,6 +2462,10 @@ impl ObjectReadResult {
             (
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
+            ) => unreachable!(),
+            (
+                InputObjectKind::ImmOrOwnedObject(_),
+                ObjectReadResultKind::NotYetCreated(_),
             ) => unreachable!(),
             (InputObjectKind::SharedObject { mutable, .. }, _) => *mutable,
         }
@@ -2296,6 +2504,10 @@ impl ObjectReadResult {
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
             ) => unreachable!(),
+            (
+                InputObjectKind::ImmOrOwnedObject(_),
+                ObjectReadResultKind::NotYetCreated(_),
+            ) => unreachable!(),
             (InputObjectKind::SharedObject { .. }, _) => None,
         }
     }
@@ -2307,17 +2519,20 @@ impl ObjectReadResult {
     pub fn to_shared_input(&self) -> Option<SharedInput> {
         match self.input_object_kind {
             InputObjectKind::ImmOrOwnedObject(_) => None,
-            InputObjectKind::SharedObject { id, mutable, .. } => Some(match &self.object {
+            InputObjectKind::SharedObject { id, mutable, .. } => match &self.object {
                 ObjectReadResultKind::Object(obj) => {
-                    SharedInput::Existing(obj.compute_object_reference())
+                    Some(SharedInput::Existing(obj.compute_object_reference()))
                 }
                 ObjectReadResultKind::DeletedSharedObject(seq, digest) => {
-                    SharedInput::Deleted((id, *seq, mutable, *digest))
+                    Some(SharedInput::Deleted((id, *seq, mutable, *digest)))
                 }
                 ObjectReadResultKind::CancelledTransactionSharedObject(seq) => {
-                    SharedInput::Cancelled((id, *seq))
+                    Some(SharedInput::Cancelled((id, *seq)))
                 }
-            }),
+                // Lazy-create input that never materialized — no SharedInput entry to
+                // emit (the executor sees None via `read_object` and decides what to do).
+                ObjectReadResultKind::NotYetCreated(_) => None,
+            },
         }
     }
 
@@ -2326,6 +2541,7 @@ impl ObjectReadResult {
             ObjectReadResultKind::Object(obj) => Some(obj.previous_transaction),
             ObjectReadResultKind::DeletedSharedObject(_, digest) => Some(*digest),
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
+            ObjectReadResultKind::NotYetCreated(_) => None,
         }
     }
 }
@@ -2444,7 +2660,11 @@ impl InputObjects {
         self.objects
             .iter()
             .filter(|obj| obj.is_shared_object())
-            .map(|obj| obj.to_shared_input().expect("already filtered for shared objects"))
+            // NotYetCreated shared inputs (lazy-create patterns — see
+            // `ObjectReadResultKind::NotYetCreated`) don't contribute a SharedInput entry:
+            // there's no object to reference yet, and the executor decides what to do via
+            // the missing-object path. Drop them here.
+            .filter_map(|obj| obj.to_shared_input())
             .collect()
     }
 
@@ -2501,6 +2721,16 @@ impl InputObjects {
                         InputObjectKind::SharedObject { .. },
                         ObjectReadResultKind::CancelledTransactionSharedObject(_),
                     ) => None,
+                    (
+                        InputObjectKind::ImmOrOwnedObject(_),
+                        ObjectReadResultKind::NotYetCreated(_),
+                    ) => {
+                        unreachable!()
+                    }
+                    (
+                        InputObjectKind::SharedObject { .. },
+                        ObjectReadResultKind::NotYetCreated(_),
+                    ) => None,
                 }
             })
             .collect()
@@ -2517,6 +2747,10 @@ impl InputObjects {
                 ObjectReadResultKind::Object(object) => Some(object.data.version()),
                 ObjectReadResultKind::DeletedSharedObject(v, _) => Some(*v),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
+                // Lazy-create inputs that don't yet exist contribute their declared
+                // `initial_shared_version` to the lamport timestamp so other shared
+                // inputs touched by the same tx never collide with this id.
+                ObjectReadResultKind::NotYetCreated(v) => Some(*v),
             })
             .chain(receiving_objects.iter().map(|object_ref| object_ref.1));
 

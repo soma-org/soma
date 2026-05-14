@@ -31,8 +31,8 @@ use types::effects::TransactionEffectsAPI as _;
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{CoinType, Object, ObjectID, ObjectRef, ObjectType, Version};
 use types::transaction::{
-    OpenChannelArgs, RequestCloseArgs, SettleArgs, TransactionData, TransactionKind,
-    WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RegisterOfferingArgs, RequestCloseArgs, SettleArgs, TransactionData,
+    TransactionKind, WithdrawAfterTimeoutArgs,
 };
 use utils::logging::init_tracing;
 
@@ -71,7 +71,7 @@ async fn sign_voucher(
     channel_id: ObjectID,
     cumulative_amount: u64,
 ) -> GenericSignature {
-    let voucher = Voucher::new(channel_id, cumulative_amount);
+    let voucher = Voucher::new_amount_only(channel_id, cumulative_amount);
     let sig: Signature = test_cluster
         .wallet
         .config
@@ -84,6 +84,42 @@ async fn sign_voucher(
         .await
         .expect("voucher signing succeeds");
     sig.into()
+}
+
+/// Register a baseline offering for `payee` against the test model. Idempotent: re-registering
+/// after the first call leaves the existing on-chain row alone (the executor rejects with
+/// `OfferingAlreadyExists`, which we treat as success since it means the precondition for
+/// OpenChannel is already met).
+async fn register_default_offering(test_cluster: &TestCluster, payee: SomaAddress) {
+    use types::offering::Offering;
+    let offering_id = Offering::derive_id(payee, "anthropic/claude-sonnet-4.6");
+    if test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_object_store().get_object(&offering_id).is_some())
+    {
+        return;
+    }
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payee,
+        TransactionKind::RegisterOffering(RegisterOfferingArgs {
+            model_id: "anthropic/claude-sonnet-4.6".to_string(),
+            prompt_micros_per_1k: 3_000,
+            completion_micros_per_1k: 15_000,
+            cache_read_micros_per_1k: 300,
+            cache_write_micros_per_1k: 3_000,
+            request_micros: 0,
+            ttft_bound_ms: 1_500,
+            ttot_bound_ms: 50,
+        }),
+    );
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(
+        response.effects.status().is_ok(),
+        "RegisterOffering must succeed: status={:?}",
+        response.effects.status()
+    );
 }
 
 /// Submit `OpenChannel` and return the new channel's ObjectID. The
@@ -106,6 +142,7 @@ async fn open_channel(
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount,
+            model_id: "anthropic/claude-sonnet-4.6".to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -115,11 +152,23 @@ async fn open_channel(
         response.effects.status()
     );
 
-    // The new Channel is the only created shared object in the effects.
+    // Find the Channel object among the tx's created shared objects.
+    // OpenChannel may also lazily-create a `ProviderInbox` (the first time a
+    // payer opens against this payee), so we can't blindly pick the first
+    // shared object — match on the on-chain `ObjectType` instead.
     let created = response.effects.created();
     let channel_oref = created
         .iter()
-        .find(|(_oref, owner)| owner.is_shared())
+        .find(|((id, _, _), owner)| {
+            owner.is_shared()
+                && test_cluster.fullnode_handle.soma_node.with(|node| {
+                    node.state()
+                        .get_object_store()
+                        .get_object(id)
+                        .map(|o| *o.type_() == ObjectType::Channel)
+                        .unwrap_or(false)
+                })
+        })
         .expect("OpenChannel creates a shared Channel object");
     channel_oref.0.0
 }
@@ -137,6 +186,11 @@ async fn submit_settle(
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
             voucher_signature,
         }),
     );
@@ -227,6 +281,10 @@ async fn channel_full_lifecycle() {
     let addrs = test_cluster.wallet.get_addresses();
     let payer = addrs[0];
     let payee = addrs[1];
+
+    // Provider-side setup before reading balances so the offering tx's gas
+    // doesn't pollute the per-test invariant (payee delta == settled - settle-gas).
+    register_default_offering(&test_cluster, payee).await;
 
     let read_usdc = |addr: SomaAddress| -> u64 {
         test_cluster
@@ -373,6 +431,7 @@ async fn channel_settle_rejects_payer_caller() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
     let channel_id = open_channel(&test_cluster, payer, payee, 50_000).await;
     let voucher_sig = sign_voucher(&test_cluster, payer, channel_id, 1_000).await;
 
@@ -383,6 +442,11 @@ async fn channel_settle_rejects_payer_caller() {
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount: 1_000,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
             voucher_signature: voucher_sig,
         }),
     );
@@ -411,6 +475,7 @@ async fn channel_settle_rejects_stale_voucher() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
 
     // First settle at cumulative=5_000.
@@ -440,6 +505,7 @@ async fn channel_state_agrees_across_validators() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
     let voucher_sig = sign_voucher(&test_cluster, payer, channel_id, 30_000).await;
     assert!(submit_settle(&test_cluster, payee, channel_id, 30_000, voucher_sig).await);
@@ -496,6 +562,8 @@ async fn channels_independent_no_cross_interference() {
     let payer_b = addrs[2];
     let payee_b = addrs[3];
 
+    register_default_offering(&test_cluster, payee_a).await;
+    register_default_offering(&test_cluster, payee_b).await;
     let chan_a = open_channel(&test_cluster, payer_a, payee_a, 50_000).await;
     let chan_b = open_channel(&test_cluster, payer_b, payee_b, 80_000).await;
     assert_ne!(chan_a, chan_b);
@@ -534,6 +602,7 @@ async fn channel_settle_rejects_invalid_signature() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
 
     // Sign a voucher for 1_000 but submit Settle claiming 9_999. The

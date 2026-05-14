@@ -56,8 +56,8 @@ use types::crypto::GenericSignature;
 use types::effects::{ExecutionFailureStatus, ExecutionStatus, TransactionEffectsAPI as _};
 use types::object::{CoinType, Object, ObjectID};
 use types::transaction::{
-    OpenChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, TransactionKind,
-    WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RegisterOfferingArgs, RequestCloseArgs, SettleArgs, TopUpArgs,
+    TransactionKind, WithdrawAfterTimeoutArgs,
 };
 use utils::logging::init_tracing;
 
@@ -107,6 +107,7 @@ impl RunningSession {
             &self.payer,
             self.channel_id,
             new_cum,
+            sdk_channel::VoucherUsage::default(),
         )
         .await
         .expect("voucher signing succeeds");
@@ -147,6 +148,44 @@ fn read_usdc(test_cluster: &TestCluster, addr: SomaAddress) -> u64 {
         .unwrap_or(0)
 }
 
+const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+
+/// Ensure the payee has an on-chain offering for the test model so
+/// OpenChannel's per-(payee, model) shared input resolves to a real
+/// row. Idempotent: re-running against an already-registered payee
+/// short-circuits via a fullnode read.
+async fn register_default_offering(test_cluster: &TestCluster, payee: SomaAddress) {
+    use types::offering::Offering;
+    let offering_id = Offering::derive_id(payee, TEST_MODEL);
+    if test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_object_store().get_object(&offering_id).is_some())
+    {
+        return;
+    }
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payee,
+        TransactionKind::RegisterOffering(RegisterOfferingArgs {
+            model_id: TEST_MODEL.to_string(),
+            prompt_micros_per_1k: 3_000,
+            completion_micros_per_1k: 15_000,
+            cache_read_micros_per_1k: 300,
+            cache_write_micros_per_1k: 3_000,
+            request_micros: 0,
+            ttft_bound_ms: 1_500,
+            ttot_bound_ms: 50,
+        }),
+    );
+    let r = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(
+        r.effects.status().is_ok(),
+        "RegisterOffering must succeed: status={:?}",
+        r.effects.status()
+    );
+}
+
 /// Submit `OpenChannel` and return the new channel's id (predicted
 /// client-side via `sdk::channel::predicted_channel_id` — matches the
 /// chain's derive_id).
@@ -164,6 +203,7 @@ async fn open_channel(
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount,
+            model_id: TEST_MODEL.to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -178,14 +218,13 @@ async fn open_channel(
     let predicted = sdk_channel::predicted_channel_id(*response.effects.transaction_digest());
 
     let created = response.effects.created();
-    let channel_oref = created
+    // OpenChannel may also lazily-create a `ProviderInbox` (first time a
+    // payer opens against this payee) — pick the predicted channel id
+    // out of the created set rather than guessing the first shared object.
+    let _channel_oref = created
         .iter()
-        .find(|(_oref, owner)| owner.is_shared())
-        .expect("OpenChannel creates a shared Channel object");
-    assert_eq!(
-        channel_oref.0.0, predicted,
-        "predicted channel id must match the on-chain derive_id"
-    );
+        .find(|((id, _, _), _)| *id == predicted)
+        .expect("OpenChannel creates the predicted Channel object");
     predicted
 }
 
@@ -202,6 +241,11 @@ async fn submit_settle(
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
             voucher_signature,
         }),
     );
@@ -323,6 +367,8 @@ async fn proxy_provider_long_running_session() {
     let payer = addrs[0]; // "proxy"
     let payee = addrs[1]; // "provider"
 
+    register_default_offering(&test_cluster, payee).await;
+
     let payer_initial = read_usdc(&test_cluster, payer);
     let payee_initial = read_usdc(&test_cluster, payee);
 
@@ -344,7 +390,7 @@ async fn proxy_provider_long_running_session() {
 
         // Provider verifies before redeeming (cheap pre-check).
         let ch = read_channel(&test_cluster, channel_id).expect("channel exists");
-        let voucher = types::channel::Voucher::new(channel_id, session.cumulative);
+        let voucher = types::channel::Voucher::new_amount_only(channel_id, session.cumulative);
         sdk_channel::verify_voucher(&ch, voucher, &sig).expect("voucher verifies in-process");
 
         let status = submit_settle(&test_cluster, payee, channel_id, session.cumulative, sig)
@@ -472,6 +518,7 @@ async fn channel_typed_error_sweep() {
     let payee = addrs[1];
     let third_party = addrs[2];
 
+    register_default_offering(&test_cluster, payee).await;
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
     let mut session = RunningSession::new(channel_id, payer, payee);
 
@@ -484,6 +531,11 @@ async fn channel_typed_error_sweep() {
             TransactionKind::Settle(SettleArgs {
                 channel_id,
                 cumulative_amount: session.cumulative,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
                 voucher_signature: sig.clone(),
             }),
         );
@@ -506,6 +558,7 @@ async fn channel_typed_error_sweep() {
             &payer,
             channel_id,
             500, // less than the 1_000 we just settled
+            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -523,6 +576,7 @@ async fn channel_typed_error_sweep() {
             &payer,
             channel_id,
             huge,
+            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -541,6 +595,7 @@ async fn channel_typed_error_sweep() {
             &third_party,
             channel_id,
             session.cumulative + 1_000,
+            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -651,6 +706,7 @@ async fn predicted_channel_id_matches_on_chain() {
     let addrs = test_cluster.wallet.get_addresses();
     let payer = addrs[0];
     let payee = addrs[1];
+    register_default_offering(&test_cluster, payee).await;
 
     let tx_data = e2e_tests::stateless_tx_data(
         &test_cluster,
@@ -660,21 +716,21 @@ async fn predicted_channel_id_matches_on_chain() {
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount: 10_000,
+            model_id: "anthropic/claude-sonnet-4.6".to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());
 
     let predicted = sdk_channel::predicted_channel_id(*response.effects.transaction_digest());
-    let actual = response
+    // OpenChannel may also lazily-create the ProviderInbox; assert by id
+    // rather than picking the first shared object out of the created set.
+    let _ = response
         .effects
         .created()
         .iter()
-        .find(|(_oref, owner)| owner.is_shared())
-        .expect("OpenChannel creates a shared channel")
-        .0
-        .0;
-    assert_eq!(predicted, actual);
+        .find(|((id, _, _), _)| *id == predicted)
+        .expect("OpenChannel creates the predicted Channel object");
     info!(?predicted, "predicted == on-chain channel id");
 }
 
@@ -690,6 +746,7 @@ async fn settle_credits_payee_immediately_no_close_needed() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
     let payee_before = read_usdc(&test_cluster, payee);
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
 
@@ -698,6 +755,7 @@ async fn settle_credits_payee_immediately_no_close_needed() {
         &payer,
         channel_id,
         25_000,
+        sdk_channel::VoucherUsage::default(),
     )
     .await
     .unwrap();
@@ -748,6 +806,8 @@ async fn channel_survives_reconfiguration() {
     let payer = addrs[0];
     let payee = addrs[1];
 
+    register_default_offering(&test_cluster, payee).await;
+
     // 1. Open + sign a voucher in epoch 0.
     let deposit = 100_000;
     let channel_id = open_channel(&test_cluster, payer, payee, deposit).await;
@@ -773,7 +833,7 @@ async fn channel_survives_reconfiguration() {
     //    epoch field — so this is just a sanity check that nothing
     //    changed about Channel.authorized_signer across the reconfig.)
     let ch = read_channel(&test_cluster, channel_id).expect("channel survives reconfig");
-    let voucher = types::channel::Voucher::new(channel_id, cum1);
+    let voucher = types::channel::Voucher::new_amount_only(channel_id, cum1);
     sdk_channel::verify_voucher(&ch, voucher, &sig1)
         .expect("pre-reconfig voucher must verify post-reconfig");
 
@@ -795,7 +855,7 @@ async fn channel_survives_reconfiguration() {
         .expect("post-reconfig settle executes");
     assert!(status.is_ok(), "Settle of post-reconfig voucher: {status:?}");
     assert_eq!(
-        read_channel(&test_cluster, channel_id).unwrap().settled_amount,
+        read_channel(&test_cluster, channel_id).unwrap().settled_amount(),
         cum2,
     );
 

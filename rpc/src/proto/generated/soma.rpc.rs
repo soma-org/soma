@@ -789,6 +789,21 @@ pub mod execution_error {
         ChannelInboxPayeeMismatch = 91,
         /// Object at ProviderInbox::derive_id(payee) was not a ProviderInbox.
         NotAProviderInbox = 92,
+        ///
+        /// Per-(provider, model) offering errors
+        ///
+        /// RegisterOffering for a (signer, model_id) that already has a row.
+        OfferingAlreadyExists = 100,
+        /// UpdateOffering / DeactivateOffering with no on-chain row for the pair.
+        OfferingNotFound = 101,
+        /// Update/Deactivate offering_id != derive_id(signer, model_id), or
+        /// attempt to mutate an offering owned by a different provider.
+        OfferingCallerMismatch = 102,
+        /// Register/Update against a model_id absent from the protocol-config
+        /// ModelRegistry at the active version.
+        OfferingUnknownModel = 103,
+        /// OpenChannel against a (payee, model_id) pair with no active Offering.
+        ChannelOfferingMissing = 104,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -884,6 +899,11 @@ pub mod execution_error {
                 Self::ChannelTooManyOpenForPair => "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
                 Self::ChannelInboxPayeeMismatch => "CHANNEL_INBOX_PAYEE_MISMATCH",
                 Self::NotAProviderInbox => "NOT_A_PROVIDER_INBOX",
+                Self::OfferingAlreadyExists => "OFFERING_ALREADY_EXISTS",
+                Self::OfferingNotFound => "OFFERING_NOT_FOUND",
+                Self::OfferingCallerMismatch => "OFFERING_CALLER_MISMATCH",
+                Self::OfferingUnknownModel => "OFFERING_UNKNOWN_MODEL",
+                Self::ChannelOfferingMissing => "CHANNEL_OFFERING_MISSING",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -980,6 +1000,11 @@ pub mod execution_error {
                 "CHANNEL_TOO_MANY_OPEN_FOR_PAIR" => Some(Self::ChannelTooManyOpenForPair),
                 "CHANNEL_INBOX_PAYEE_MISMATCH" => Some(Self::ChannelInboxPayeeMismatch),
                 "NOT_A_PROVIDER_INBOX" => Some(Self::NotAProviderInbox),
+                "OFFERING_ALREADY_EXISTS" => Some(Self::OfferingAlreadyExists),
+                "OFFERING_NOT_FOUND" => Some(Self::OfferingNotFound),
+                "OFFERING_CALLER_MISMATCH" => Some(Self::OfferingCallerMismatch),
+                "OFFERING_UNKNOWN_MODEL" => Some(Self::OfferingUnknownModel),
+                "CHANNEL_OFFERING_MISSING" => Some(Self::ChannelOfferingMissing),
                 _ => None,
             }
         }
@@ -4050,7 +4075,7 @@ pub struct ValidDuring {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 44, 45, 46, 50, 51, 52, 53, 54, 57, 55, 56, 60, 61"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 44, 45, 46, 50, 51, 52, 53, 54, 57, 55, 56, 58, 59, 62, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4164,6 +4189,13 @@ pub mod transaction_kind {
         RegisterProvider(super::RegisterProvider),
         #[prost(message, tag = "56")]
         UpdateProvider(super::UpdateProvider),
+        /// Per-(provider, model) offering transactions (2026-05-13).
+        #[prost(message, tag = "58")]
+        RegisterOffering(super::RegisterOffering),
+        #[prost(message, tag = "59")]
+        UpdateOffering(super::UpdateOffering),
+        #[prost(message, tag = "62")]
+        DeactivateOffering(super::DeactivateOffering),
         /// Per-commit accumulator settlement system transaction (Stage 6a).
         #[prost(message, tag = "60")]
         Settlement(super::Settlement),
@@ -4781,6 +4813,12 @@ pub struct OpenChannel {
     /// balance, not a coin object. Field 4 (deposit_coin) was removed.
     #[prost(uint64, optional, tag = "5")]
     pub deposit_amount: ::core::option::Option<u64>,
+    /// 2026-05-13: canonical model_id from the protocol ModelRegistry.
+    /// Channel binds to this model for its lifetime; executor snapshots
+    /// the matching (payee, model_id) offering's price + SLA into the
+    /// channel at open. Empty string is rejected by the executor.
+    #[prost(string, optional, tag = "6")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Submit a voucher to the channel for partial payment. Channel
 /// stays open. Caller MUST be the payee.
@@ -4801,6 +4839,20 @@ pub struct Settle {
     /// signers work transparently. Bytes form is `flag || sig || pk`.
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub voucher_signature: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 2026-05-13: voucher-side cumulative usage breakdown. The
+    /// executor reconstructs the full Voucher (incl. these) for
+    /// signature verification, so the wire bytes must match the
+    /// payer-signed values.
+    #[prost(uint64, optional, tag = "4")]
+    pub cumulative_prompt_tokens: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub cumulative_completion_tokens: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub cumulative_cache_read_tokens: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "7")]
+    pub cumulative_cache_write_tokens: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "8")]
+    pub cumulative_requests: ::core::option::Option<u64>,
 }
 /// Payer-only: start the forced-close grace timer. The Clock's
 /// current timestamp is recorded onto the channel.
@@ -4819,6 +4871,12 @@ pub struct WithdrawAfterTimeout {
     /// Channel object ID (hex string).
     #[prost(string, optional, tag = "1")]
     pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Payee address (hex string) — must match the channel's payee.
+    /// Carried in args so the validator can declare the per-payee
+    /// `ProviderInbox` shared input from the tx kind alone, without
+    /// first reading the channel object during input declaration.
+    #[prost(string, optional, tag = "2")]
+    pub payee: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Payer-only: add `amount` to the channel's deposit, debited from
 /// the payer's accumulator in the channel's coin type. Clears any
@@ -4851,6 +4909,62 @@ pub struct RateChannel {
     /// True = thumbs down, False = thumbs up.
     #[prost(bool, optional, tag = "2")]
     pub negative: ::core::option::Option<bool>,
+    /// 2026-05-13: reason code (0=Quality, 1=TtftBreach, 2=TtotBreach,
+    /// 3=NoResponse, 255=Other). Unknown values project to Other on
+    /// the receive side for forward-compat.
+    #[prost(uint32, optional, tag = "3")]
+    pub reason_code: ::core::option::Option<u32>,
+}
+/// Per-(provider, model) offering tx kinds (2026-05-13).
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegisterOffering {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub prompt_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub completion_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "4")]
+    pub cache_read_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub cache_write_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub request_micros: ::core::option::Option<u64>,
+    #[prost(uint32, optional, tag = "7")]
+    pub ttft_bound_ms: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "8")]
+    pub ttot_bound_ms: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UpdateOffering {
+    #[prost(string, optional, tag = "1")]
+    pub offering_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "3")]
+    pub prompt_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "4")]
+    pub completion_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub cache_read_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub cache_write_micros_per_1k: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "7")]
+    pub request_micros: ::core::option::Option<u64>,
+    #[prost(uint32, optional, tag = "8")]
+    pub ttft_bound_ms: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "9")]
+    pub ttot_bound_ms: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeactivateOffering {
+    #[prost(string, optional, tag = "1")]
+    pub offering_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Register the signer as a provider on-chain. Creates a Provider
 /// shared object at Provider::derive_id(signer). Hard-fails if one

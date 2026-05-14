@@ -182,4 +182,6 @@ pub enum ObjectType {
     /// Per-payee inbox tracking the per-payer open-channel count
     /// — see `types::provider_inbox::ProviderInbox`.
     ProviderInbox,
+    /// Per-(provider, model) offering — see `types::offering::Offering`.
+    Offering,
 }

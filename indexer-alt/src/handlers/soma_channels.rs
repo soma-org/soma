@@ -70,6 +70,15 @@ fn channel_to_stored(
         opened_at_cp,
         opened_tx_digest,
         last_update_cp,
+        // Offering snapshot from the on-chain ChannelV1 record.
+        model_id: chan.model_id().to_string(),
+        prompt_micros_per_1k: chan.prompt_micros_per_1k() as i64,
+        completion_micros_per_1k: chan.completion_micros_per_1k() as i64,
+        cache_read_micros_per_1k: chan.cache_read_micros_per_1k() as i64,
+        cache_write_micros_per_1k: chan.cache_write_micros_per_1k() as i64,
+        request_micros: chan.request_micros() as i64,
+        ttft_bound_ms: chan.ttft_bound_ms() as i32,
+        ttot_bound_ms: chan.ttot_bound_ms() as i32,
     }
 }
 
@@ -168,6 +177,9 @@ impl Processor for SomaChannels {
                         // Manual: deposit=0, status=withdrawn,
                         // close_requested_at_ms preserved (the timer
                         // ran out — useful for "when did this end").
+                        // Offering-snapshot columns: preserve so
+                        // downstream queries can still attribute the
+                        // closed channel to its model.
                         out.push(StoredChannel {
                             channel_id: id.to_vec(),
                             payer: chan.payer().to_vec(),
@@ -183,6 +195,14 @@ impl Processor for SomaChannels {
                             opened_at_cp: cp,
                             opened_tx_digest: tx_digest.clone(),
                             last_update_cp: cp,
+                            model_id: chan.model_id().to_string(),
+                            prompt_micros_per_1k: chan.prompt_micros_per_1k() as i64,
+                            completion_micros_per_1k: chan.completion_micros_per_1k() as i64,
+                            cache_read_micros_per_1k: chan.cache_read_micros_per_1k() as i64,
+                            cache_write_micros_per_1k: chan.cache_write_micros_per_1k() as i64,
+                            request_micros: chan.request_micros() as i64,
+                            ttft_bound_ms: chan.ttft_bound_ms() as i32,
+                            ttot_bound_ms: chan.ttot_bound_ms() as i32,
                         });
                     }
                 }

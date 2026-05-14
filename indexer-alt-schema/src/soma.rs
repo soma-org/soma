@@ -10,6 +10,8 @@ use crate::schema::soma_channel_events;
 use crate::schema::soma_channel_ratings;
 use crate::schema::soma_channels;
 use crate::schema::soma_epoch_state;
+use crate::schema::soma_inference_settlements;
+use crate::schema::soma_offerings;
 use crate::schema::soma_providers;
 use crate::schema::soma_staked_soma;
 use crate::schema::soma_validators;
@@ -77,7 +79,9 @@ pub struct StoredValidator {
 /// Per-channel state mirror. INSERT on `OpenChannel`, UPDATE on
 /// `Settle` / `RequestClose` / `TopUp` / `WithdrawAfterTimeout`.
 /// `status` follows the off-chain `ChannelStatus` enum: 0 open,
-/// 1 closing, 2 withdrawn.
+/// 1 closing, 2 withdrawn. 2026-05-13: now carries the
+/// per-channel offering snapshot — `model_id`, prices, SLA bounds —
+/// mirroring `ChannelV1`'s on-chain fields exactly.
 #[derive(Insertable, AsChangeset, Queryable, Debug, Clone, FieldCount)]
 #[diesel(table_name = soma_channels)]
 #[diesel(treat_none_as_null = true)]
@@ -94,9 +98,19 @@ pub struct StoredChannel {
     pub opened_at_cp: i64,
     pub opened_tx_digest: Vec<u8>,
     pub last_update_cp: i64,
+    pub model_id: String,
+    pub prompt_micros_per_1k: i64,
+    pub completion_micros_per_1k: i64,
+    pub cache_read_micros_per_1k: i64,
+    pub cache_write_micros_per_1k: i64,
+    pub request_micros: i64,
+    pub ttft_bound_ms: i32,
+    pub ttot_bound_ms: i32,
 }
 
 /// Append-only event log for channel ops. One row per channel tx.
+/// 2026-05-13: usage deltas + rating reason_code populated for
+/// Settle / Rate events respectively.
 #[derive(Insertable, Queryable, Debug, Clone, FieldCount)]
 #[diesel(table_name = soma_channel_events)]
 pub struct StoredChannelEvent {
@@ -106,6 +120,12 @@ pub struct StoredChannelEvent {
     pub kind: String,
     pub delta: i64,
     pub timestamp_ms: i64,
+    pub tokens_in_delta: i64,
+    pub tokens_out_delta: i64,
+    pub cache_read_delta: i64,
+    pub cache_write_delta: i64,
+    pub requests_delta: i64,
+    pub rating_reason_code: Option<i16>,
 }
 
 /// Channel rating mirror. UPSERT on every `RateChannel` tx
@@ -151,4 +171,49 @@ pub struct StoredProvider {
     pub address: Vec<u8>,
     pub endpoint: String,
     pub last_update_cp: i64,
+}
+
+// --- Per-(provider, model) offering ---
+
+/// On-chain `Offering` mirror — one row per (provider, model_id).
+/// INSERT on `RegisterOffering`, UPDATE on `UpdateOffering` /
+/// `DeactivateOffering`.
+#[derive(Insertable, AsChangeset, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_offerings)]
+pub struct StoredOffering {
+    pub provider: Vec<u8>,
+    pub model_id: String,
+    pub prompt_micros_per_1k: i64,
+    pub completion_micros_per_1k: i64,
+    pub cache_read_micros_per_1k: i64,
+    pub cache_write_micros_per_1k: i64,
+    pub request_micros: i64,
+    pub ttft_bound_ms: i32,
+    pub ttot_bound_ms: i32,
+    pub active: bool,
+    pub updated_at_cp: i64,
+    pub updated_at_ms: i64,
+}
+
+/// Per-Settle denormalized row joining the voucher's cumulative_* with
+/// the channel's snapshotted model_id + payee. One row per Settle tx;
+/// INSERT-only (no upsert — the chain enforces tx_sequence_number is
+/// unique).
+#[derive(Insertable, Queryable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_inference_settlements)]
+pub struct StoredInferenceSettlement {
+    pub tx_sequence_number: i64,
+    pub cp_sequence_number: i64,
+    pub channel_id: Vec<u8>,
+    pub payer: Vec<u8>,
+    pub payee: Vec<u8>,
+    pub model_id: String,
+    pub cumulative_amount: i64,
+    pub cumulative_prompt_tokens: i64,
+    pub cumulative_completion_tokens: i64,
+    pub cumulative_cache_read_tokens: i64,
+    pub cumulative_cache_write_tokens: i64,
+    pub cumulative_requests: i64,
+    pub delta_amount: i64,
+    pub timestamp_ms: i64,
 }

@@ -12,6 +12,8 @@ pub mod state;
 mod relay;
 mod router;
 mod server;
+mod trusted;
+pub use trusted::TrustedProviders;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,7 +73,12 @@ pub async fn run(
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()?;
-    let relay_ctx = relay::RelayCtx { channel: channel.clone(), http };
+    let relay_ctx = relay::RelayCtx {
+        channel: channel.clone(),
+        http,
+        wallet: wallet.clone(),
+        signer: address,
+    };
 
     let cs = Arc::new(server::ClientState { router: inner_router, relay: relay_ctx });
     let app = server::build_router(cs);

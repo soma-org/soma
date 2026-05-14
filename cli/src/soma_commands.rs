@@ -43,7 +43,7 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ObjectsCommand, ProviderCommand, SomaValidatorCommand, WalletCommand};
+use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectsCommand, OfferingCommand, ProviderCommand, SomaValidatorCommand, WalletCommand};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
 use crate::usdc_amount::UsdcAmount;
@@ -430,6 +430,35 @@ EXAMPLES:
     Provider {
         #[clap(subcommand)]
         cmd: ProviderCommand,
+    },
+
+    /// Manage per-(provider, model) on-chain offerings.
+    #[clap(
+        name = "offering",
+        after_help = "\
+EXAMPLES:
+    soma offering register --model-id anthropic/claude-haiku-4.5 \\
+        --prompt-micros-per-1k 1000 --completion-micros-per-1k 5000
+    soma offering show --model-id anthropic/claude-haiku-4.5
+    soma offering deactivate --model-id anthropic/claude-haiku-4.5"
+    )]
+    Offering {
+        #[clap(subcommand)]
+        cmd: OfferingCommand,
+    },
+
+    /// Read the protocol-config `ModelRegistry`.
+    #[clap(
+        name = "model",
+        after_help = "\
+EXAMPLES:
+    soma model list
+    soma model list --ids-only
+    soma model show --model-id anthropic/claude-sonnet-4.6"
+    )]
+    Model {
+        #[clap(subcommand)]
+        cmd: ModelCommand,
     },
 
     /// Manage validators (register, set gas price, commission)
@@ -968,6 +997,10 @@ impl SomaCommand {
             SomaCommand::Channel { cmd } => cmd.execute().await,
 
             SomaCommand::Provider { cmd } => cmd.execute().await,
+
+            SomaCommand::Offering { cmd } => cmd.execute().await,
+
+            SomaCommand::Model { cmd } => cmd.execute().await,
 
             // =================================================================
             // OPERATOR COMMANDS

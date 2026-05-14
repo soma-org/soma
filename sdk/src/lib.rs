@@ -23,6 +23,7 @@ pub mod client_config;
 pub mod crypto_utils;
 pub mod error;
 pub mod keypair;
+pub mod offering;
 pub mod provider;
 pub mod transaction_builder;
 pub mod wallet_context;

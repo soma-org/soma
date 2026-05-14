@@ -276,21 +276,31 @@ impl SharedObjVerManager {
         );
         let mut assigned_versions = Vec::new();
         for (cert, effects) in certs_and_effects {
-            let initial_version_map: BTreeMap<_, _> = cert
-                .transaction_data()
-                .shared_input_objects()
-                .into_iter()
-                .map(|input| input.into_id_and_version())
-                .collect();
-            let cert_assigned_versions: Vec<_> = effects
+            // Map effects' input shared objects by id so we can look up the version each
+            // shared input was read at during the on-chain execution. Lazy-create inputs
+            // (declared by the tx but never materialized — see
+            // `ObjectReadResultKind::NotYetCreated`) don't appear in the effects' input
+            // shared objects, so we fall back to the declared initial_shared_version for
+            // those — that's the version the scheduler assigned at the time of execution.
+            let effect_version_by_id: BTreeMap<_, _> = effects
                 .input_shared_objects()
                 .into_iter()
                 .map(|iso| {
                     let (id, version) = iso.id_and_version();
-                    let initial_version = initial_version_map
+                    (id, version)
+                })
+                .collect();
+            let cert_assigned_versions: Vec<_> = cert
+                .transaction_data()
+                .shared_input_objects()
+                .into_iter()
+                .map(|input| {
+                    let (id, initial_version) = input.into_id_and_version();
+                    let version = effect_version_by_id
                         .get(&id)
-                        .expect("transaction must have all inputs from effects");
-                    ((id, *initial_version), version)
+                        .copied()
+                        .unwrap_or(initial_version);
+                    ((id, initial_version), version)
                 })
                 .collect();
             let tx_key = cert.key();

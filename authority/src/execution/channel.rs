@@ -23,12 +23,13 @@
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::balance::BalanceEvent;
 use types::base::{SomaAddress, TimestampMs};
-use types::channel::{Channel, ChannelV1, Voucher};
+use types::channel::{Channel, ChannelV1, OfferingSnapshot, Voucher};
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{Object, ObjectID};
+use types::offering::Offering;
 use types::provider_inbox::ProviderInbox;
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
@@ -180,6 +181,57 @@ impl ChannelExecutor {
         Ok(state.parameters().clone())
     }
 
+    /// Load the active `Offering` for (payee, model_id) — declared as
+    /// a read-only shared input by `OpenChannel`. Errors if the
+    /// offering doesn't exist or is deactivated. Returns the snapshot
+    /// fields the new channel will store.
+    fn load_offering_snapshot(
+        store: &TemporaryStore,
+        payee: SomaAddress,
+        model_id: &str,
+    ) -> ExecutionResult<OfferingSnapshot> {
+        let offering_id = Offering::derive_id(payee, model_id);
+        let offering_object = store.read_object(&offering_id).ok_or_else(|| {
+            ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id: model_id.to_string(),
+            }
+        })?;
+        let offering = offering_object.as_offering().ok_or_else(|| {
+            ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id: model_id.to_string(),
+            }
+        })?;
+        if !offering.active() {
+            return Err(ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id: model_id.to_string(),
+            }
+            .into());
+        }
+        if offering.provider() != payee || offering.model_id() != model_id {
+            // Defense-in-depth: the derived id constrains both fields,
+            // but verify the embedded fields too in case of forged
+            // objects.
+            return Err(ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id: model_id.to_string(),
+            }
+            .into());
+        }
+        Ok(OfferingSnapshot {
+            model_id: offering.model_id().to_string(),
+            prompt_micros_per_1k: offering.prompt_micros_per_1k(),
+            completion_micros_per_1k: offering.completion_micros_per_1k(),
+            cache_read_micros_per_1k: offering.cache_read_micros_per_1k(),
+            cache_write_micros_per_1k: offering.cache_write_micros_per_1k(),
+            request_micros: offering.request_micros(),
+            ttft_bound_ms: offering.ttft_bound_ms(),
+            ttot_bound_ms: offering.ttot_bound_ms(),
+        })
+    }
+
     /// Execute `OpenChannel`. Signer becomes the payer; deposit is
     /// debited from the signer's accumulator balance via a
     /// `BalanceEvent::Withdraw`. The reservation pre-pass guarantees
@@ -214,6 +266,10 @@ impl ChannelExecutor {
             .into());
         }
 
+        // Resolve the offering snapshot before touching any other
+        // state — fail fast if the model isn't on the provider's menu.
+        let snapshot = Self::load_offering_snapshot(store, args.payee, &args.model_id)?;
+
         // Per-(payer, payee) cap. Load the inbox (or default to a
         // fresh empty one if this is the first OpenChannel against
         // this payee), reject if the signer is already at the cap,
@@ -243,10 +299,8 @@ impl ChannelExecutor {
             args.authorized_signer,
             args.token,
             args.deposit_amount,
+            snapshot,
         );
-        // Re-wrapping not required here — `Channel::new` already
-        // returns a `Channel::V1(...)` and we serialize the outer
-        // enum below.
 
         // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
         store.emit_accumulator_event(
@@ -330,8 +384,19 @@ impl ChannelExecutor {
             .into());
         }
 
-        // 3. Verify voucher signature.
-        let voucher = Voucher::new(args.channel_id, args.cumulative_amount);
+        // 3. Verify voucher signature over the full voucher payload —
+        // cumulative amount AND usage breakdown. The breakdown is
+        // signed so the indexer can trust the per-channel token
+        // counts for oracle queries.
+        let voucher = Voucher::new(
+            args.channel_id,
+            args.cumulative_amount,
+            args.cumulative_prompt_tokens,
+            args.cumulative_completion_tokens,
+            args.cumulative_cache_read_tokens,
+            args.cumulative_cache_write_tokens,
+            args.cumulative_requests,
+        );
         Self::verify_voucher_signature(&channel, voucher, &args.voucher_signature)?;
 
         // 4. Cumulative-monotonicity (replay protection).
@@ -614,8 +679,70 @@ mod tests {
     };
 
     use super::*;
+    use types::offering::Offering;
+    use types::transaction::RatingReasonCode;
 
     const GRACE_PERIOD_MS: u64 = 600_000; // 10 minutes — matches protocol default.
+
+    /// Canonical model_id used by the channel executor tests. Must be an
+    /// active entry in the protocol-config `ModelRegistry` at
+    /// `ProtocolVersion::MIN` so the offering executor's model lookup
+    /// would succeed against it.
+    const TEST_MODEL_ID: &str = "anthropic/claude-sonnet-4.6";
+
+    /// Build a default `OpenChannelArgs` for the fixture's payee+signer
+    /// at the canonical test model. Tests override individual fields
+    /// via struct-update syntax (`..default_open_args(...)`).
+    fn default_open_args(payee: SomaAddress, signer: SomaAddress) -> OpenChannelArgs {
+        OpenChannelArgs {
+            payee,
+            authorized_signer: signer,
+            token: CoinType::Usdc,
+            deposit_amount: 100_000,
+            model_id: TEST_MODEL_ID.to_string(),
+        }
+    }
+
+    /// Build a default `SettleArgs` carrying only the cumulative
+    /// amount; usage breakdown defaults to zeros. Tests that care
+    /// about specific usage values override via struct-update.
+    fn default_settle_args(
+        channel_id: ObjectID,
+        cumulative_amount: u64,
+        voucher_signature: GenericSignature,
+    ) -> SettleArgs {
+        SettleArgs {
+            channel_id,
+            cumulative_amount,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
+            voucher_signature,
+        }
+    }
+
+    /// Build a default `RateChannelArgs` with `Quality` reason_code.
+    fn default_rate_args(channel_id: ObjectID, negative: bool) -> RateChannelArgs {
+        RateChannelArgs {
+            channel_id,
+            negative,
+            reason_code: RatingReasonCode::Quality,
+        }
+    }
+
+    /// Build a test `Offering` for `(payee, model_id)` with zero
+    /// prices and SLA bounds — enough to pass the snapshot lookup in
+    /// `execute_open` without distorting downstream settlement math.
+    fn test_offering(payee: SomaAddress) -> Offering {
+        Offering::new(
+            payee,
+            TEST_MODEL_ID.to_string(),
+            0, 0, 0, 0, 0, 0, 0,
+            0,
+        )
+    }
 
     /// Common fixtures for channel-executor tests. Default: `payer`
     /// also signs vouchers (i.e., `authorized_signer == payer`), so
@@ -642,9 +769,13 @@ mod tests {
             }
         }
 
-        /// Sign a voucher with the channel's authorized signer.
+        /// Sign a voucher with the channel's authorized signer. Uses
+        /// the zero-usage form because the executor's signature check
+        /// reconstructs the voucher from `SettleArgs.cumulative_*`
+        /// fields — tests that don't pass usage breakdown sign zeros
+        /// for both sides.
         fn sign_voucher(&self, cumulative_amount: u64) -> GenericSignature {
-            let voucher = Voucher::new(self.channel_id, cumulative_amount);
+            let voucher = Voucher::new_amount_only(self.channel_id, cumulative_amount);
             let intent_msg =
                 IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
             Signature::new_secure(&intent_msg, &self.signer_kp).into()
@@ -655,7 +786,7 @@ mod tests {
         /// before handing the wrapped `Channel::V1(...)` to
         /// `make_store`.
         fn channel_with_deposit(&self, deposit: u64) -> ChannelV1 {
-            let Channel::V1(c) = Channel::new(
+            let Channel::V1(c) = Channel::new_for_testing(
                 self.payer,
                 self.payee,
                 self.signer_addr,
@@ -676,11 +807,17 @@ mod tests {
     /// `inbox` lets the test preload the per-payee `ProviderInbox`.
     /// `None` simulates "first OpenChannel for this payee" (executor
     /// creates one); `Some(...)` simulates an inbox already on chain.
-    fn make_store(
+    /// Variant of `make_store` that also preloads an `Offering` shared
+    /// input — `OpenChannel` requires one to exist for the
+    /// `(payee, model_id)` pair the args reference. Most channel-op
+    /// tests use the wrapper `make_store` below; `OpenChannel`-driving
+    /// tests use this form directly.
+    fn make_store_with_offering(
         clock_ts: u64,
         grace_ms: u64,
         channel: Option<(ObjectID, ChannelV1)>,
         inbox: Option<types::provider_inbox::ProviderInbox>,
+        offering: Option<Offering>,
     ) -> TemporaryStore {
         let mut inputs: Vec<ObjectReadResult> = Vec::new();
 
@@ -769,6 +906,22 @@ mod tests {
             ));
         }
 
+        // Per-(provider, model) Offering (read-only shared input for
+        // OpenChannel). The executor uses it to snapshot prices + SLA
+        // onto the new channel.
+        if let Some(offering) = offering {
+            let id = Offering::derive_id(offering.provider(), offering.model_id());
+            let obj = Object::new_offering_for_testing(offering);
+            inputs.push(ObjectReadResult::new(
+                InputObjectKind::SharedObject {
+                    id,
+                    initial_shared_version: types::object::OBJECT_START_VERSION,
+                    mutable: false,
+                },
+                ObjectReadResultKind::Object(obj),
+            ));
+        }
+
         TemporaryStore::new(
             InputObjects::new(inputs),
             Vec::new(),
@@ -778,6 +931,18 @@ mod tests {
             0,
             Chain::Unknown,
         )
+    }
+
+    /// Back-compat wrapper for tests that don't drive `OpenChannel`
+    /// (Settle / Close / TopUp / Withdraw / Rate) and therefore don't
+    /// need an Offering preloaded.
+    fn make_store(
+        clock_ts: u64,
+        grace_ms: u64,
+        channel: Option<(ObjectID, ChannelV1)>,
+        inbox: Option<types::provider_inbox::ProviderInbox>,
+    ) -> TemporaryStore {
+        make_store_with_offering(clock_ts, grace_ms, channel, inbox, None)
     }
 
     // ---------------------------------------------------------------
@@ -792,7 +957,7 @@ mod tests {
     #[test]
     fn open_channel_happy_path() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
 
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
@@ -803,6 +968,7 @@ mod tests {
                 authorized_signer: f.signer_addr,
                 token: CoinType::Usdc,
                 deposit_amount: 100_000,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )
@@ -843,7 +1009,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_self_channel() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -853,6 +1019,7 @@ mod tests {
                 authorized_signer: f.signer_addr,
                 token: CoinType::Usdc,
                 deposit_amount: 1_000,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )
@@ -864,7 +1031,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_authorized_signer() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -874,6 +1041,7 @@ mod tests {
                 authorized_signer: SomaAddress::ZERO,
                 token: CoinType::Usdc,
                 deposit_amount: 1_000,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )
@@ -886,7 +1054,7 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_deposit() {
         let f = Fixture::new();
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, None);
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -896,6 +1064,7 @@ mod tests {
                 authorized_signer: f.signer_addr,
                 token: CoinType::Usdc,
                 deposit_amount: 0,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )
@@ -928,6 +1097,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 300,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: voucher_sig,
             },
             TransactionDigest::default(),
@@ -967,6 +1141,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(100),
             },
             TransactionDigest::default(),
@@ -981,6 +1160,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 250,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(250),
             },
             TransactionDigest::default(),
@@ -1005,6 +1189,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(100),
             },
             TransactionDigest::default(),
@@ -1017,6 +1206,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(100),
             },
             TransactionDigest::default(),
@@ -1039,7 +1233,12 @@ mod tests {
             f.payee,
             SettleArgs {
                 channel_id: f.channel_id,
-                cumulative_amount: 200, // less than settled_amount
+                cumulative_amount: 200,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0, // less than settled_amount
                 voucher_signature: f.sign_voucher(200),
             },
             TransactionDigest::default(),
@@ -1059,7 +1258,12 @@ mod tests {
             f.payee,
             SettleArgs {
                 channel_id: f.channel_id,
-                cumulative_amount: 1_000_000, // way more than deposit
+                cumulative_amount: 1_000_000,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0, // way more than deposit
                 voucher_signature: f.sign_voucher(1_000_000),
             },
             TransactionDigest::default(),
@@ -1082,6 +1286,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(100),
             },
             TransactionDigest::default(),
@@ -1100,7 +1309,7 @@ mod tests {
 
         // Sign with a wrong key.
         let (_, wrong_kp): (_, Ed25519KeyPair) = get_key_pair();
-        let voucher = Voucher::new(f.channel_id, 100);
+        let voucher = Voucher::new_amount_only(f.channel_id, 100);
         let intent_msg =
             IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let bad_sig: GenericSignature = Signature::new_secure(&intent_msg, &wrong_kp).into();
@@ -1112,6 +1321,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: bad_sig,
             },
             TransactionDigest::default(),
@@ -1140,6 +1354,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 300,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(300),
             },
             TransactionDigest::default(),
@@ -1170,6 +1389,11 @@ mod tests {
             SettleArgs {
                 channel_id: f.channel_id,
                 cumulative_amount: 100,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: f.sign_voucher(100),
             },
             TransactionDigest::default(),
@@ -1191,7 +1415,7 @@ mod tests {
         exec.execute_rate_channel(
             &mut store,
             f.payer,
-            RateChannelArgs { channel_id: f.channel_id, negative: true },
+            RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
             TransactionDigest::default(),
         )
         .expect("RateChannel succeeds");
@@ -1207,7 +1431,7 @@ mod tests {
         exec.execute_rate_channel(
             &mut store,
             f.payer,
-            RateChannelArgs { channel_id: f.channel_id, negative: false },
+            RateChannelArgs { channel_id: f.channel_id, negative: false , reason_code: RatingReasonCode::Quality},
             TransactionDigest::default(),
         )
         .expect("RateChannel succeeds for positive flag");
@@ -1227,7 +1451,7 @@ mod tests {
             .execute_rate_channel(
                 &mut store,
                 f.payee, // not payer
-                RateChannelArgs { channel_id: f.channel_id, negative: true },
+                RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
                 TransactionDigest::default(),
             )
             .expect_err("non-payer must be rejected");
@@ -1247,7 +1471,7 @@ mod tests {
             .execute_rate_channel(
                 &mut store,
                 f.payer,
-                RateChannelArgs { channel_id: f.channel_id, negative: true },
+                RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
                 TransactionDigest::default(),
             )
             .expect_err("zero-settled must be rejected");
@@ -1560,7 +1784,7 @@ mod tests {
         let f = Fixture::new();
         // Pre-seed an inbox with cap-1 entries; one more should land.
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP - 1);
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -1570,6 +1794,7 @@ mod tests {
                 authorized_signer: f.signer_addr,
                 token: CoinType::Usdc,
                 deposit_amount: 1_000,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )
@@ -1591,7 +1816,7 @@ mod tests {
     fn open_channel_rejects_at_cap() {
         let f = Fixture::new();
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         let status = exec
             .execute_open(
@@ -1602,6 +1827,7 @@ mod tests {
                     authorized_signer: f.signer_addr,
                     token: CoinType::Usdc,
                     deposit_amount: 1_000,
+                model_id: TEST_MODEL_ID.to_string(),
                 },
                 TransactionDigest::default(),
             )
@@ -1625,7 +1851,7 @@ mod tests {
         let f = Fixture::new();
         // alice = f.payer, already at the cap.
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
-        let mut store = make_store(0, GRACE_PERIOD_MS, None, Some(inbox));
+        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
 
         // Different payer: fresh signer + address.
@@ -1638,6 +1864,7 @@ mod tests {
                 authorized_signer: bob,
                 token: CoinType::Usdc,
                 deposit_amount: 1_000,
+                model_id: TEST_MODEL_ID.to_string(),
             },
             TransactionDigest::default(),
         )

@@ -5088,6 +5088,122 @@ impl<'de> serde::Deserialize<'de> for DeactivateModel {
         deserializer.deserialize_struct("soma.rpc.DeactivateModel", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for DeactivateOffering {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.offering_id.is_some() {
+            len += 1;
+        }
+        if self.model_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.DeactivateOffering", len)?;
+        if let Some(v) = self.offering_id.as_ref() {
+            struct_ser.serialize_field("offeringId", v)?;
+        }
+        if let Some(v) = self.model_id.as_ref() {
+            struct_ser.serialize_field("modelId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for DeactivateOffering {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "offering_id",
+            "offeringId",
+            "model_id",
+            "modelId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            OfferingId,
+            ModelId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "offeringId" | "offering_id" => Ok(GeneratedField::OfferingId),
+                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = DeactivateOffering;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.DeactivateOffering")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<DeactivateOffering, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut offering_id__ = None;
+                let mut model_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::OfferingId => {
+                            if offering_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("offeringId"));
+                            }
+                            offering_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::ModelId => {
+                            if model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("modelId"));
+                            }
+                            model_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(DeactivateOffering {
+                    offering_id: offering_id__,
+                    model_id: model_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.DeactivateOffering", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for DelegationEntry {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -6483,6 +6599,11 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::ChannelTooManyOpenForPair => "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
             Self::ChannelInboxPayeeMismatch => "CHANNEL_INBOX_PAYEE_MISMATCH",
             Self::NotAProviderInbox => "NOT_A_PROVIDER_INBOX",
+            Self::OfferingAlreadyExists => "OFFERING_ALREADY_EXISTS",
+            Self::OfferingNotFound => "OFFERING_NOT_FOUND",
+            Self::OfferingCallerMismatch => "OFFERING_CALLER_MISMATCH",
+            Self::OfferingUnknownModel => "OFFERING_UNKNOWN_MODEL",
+            Self::ChannelOfferingMissing => "CHANNEL_OFFERING_MISSING",
         };
         serializer.serialize_str(variant)
     }
@@ -6573,6 +6694,11 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "CHANNEL_TOO_MANY_OPEN_FOR_PAIR",
             "CHANNEL_INBOX_PAYEE_MISMATCH",
             "NOT_A_PROVIDER_INBOX",
+            "OFFERING_ALREADY_EXISTS",
+            "OFFERING_NOT_FOUND",
+            "OFFERING_CALLER_MISMATCH",
+            "OFFERING_UNKNOWN_MODEL",
+            "CHANNEL_OFFERING_MISSING",
         ];
 
         struct GeneratedVisitor;
@@ -6692,6 +6818,11 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "CHANNEL_TOO_MANY_OPEN_FOR_PAIR" => Ok(execution_error::ExecutionErrorKind::ChannelTooManyOpenForPair),
                     "CHANNEL_INBOX_PAYEE_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ChannelInboxPayeeMismatch),
                     "NOT_A_PROVIDER_INBOX" => Ok(execution_error::ExecutionErrorKind::NotAProviderInbox),
+                    "OFFERING_ALREADY_EXISTS" => Ok(execution_error::ExecutionErrorKind::OfferingAlreadyExists),
+                    "OFFERING_NOT_FOUND" => Ok(execution_error::ExecutionErrorKind::OfferingNotFound),
+                    "OFFERING_CALLER_MISMATCH" => Ok(execution_error::ExecutionErrorKind::OfferingCallerMismatch),
+                    "OFFERING_UNKNOWN_MODEL" => Ok(execution_error::ExecutionErrorKind::OfferingUnknownModel),
+                    "CHANNEL_OFFERING_MISSING" => Ok(execution_error::ExecutionErrorKind::ChannelOfferingMissing),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -12341,6 +12472,9 @@ impl serde::Serialize for OpenChannel {
         if self.deposit_amount.is_some() {
             len += 1;
         }
+        if self.model_id.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.OpenChannel", len)?;
         if let Some(v) = self.payee.as_ref() {
             struct_ser.serialize_field("payee", v)?;
@@ -12355,6 +12489,9 @@ impl serde::Serialize for OpenChannel {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("depositAmount", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.model_id.as_ref() {
+            struct_ser.serialize_field("modelId", v)?;
         }
         struct_ser.end()
     }
@@ -12372,6 +12509,8 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
             "token",
             "deposit_amount",
             "depositAmount",
+            "model_id",
+            "modelId",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -12380,6 +12519,7 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
             AuthorizedSigner,
             Token,
             DepositAmount,
+            ModelId,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -12406,6 +12546,7 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
                             "authorizedSigner" | "authorized_signer" => Ok(GeneratedField::AuthorizedSigner),
                             "token" => Ok(GeneratedField::Token),
                             "depositAmount" | "deposit_amount" => Ok(GeneratedField::DepositAmount),
+                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -12431,6 +12572,7 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
                 let mut authorized_signer__ = None;
                 let mut token__ = None;
                 let mut deposit_amount__ = None;
+                let mut model_id__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Payee => {
@@ -12459,6 +12601,12 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::ModelId => {
+                            if model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("modelId"));
+                            }
+                            model_id__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -12469,6 +12617,7 @@ impl<'de> serde::Deserialize<'de> for OpenChannel {
                     authorized_signer: authorized_signer__,
                     token: token__,
                     deposit_amount: deposit_amount__,
+                    model_id: model_id__,
                 })
             }
         }
@@ -13431,12 +13580,18 @@ impl serde::Serialize for RateChannel {
         if self.negative.is_some() {
             len += 1;
         }
+        if self.reason_code.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RateChannel", len)?;
         if let Some(v) = self.channel_id.as_ref() {
             struct_ser.serialize_field("channelId", v)?;
         }
         if let Some(v) = self.negative.as_ref() {
             struct_ser.serialize_field("negative", v)?;
+        }
+        if let Some(v) = self.reason_code.as_ref() {
+            struct_ser.serialize_field("reasonCode", v)?;
         }
         struct_ser.end()
     }
@@ -13451,12 +13606,15 @@ impl<'de> serde::Deserialize<'de> for RateChannel {
             "channel_id",
             "channelId",
             "negative",
+            "reason_code",
+            "reasonCode",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ChannelId,
             Negative,
+            ReasonCode,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -13481,6 +13639,7 @@ impl<'de> serde::Deserialize<'de> for RateChannel {
                         match value {
                             "channelId" | "channel_id" => Ok(GeneratedField::ChannelId),
                             "negative" => Ok(GeneratedField::Negative),
+                            "reasonCode" | "reason_code" => Ok(GeneratedField::ReasonCode),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -13504,6 +13663,7 @@ impl<'de> serde::Deserialize<'de> for RateChannel {
             {
                 let mut channel_id__ = None;
                 let mut negative__ = None;
+                let mut reason_code__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ChannelId => {
@@ -13518,6 +13678,14 @@ impl<'de> serde::Deserialize<'de> for RateChannel {
                             }
                             negative__ = map_.next_value()?;
                         }
+                        GeneratedField::ReasonCode => {
+                            if reason_code__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("reasonCode"));
+                            }
+                            reason_code__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -13526,10 +13694,259 @@ impl<'de> serde::Deserialize<'de> for RateChannel {
                 Ok(RateChannel {
                     channel_id: channel_id__,
                     negative: negative__,
+                    reason_code: reason_code__,
                 })
             }
         }
         deserializer.deserialize_struct("soma.rpc.RateChannel", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for RegisterOffering {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.model_id.is_some() {
+            len += 1;
+        }
+        if self.prompt_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.completion_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.cache_read_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.cache_write_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.request_micros.is_some() {
+            len += 1;
+        }
+        if self.ttft_bound_ms.is_some() {
+            len += 1;
+        }
+        if self.ttot_bound_ms.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.RegisterOffering", len)?;
+        if let Some(v) = self.model_id.as_ref() {
+            struct_ser.serialize_field("modelId", v)?;
+        }
+        if let Some(v) = self.prompt_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("promptMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.completion_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("completionMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cache_read_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cacheReadMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cache_write_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cacheWriteMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.request_micros.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("requestMicros", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.ttft_bound_ms.as_ref() {
+            struct_ser.serialize_field("ttftBoundMs", v)?;
+        }
+        if let Some(v) = self.ttot_bound_ms.as_ref() {
+            struct_ser.serialize_field("ttotBoundMs", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for RegisterOffering {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "model_id",
+            "modelId",
+            "prompt_micros_per_1k",
+            "promptMicrosPer1k",
+            "completion_micros_per_1k",
+            "completionMicrosPer1k",
+            "cache_read_micros_per_1k",
+            "cacheReadMicrosPer1k",
+            "cache_write_micros_per_1k",
+            "cacheWriteMicrosPer1k",
+            "request_micros",
+            "requestMicros",
+            "ttft_bound_ms",
+            "ttftBoundMs",
+            "ttot_bound_ms",
+            "ttotBoundMs",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ModelId,
+            PromptMicrosPer1k,
+            CompletionMicrosPer1k,
+            CacheReadMicrosPer1k,
+            CacheWriteMicrosPer1k,
+            RequestMicros,
+            TtftBoundMs,
+            TtotBoundMs,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
+                            "promptMicrosPer1k" | "prompt_micros_per_1k" => Ok(GeneratedField::PromptMicrosPer1k),
+                            "completionMicrosPer1k" | "completion_micros_per_1k" => Ok(GeneratedField::CompletionMicrosPer1k),
+                            "cacheReadMicrosPer1k" | "cache_read_micros_per_1k" => Ok(GeneratedField::CacheReadMicrosPer1k),
+                            "cacheWriteMicrosPer1k" | "cache_write_micros_per_1k" => Ok(GeneratedField::CacheWriteMicrosPer1k),
+                            "requestMicros" | "request_micros" => Ok(GeneratedField::RequestMicros),
+                            "ttftBoundMs" | "ttft_bound_ms" => Ok(GeneratedField::TtftBoundMs),
+                            "ttotBoundMs" | "ttot_bound_ms" => Ok(GeneratedField::TtotBoundMs),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = RegisterOffering;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.RegisterOffering")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<RegisterOffering, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut model_id__ = None;
+                let mut prompt_micros_per_1k__ = None;
+                let mut completion_micros_per_1k__ = None;
+                let mut cache_read_micros_per_1k__ = None;
+                let mut cache_write_micros_per_1k__ = None;
+                let mut request_micros__ = None;
+                let mut ttft_bound_ms__ = None;
+                let mut ttot_bound_ms__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ModelId => {
+                            if model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("modelId"));
+                            }
+                            model_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::PromptMicrosPer1k => {
+                            if prompt_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("promptMicrosPer1k"));
+                            }
+                            prompt_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CompletionMicrosPer1k => {
+                            if completion_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("completionMicrosPer1k"));
+                            }
+                            completion_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CacheReadMicrosPer1k => {
+                            if cache_read_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cacheReadMicrosPer1k"));
+                            }
+                            cache_read_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CacheWriteMicrosPer1k => {
+                            if cache_write_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cacheWriteMicrosPer1k"));
+                            }
+                            cache_write_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::RequestMicros => {
+                            if request_micros__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("requestMicros"));
+                            }
+                            request_micros__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TtftBoundMs => {
+                            if ttft_bound_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("ttftBoundMs"));
+                            }
+                            ttft_bound_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TtotBoundMs => {
+                            if ttot_bound_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("ttotBoundMs"));
+                            }
+                            ttot_bound_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(RegisterOffering {
+                    model_id: model_id__,
+                    prompt_micros_per_1k: prompt_micros_per_1k__,
+                    completion_micros_per_1k: completion_micros_per_1k__,
+                    cache_read_micros_per_1k: cache_read_micros_per_1k__,
+                    cache_write_micros_per_1k: cache_write_micros_per_1k__,
+                    request_micros: request_micros__,
+                    ttft_bound_ms: ttft_bound_ms__,
+                    ttot_bound_ms: ttot_bound_ms__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.RegisterOffering", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for RegisterProvider {
@@ -14713,6 +15130,21 @@ impl serde::Serialize for Settle {
         if self.voucher_signature.is_some() {
             len += 1;
         }
+        if self.cumulative_prompt_tokens.is_some() {
+            len += 1;
+        }
+        if self.cumulative_completion_tokens.is_some() {
+            len += 1;
+        }
+        if self.cumulative_cache_read_tokens.is_some() {
+            len += 1;
+        }
+        if self.cumulative_cache_write_tokens.is_some() {
+            len += 1;
+        }
+        if self.cumulative_requests.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Settle", len)?;
         if let Some(v) = self.channel_id.as_ref() {
             struct_ser.serialize_field("channelId", v)?;
@@ -14726,6 +15158,31 @@ impl serde::Serialize for Settle {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("voucherSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.cumulative_prompt_tokens.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cumulativePromptTokens", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cumulative_completion_tokens.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cumulativeCompletionTokens", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cumulative_cache_read_tokens.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cumulativeCacheReadTokens", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cumulative_cache_write_tokens.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cumulativeCacheWriteTokens", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cumulative_requests.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cumulativeRequests", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -14743,6 +15200,16 @@ impl<'de> serde::Deserialize<'de> for Settle {
             "cumulativeAmount",
             "voucher_signature",
             "voucherSignature",
+            "cumulative_prompt_tokens",
+            "cumulativePromptTokens",
+            "cumulative_completion_tokens",
+            "cumulativeCompletionTokens",
+            "cumulative_cache_read_tokens",
+            "cumulativeCacheReadTokens",
+            "cumulative_cache_write_tokens",
+            "cumulativeCacheWriteTokens",
+            "cumulative_requests",
+            "cumulativeRequests",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -14750,6 +15217,11 @@ impl<'de> serde::Deserialize<'de> for Settle {
             ChannelId,
             CumulativeAmount,
             VoucherSignature,
+            CumulativePromptTokens,
+            CumulativeCompletionTokens,
+            CumulativeCacheReadTokens,
+            CumulativeCacheWriteTokens,
+            CumulativeRequests,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -14775,6 +15247,11 @@ impl<'de> serde::Deserialize<'de> for Settle {
                             "channelId" | "channel_id" => Ok(GeneratedField::ChannelId),
                             "cumulativeAmount" | "cumulative_amount" => Ok(GeneratedField::CumulativeAmount),
                             "voucherSignature" | "voucher_signature" => Ok(GeneratedField::VoucherSignature),
+                            "cumulativePromptTokens" | "cumulative_prompt_tokens" => Ok(GeneratedField::CumulativePromptTokens),
+                            "cumulativeCompletionTokens" | "cumulative_completion_tokens" => Ok(GeneratedField::CumulativeCompletionTokens),
+                            "cumulativeCacheReadTokens" | "cumulative_cache_read_tokens" => Ok(GeneratedField::CumulativeCacheReadTokens),
+                            "cumulativeCacheWriteTokens" | "cumulative_cache_write_tokens" => Ok(GeneratedField::CumulativeCacheWriteTokens),
+                            "cumulativeRequests" | "cumulative_requests" => Ok(GeneratedField::CumulativeRequests),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -14799,6 +15276,11 @@ impl<'de> serde::Deserialize<'de> for Settle {
                 let mut channel_id__ = None;
                 let mut cumulative_amount__ = None;
                 let mut voucher_signature__ = None;
+                let mut cumulative_prompt_tokens__ = None;
+                let mut cumulative_completion_tokens__ = None;
+                let mut cumulative_cache_read_tokens__ = None;
+                let mut cumulative_cache_write_tokens__ = None;
+                let mut cumulative_requests__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ChannelId => {
@@ -14823,6 +15305,46 @@ impl<'de> serde::Deserialize<'de> for Settle {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::CumulativePromptTokens => {
+                            if cumulative_prompt_tokens__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cumulativePromptTokens"));
+                            }
+                            cumulative_prompt_tokens__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CumulativeCompletionTokens => {
+                            if cumulative_completion_tokens__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cumulativeCompletionTokens"));
+                            }
+                            cumulative_completion_tokens__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CumulativeCacheReadTokens => {
+                            if cumulative_cache_read_tokens__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cumulativeCacheReadTokens"));
+                            }
+                            cumulative_cache_read_tokens__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CumulativeCacheWriteTokens => {
+                            if cumulative_cache_write_tokens__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cumulativeCacheWriteTokens"));
+                            }
+                            cumulative_cache_write_tokens__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CumulativeRequests => {
+                            if cumulative_requests__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cumulativeRequests"));
+                            }
+                            cumulative_requests__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -14832,6 +15354,11 @@ impl<'de> serde::Deserialize<'de> for Settle {
                     channel_id: channel_id__,
                     cumulative_amount: cumulative_amount__,
                     voucher_signature: voucher_signature__,
+                    cumulative_prompt_tokens: cumulative_prompt_tokens__,
+                    cumulative_completion_tokens: cumulative_completion_tokens__,
+                    cumulative_cache_read_tokens: cumulative_cache_read_tokens__,
+                    cumulative_cache_write_tokens: cumulative_cache_write_tokens__,
+                    cumulative_requests: cumulative_requests__,
                 })
             }
         }
@@ -18647,6 +19174,15 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::UpdateProvider(v) => {
                     struct_ser.serialize_field("updateProvider", v)?;
                 }
+                transaction_kind::Kind::RegisterOffering(v) => {
+                    struct_ser.serialize_field("registerOffering", v)?;
+                }
+                transaction_kind::Kind::UpdateOffering(v) => {
+                    struct_ser.serialize_field("updateOffering", v)?;
+                }
+                transaction_kind::Kind::DeactivateOffering(v) => {
+                    struct_ser.serialize_field("deactivateOffering", v)?;
+                }
                 transaction_kind::Kind::Settlement(v) => {
                     struct_ser.serialize_field("settlement", v)?;
                 }
@@ -18753,6 +19289,12 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "registerProvider",
             "update_provider",
             "updateProvider",
+            "register_offering",
+            "registerOffering",
+            "update_offering",
+            "updateOffering",
+            "deactivate_offering",
+            "deactivateOffering",
             "settlement",
             "balance_transfer",
             "balanceTransfer",
@@ -18805,6 +19347,9 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             RateChannel,
             RegisterProvider,
             UpdateProvider,
+            RegisterOffering,
+            UpdateOffering,
+            DeactivateOffering,
             Settlement,
             BalanceTransfer,
             __SkipField__,
@@ -18874,6 +19419,9 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "rateChannel" | "rate_channel" => Ok(GeneratedField::RateChannel),
                             "registerProvider" | "register_provider" => Ok(GeneratedField::RegisterProvider),
                             "updateProvider" | "update_provider" => Ok(GeneratedField::UpdateProvider),
+                            "registerOffering" | "register_offering" => Ok(GeneratedField::RegisterOffering),
+                            "updateOffering" | "update_offering" => Ok(GeneratedField::UpdateOffering),
+                            "deactivateOffering" | "deactivate_offering" => Ok(GeneratedField::DeactivateOffering),
                             "settlement" => Ok(GeneratedField::Settlement),
                             "balanceTransfer" | "balance_transfer" => Ok(GeneratedField::BalanceTransfer),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -19213,6 +19761,27 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("updateProvider"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UpdateProvider)
+;
+                        }
+                        GeneratedField::RegisterOffering => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("registerOffering"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::RegisterOffering)
+;
+                        }
+                        GeneratedField::UpdateOffering => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("updateOffering"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UpdateOffering)
+;
+                        }
+                        GeneratedField::DeactivateOffering => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("deactivateOffering"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::DeactivateOffering)
 ;
                         }
                         GeneratedField::Settlement => {
@@ -20133,6 +20702,272 @@ impl<'de> serde::Deserialize<'de> for UndoReportValidator {
             }
         }
         deserializer.deserialize_struct("soma.rpc.UndoReportValidator", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for UpdateOffering {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.offering_id.is_some() {
+            len += 1;
+        }
+        if self.model_id.is_some() {
+            len += 1;
+        }
+        if self.prompt_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.completion_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.cache_read_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.cache_write_micros_per_1k.is_some() {
+            len += 1;
+        }
+        if self.request_micros.is_some() {
+            len += 1;
+        }
+        if self.ttft_bound_ms.is_some() {
+            len += 1;
+        }
+        if self.ttot_bound_ms.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateOffering", len)?;
+        if let Some(v) = self.offering_id.as_ref() {
+            struct_ser.serialize_field("offeringId", v)?;
+        }
+        if let Some(v) = self.model_id.as_ref() {
+            struct_ser.serialize_field("modelId", v)?;
+        }
+        if let Some(v) = self.prompt_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("promptMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.completion_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("completionMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cache_read_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cacheReadMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.cache_write_micros_per_1k.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("cacheWriteMicrosPer1k", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.request_micros.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("requestMicros", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.ttft_bound_ms.as_ref() {
+            struct_ser.serialize_field("ttftBoundMs", v)?;
+        }
+        if let Some(v) = self.ttot_bound_ms.as_ref() {
+            struct_ser.serialize_field("ttotBoundMs", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for UpdateOffering {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "offering_id",
+            "offeringId",
+            "model_id",
+            "modelId",
+            "prompt_micros_per_1k",
+            "promptMicrosPer1k",
+            "completion_micros_per_1k",
+            "completionMicrosPer1k",
+            "cache_read_micros_per_1k",
+            "cacheReadMicrosPer1k",
+            "cache_write_micros_per_1k",
+            "cacheWriteMicrosPer1k",
+            "request_micros",
+            "requestMicros",
+            "ttft_bound_ms",
+            "ttftBoundMs",
+            "ttot_bound_ms",
+            "ttotBoundMs",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            OfferingId,
+            ModelId,
+            PromptMicrosPer1k,
+            CompletionMicrosPer1k,
+            CacheReadMicrosPer1k,
+            CacheWriteMicrosPer1k,
+            RequestMicros,
+            TtftBoundMs,
+            TtotBoundMs,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "offeringId" | "offering_id" => Ok(GeneratedField::OfferingId),
+                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
+                            "promptMicrosPer1k" | "prompt_micros_per_1k" => Ok(GeneratedField::PromptMicrosPer1k),
+                            "completionMicrosPer1k" | "completion_micros_per_1k" => Ok(GeneratedField::CompletionMicrosPer1k),
+                            "cacheReadMicrosPer1k" | "cache_read_micros_per_1k" => Ok(GeneratedField::CacheReadMicrosPer1k),
+                            "cacheWriteMicrosPer1k" | "cache_write_micros_per_1k" => Ok(GeneratedField::CacheWriteMicrosPer1k),
+                            "requestMicros" | "request_micros" => Ok(GeneratedField::RequestMicros),
+                            "ttftBoundMs" | "ttft_bound_ms" => Ok(GeneratedField::TtftBoundMs),
+                            "ttotBoundMs" | "ttot_bound_ms" => Ok(GeneratedField::TtotBoundMs),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = UpdateOffering;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.UpdateOffering")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<UpdateOffering, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut offering_id__ = None;
+                let mut model_id__ = None;
+                let mut prompt_micros_per_1k__ = None;
+                let mut completion_micros_per_1k__ = None;
+                let mut cache_read_micros_per_1k__ = None;
+                let mut cache_write_micros_per_1k__ = None;
+                let mut request_micros__ = None;
+                let mut ttft_bound_ms__ = None;
+                let mut ttot_bound_ms__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::OfferingId => {
+                            if offering_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("offeringId"));
+                            }
+                            offering_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::ModelId => {
+                            if model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("modelId"));
+                            }
+                            model_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::PromptMicrosPer1k => {
+                            if prompt_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("promptMicrosPer1k"));
+                            }
+                            prompt_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CompletionMicrosPer1k => {
+                            if completion_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("completionMicrosPer1k"));
+                            }
+                            completion_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CacheReadMicrosPer1k => {
+                            if cache_read_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cacheReadMicrosPer1k"));
+                            }
+                            cache_read_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CacheWriteMicrosPer1k => {
+                            if cache_write_micros_per_1k__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("cacheWriteMicrosPer1k"));
+                            }
+                            cache_write_micros_per_1k__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::RequestMicros => {
+                            if request_micros__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("requestMicros"));
+                            }
+                            request_micros__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TtftBoundMs => {
+                            if ttft_bound_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("ttftBoundMs"));
+                            }
+                            ttft_bound_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::TtotBoundMs => {
+                            if ttot_bound_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("ttotBoundMs"));
+                            }
+                            ttot_bound_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(UpdateOffering {
+                    offering_id: offering_id__,
+                    model_id: model_id__,
+                    prompt_micros_per_1k: prompt_micros_per_1k__,
+                    completion_micros_per_1k: completion_micros_per_1k__,
+                    cache_read_micros_per_1k: cache_read_micros_per_1k__,
+                    cache_write_micros_per_1k: cache_write_micros_per_1k__,
+                    request_micros: request_micros__,
+                    ttft_bound_ms: ttft_bound_ms__,
+                    ttot_bound_ms: ttot_bound_ms__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.UpdateOffering", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for UpdateProvider {
@@ -22062,9 +22897,15 @@ impl serde::Serialize for WithdrawAfterTimeout {
         if self.channel_id.is_some() {
             len += 1;
         }
+        if self.payee.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.WithdrawAfterTimeout", len)?;
         if let Some(v) = self.channel_id.as_ref() {
             struct_ser.serialize_field("channelId", v)?;
+        }
+        if let Some(v) = self.payee.as_ref() {
+            struct_ser.serialize_field("payee", v)?;
         }
         struct_ser.end()
     }
@@ -22078,11 +22919,13 @@ impl<'de> serde::Deserialize<'de> for WithdrawAfterTimeout {
         const FIELDS: &[&str] = &[
             "channel_id",
             "channelId",
+            "payee",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ChannelId,
+            Payee,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -22106,6 +22949,7 @@ impl<'de> serde::Deserialize<'de> for WithdrawAfterTimeout {
                     {
                         match value {
                             "channelId" | "channel_id" => Ok(GeneratedField::ChannelId),
+                            "payee" => Ok(GeneratedField::Payee),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -22128,6 +22972,7 @@ impl<'de> serde::Deserialize<'de> for WithdrawAfterTimeout {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut channel_id__ = None;
+                let mut payee__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ChannelId => {
@@ -22136,6 +22981,12 @@ impl<'de> serde::Deserialize<'de> for WithdrawAfterTimeout {
                             }
                             channel_id__ = map_.next_value()?;
                         }
+                        GeneratedField::Payee => {
+                            if payee__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("payee"));
+                            }
+                            payee__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -22143,6 +22994,7 @@ impl<'de> serde::Deserialize<'de> for WithdrawAfterTimeout {
                 }
                 Ok(WithdrawAfterTimeout {
                     channel_id: channel_id__,
+                    payee: payee__,
                 })
             }
         }

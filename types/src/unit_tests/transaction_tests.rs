@@ -827,16 +827,20 @@ fn test_input_objects_open_channel() {
         authorized_signer: SomaAddress::random(),
         token: crate::object::CoinType::Usdc,
         deposit_amount: 1_000,
+        model_id: "anthropic/claude-opus-4".to_string(),
     });
     let inputs = kind.input_objects().expect("OpenChannel inputs build");
     let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
-    assert_eq!(inputs.len(), 2);
+    let offering_id = crate::offering::Offering::derive_id(payee, "anthropic/claude-opus-4");
+    // Inputs: SystemState (read), ProviderInbox (write), Offering (read).
+    assert_eq!(inputs.len(), 3);
 
     let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
     assert!(ids.contains(&inbox_id));
     assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
+    assert!(ids.contains(&offering_id));
 
-    // ProviderInbox mutable; SystemState read-only.
+    // ProviderInbox mutable; SystemState + Offering read-only.
     for input in &inputs {
         let id = input.object_id();
         let expected_mut = id == inbox_id;
@@ -851,6 +855,11 @@ fn test_input_objects_settle() {
     let kind = TransactionKind::Settle(SettleArgs {
         channel_id,
         cumulative_amount: 100,
+        cumulative_prompt_tokens: 0,
+        cumulative_completion_tokens: 0,
+        cumulative_cache_read_tokens: 0,
+        cumulative_cache_write_tokens: 0,
+        cumulative_requests: 0,
         voucher_signature: dummy_voucher_signature(),
     });
     let inputs = kind.input_objects().expect("Settle inputs build");
@@ -924,7 +933,7 @@ fn test_input_objects_withdraw_after_timeout() {
 fn dummy_voucher_signature() -> crate::crypto::GenericSignature {
     use fastcrypto::ed25519::Ed25519KeyPair;
     let (_, kp): (SomaAddress, Ed25519KeyPair) = crate::crypto::get_key_pair();
-    let voucher = crate::channel::Voucher::new(ObjectID::ZERO, 0);
+    let voucher = crate::channel::Voucher::new_amount_only(ObjectID::ZERO, 0);
     let intent_msg = crate::intent::IntentMessage::new(
         crate::intent::Intent::soma_app(crate::intent::IntentScope::PaymentVoucher),
         voucher,

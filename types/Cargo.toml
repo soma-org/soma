@@ -80,6 +80,7 @@ storage = ["dep:store"]
 cloud-storage = ["dep:object_store"]
 server = ["dep:axum", "dep:axum-server", "dep:soma-http"]
 tls = ["dep:rustls", "dep:tokio-rustls", "dep:tonic-rustls", "dep:hyper-rustls", "dep:webpki", "dep:x509-parser", "dep:rcgen", "dep:reqwest"]
+test-utils = []
 full = ["storage", "cloud-storage", "server", "tls"]
 
 [lints]

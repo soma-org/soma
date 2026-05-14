@@ -11,6 +11,7 @@ use channel::ChannelExecutor;
 // Stage 13b: CoinExecutor deleted along with the Transfer /
 // MergeCoins tx kinds.
 use object::ObjectExecutor;
+use offering::OfferingExecutor;
 use prepare_gas::{GasPreparationResult, prepare_gas};
 use provider::ProviderExecutor;
 use settlement::SettlementExecutor;
@@ -40,6 +41,7 @@ mod change_epoch;
 mod channel;
 // Stage 13b: mod coin removed.
 mod object;
+mod offering;
 mod prepare_gas;
 mod provider;
 mod settlement;
@@ -462,6 +464,9 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::RateChannel(_) => Box::new(ChannelExecutor::new()),
 
         // Provider registry
+        TransactionKind::RegisterOffering(_)
+        | TransactionKind::UpdateOffering(_)
+        | TransactionKind::DeactivateOffering(_) => Box::new(OfferingExecutor::new()),
         TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_) => {
             Box::new(ProviderExecutor::new())
         }

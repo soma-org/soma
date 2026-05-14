@@ -5115,6 +5115,112 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::UpdateProvider(field.into()));
             self
         }
+        pub fn register_offering(&self) -> &RegisterOffering {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &self.kind {
+                field as _
+            } else {
+                RegisterOffering::default_instance() as _
+            }
+        }
+        pub fn register_offering_opt(&self) -> Option<&RegisterOffering> {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_offering_opt_mut(&mut self) -> Option<&mut RegisterOffering> {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_offering_mut(&mut self) -> &mut RegisterOffering {
+            if self.register_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RegisterOffering(RegisterOffering::default()),
+                );
+            }
+            self.register_offering_opt_mut().unwrap()
+        }
+        pub fn with_register_offering(mut self, field: RegisterOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::RegisterOffering(field.into()));
+            self
+        }
+        pub fn update_offering(&self) -> &UpdateOffering {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &self.kind {
+                field as _
+            } else {
+                UpdateOffering::default_instance() as _
+            }
+        }
+        pub fn update_offering_opt(&self) -> Option<&UpdateOffering> {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_offering_opt_mut(&mut self) -> Option<&mut UpdateOffering> {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_offering_mut(&mut self) -> &mut UpdateOffering {
+            if self.update_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UpdateOffering(UpdateOffering::default()),
+                );
+            }
+            self.update_offering_opt_mut().unwrap()
+        }
+        pub fn with_update_offering(mut self, field: UpdateOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::UpdateOffering(field.into()));
+            self
+        }
+        pub fn deactivate_offering(&self) -> &DeactivateOffering {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &self.kind {
+                field as _
+            } else {
+                DeactivateOffering::default_instance() as _
+            }
+        }
+        pub fn deactivate_offering_opt(&self) -> Option<&DeactivateOffering> {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn deactivate_offering_opt_mut(
+            &mut self,
+        ) -> Option<&mut DeactivateOffering> {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn deactivate_offering_mut(&mut self) -> &mut DeactivateOffering {
+            if self.deactivate_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::DeactivateOffering(
+                        DeactivateOffering::default(),
+                    ),
+                );
+            }
+            self.deactivate_offering_opt_mut().unwrap()
+        }
+        pub fn with_deactivate_offering(mut self, field: DeactivateOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::DeactivateOffering(field.into()));
+            self
+        }
         pub fn settlement(&self) -> &Settlement {
             if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
                 field as _
@@ -6671,6 +6777,7 @@ mod _getter_impls {
                 authorized_signer: None,
                 token: None,
                 deposit_amount: None,
+                model_id: None,
             }
         }
         #[doc(hidden)]
@@ -6694,6 +6801,10 @@ mod _getter_impls {
             self.deposit_amount = Some(field.into());
             self
         }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
     }
     impl Settle {
         pub const fn const_default() -> Self {
@@ -6701,6 +6812,11 @@ mod _getter_impls {
                 channel_id: None,
                 cumulative_amount: None,
                 voucher_signature: None,
+                cumulative_prompt_tokens: None,
+                cumulative_completion_tokens: None,
+                cumulative_cache_read_tokens: None,
+                cumulative_cache_write_tokens: None,
+                cumulative_requests: None,
             }
         }
         #[doc(hidden)]
@@ -6720,6 +6836,26 @@ mod _getter_impls {
             self.voucher_signature = Some(field.into());
             self
         }
+        pub fn with_cumulative_prompt_tokens(mut self, field: u64) -> Self {
+            self.cumulative_prompt_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_completion_tokens(mut self, field: u64) -> Self {
+            self.cumulative_completion_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_cache_read_tokens(mut self, field: u64) -> Self {
+            self.cumulative_cache_read_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_cache_write_tokens(mut self, field: u64) -> Self {
+            self.cumulative_cache_write_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_requests(mut self, field: u64) -> Self {
+            self.cumulative_requests = Some(field.into());
+            self
+        }
     }
     impl RequestClose {
         pub const fn const_default() -> Self {
@@ -6737,7 +6873,10 @@ mod _getter_impls {
     }
     impl WithdrawAfterTimeout {
         pub const fn const_default() -> Self {
-            Self { channel_id: None }
+            Self {
+                channel_id: None,
+                payee: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -6746,6 +6885,10 @@ mod _getter_impls {
         }
         pub fn with_channel_id(mut self, field: String) -> Self {
             self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_payee(mut self, field: String) -> Self {
+            self.payee = Some(field.into());
             self
         }
     }
@@ -6780,6 +6923,7 @@ mod _getter_impls {
             Self {
                 channel_id: None,
                 negative: None,
+                reason_code: None,
             }
         }
         #[doc(hidden)]
@@ -6793,6 +6937,138 @@ mod _getter_impls {
         }
         pub fn with_negative(mut self, field: bool) -> Self {
             self.negative = Some(field.into());
+            self
+        }
+        pub fn with_reason_code(mut self, field: u32) -> Self {
+            self.reason_code = Some(field.into());
+            self
+        }
+    }
+    impl RegisterOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                model_id: None,
+                prompt_micros_per_1k: None,
+                completion_micros_per_1k: None,
+                cache_read_micros_per_1k: None,
+                cache_write_micros_per_1k: None,
+                request_micros: None,
+                ttft_bound_ms: None,
+                ttot_bound_ms: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RegisterOffering = RegisterOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn with_prompt_micros_per_1k(mut self, field: u64) -> Self {
+            self.prompt_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_completion_micros_per_1k(mut self, field: u64) -> Self {
+            self.completion_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_read_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_read_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_write_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_write_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_request_micros(mut self, field: u64) -> Self {
+            self.request_micros = Some(field.into());
+            self
+        }
+        pub fn with_ttft_bound_ms(mut self, field: u32) -> Self {
+            self.ttft_bound_ms = Some(field.into());
+            self
+        }
+        pub fn with_ttot_bound_ms(mut self, field: u32) -> Self {
+            self.ttot_bound_ms = Some(field.into());
+            self
+        }
+    }
+    impl UpdateOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                offering_id: None,
+                model_id: None,
+                prompt_micros_per_1k: None,
+                completion_micros_per_1k: None,
+                cache_read_micros_per_1k: None,
+                cache_write_micros_per_1k: None,
+                request_micros: None,
+                ttft_bound_ms: None,
+                ttot_bound_ms: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UpdateOffering = UpdateOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_offering_id(mut self, field: String) -> Self {
+            self.offering_id = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn with_prompt_micros_per_1k(mut self, field: u64) -> Self {
+            self.prompt_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_completion_micros_per_1k(mut self, field: u64) -> Self {
+            self.completion_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_read_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_read_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_write_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_write_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_request_micros(mut self, field: u64) -> Self {
+            self.request_micros = Some(field.into());
+            self
+        }
+        pub fn with_ttft_bound_ms(mut self, field: u32) -> Self {
+            self.ttft_bound_ms = Some(field.into());
+            self
+        }
+        pub fn with_ttot_bound_ms(mut self, field: u32) -> Self {
+            self.ttot_bound_ms = Some(field.into());
+            self
+        }
+    }
+    impl DeactivateOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                offering_id: None,
+                model_id: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: DeactivateOffering = DeactivateOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_offering_id(mut self, field: String) -> Self {
+            self.offering_id = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
             self
         }
     }

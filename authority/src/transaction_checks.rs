@@ -222,6 +222,9 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
             ObjectReadResultKind::DeletedSharedObject(_, _) => (),
             // We skip checking shared objects from cancelled transactions since we are not reading it.
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => (),
+            // Lazy-create inputs that never materialized — nothing to check;
+            // executor decides whether the missing-object case is acceptable.
+            ObjectReadResultKind::NotYetCreated(_) => (),
         }
     }
 

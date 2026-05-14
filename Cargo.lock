@@ -3093,6 +3093,7 @@ dependencies = [
  "node",
  "rand 0.8.5",
  "rpc",
+ "sdk",
  "soma-keys",
  "tempfile",
  "test-cluster",
@@ -4418,6 +4419,7 @@ dependencies = [
  "bcs",
  "bytes",
  "dirs 6.0.0",
+ "e2e-tests",
  "fastcrypto",
  "fs2",
  "futures",
@@ -4440,6 +4442,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "types",
+ "utils",
  "uuid",
  "wiremock",
 ]

@@ -47,6 +47,9 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
         TransactionKind::RateChannel(_) => "RateChannel",
         TransactionKind::RegisterProvider(_) => "RegisterProvider",
         TransactionKind::UpdateProvider(_) => "UpdateProvider",
+        TransactionKind::RegisterOffering(_) => "RegisterOffering",
+        TransactionKind::UpdateOffering(_) => "UpdateOffering",
+        TransactionKind::DeactivateOffering(_) => "DeactivateOffering",
         TransactionKind::Settlement(_) => "Settlement",
         TransactionKind::BalanceTransfer(_) => "BalanceTransfer",
     }

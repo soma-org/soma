@@ -48,6 +48,9 @@ rand.workspace = true
 test-cluster.workspace = true
 soma-keys.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+e2e-tests.workspace = true
+utils.workspace = true
 
 [lints]
 workspace = true

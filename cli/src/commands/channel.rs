@@ -30,6 +30,12 @@ pub enum ChannelCommand {
         /// Deposit amount in base units of the coin (USDC = micros).
         #[clap(long)]
         deposit: u64,
+        /// Canonical model id from the protocol ModelRegistry. The
+        /// channel binds to this model for its entire lifetime; the
+        /// chain executor snapshots the matching `(payee, model_id)`
+        /// offering's prices + SLA bounds at open time.
+        #[clap(long)]
+        model_id: String,
         /// Override the active wallet address.
         #[clap(long)]
         address: Option<SomaAddress>,
@@ -143,7 +149,7 @@ impl From<CoinTypeArg> for CoinType {
 impl ChannelCommand {
     pub async fn execute(self) -> Result<()> {
         match self {
-            Self::Open { payee, coin_type, deposit, address, client } => {
+            Self::Open { payee, coin_type, deposit, model_id, address, client } => {
                 let (mut ctx, signer) = build_wallet(client, address)?;
                 let coin_type: CoinType = coin_type.into();
                 let id = sdk::channel::open_channel(
@@ -153,6 +159,7 @@ impl ChannelCommand {
                     signer,
                     coin_type,
                     deposit,
+                    model_id,
                 )
                 .await?;
                 println!("{}", id);
@@ -160,7 +167,11 @@ impl ChannelCommand {
             }
             Self::Settle { channel_id, cumulative_amount, signature_b64, address, client } => {
                 let (mut ctx, signer) = build_wallet(client, address)?;
-                let voucher = Voucher::new(channel_id, cumulative_amount);
+                // CLI `settle` only carries the cumulative amount; the
+                // usage breakdown defaults to zero. Producer-side
+                // tooling that signs vouchers with real usage uses the
+                // SDK directly.
+                let voucher = Voucher::new_amount_only(channel_id, cumulative_amount);
                 let sig = decode_sig(&signature_b64)?;
                 sdk::channel::settle(&mut_owned(&mut ctx), signer, voucher, sig).await?;
                 println!("settled {channel_id} at {cumulative_amount}");

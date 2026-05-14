@@ -192,6 +192,16 @@ diesel::table! {
         opened_at_cp -> Int8,
         opened_tx_digest -> Bytea,
         last_update_cp -> Int8,
+        // 2026-05-13: per-channel offering snapshot. `model_id` is
+        // empty on legacy rows opened pre-migration.
+        model_id -> Text,
+        prompt_micros_per_1k -> Int8,
+        completion_micros_per_1k -> Int8,
+        cache_read_micros_per_1k -> Int8,
+        cache_write_micros_per_1k -> Int8,
+        request_micros -> Int8,
+        ttft_bound_ms -> Int4,
+        ttot_bound_ms -> Int4,
     }
 }
 
@@ -202,6 +212,53 @@ diesel::table! {
         channel_id -> Bytea,
         kind -> Text,
         delta -> Int8,
+        timestamp_ms -> Int8,
+        // 2026-05-13: voucher-side usage deltas + rating reason code.
+        tokens_in_delta -> Int8,
+        tokens_out_delta -> Int8,
+        cache_read_delta -> Int8,
+        cache_write_delta -> Int8,
+        requests_delta -> Int8,
+        rating_reason_code -> Nullable<Int2>,
+    }
+}
+
+diesel::table! {
+    soma_offerings (provider, model_id) {
+        provider -> Bytea,
+        model_id -> Text,
+        prompt_micros_per_1k -> Int8,
+        completion_micros_per_1k -> Int8,
+        cache_read_micros_per_1k -> Int8,
+        cache_write_micros_per_1k -> Int8,
+        request_micros -> Int8,
+        ttft_bound_ms -> Int4,
+        ttot_bound_ms -> Int4,
+        active -> Bool,
+        updated_at_cp -> Int8,
+        updated_at_ms -> Int8,
+    }
+}
+
+// 2026-05-14: per-Settle denormalized row. One row per chain Settle
+// tx, joining the voucher's cumulative_* with the channel's
+// snapshotted model_id + payee so a single table scan answers
+// "how many tokens of model X has provider Y delivered today".
+diesel::table! {
+    soma_inference_settlements (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        model_id -> Text,
+        cumulative_amount -> Int8,
+        cumulative_prompt_tokens -> Int8,
+        cumulative_completion_tokens -> Int8,
+        cumulative_cache_read_tokens -> Int8,
+        cumulative_cache_write_tokens -> Int8,
+        cumulative_requests -> Int8,
+        delta_amount -> Int8,
         timestamp_ms -> Int8,
     }
 }
@@ -315,6 +372,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     soma_epoch_state,
     provider_reputation,
     soma_providers,
+    soma_offerings,
+    soma_inference_settlements,
     soma_staked_soma,
     soma_validators,
     soma_tx_details,

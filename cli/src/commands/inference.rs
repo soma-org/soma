@@ -84,6 +84,29 @@ pub enum InferenceCommand {
         /// from here.
         #[clap(long)]
         indexer_url: String,
+        /// HTTP endpoint of the points service that publishes the
+        /// per-season authorized-providers allowlist (e.g.
+        /// `https://points.soma.org`). When set, the proxy refreshes
+        /// the allowlist periodically and skips routing to any
+        /// provider not on it. somacode defaults to ON via the
+        /// `points.soma.org` endpoint; set `--include-untrusted` to
+        /// opt out.
+        #[clap(long)]
+        trusted_providers_url: Option<String>,
+        /// Refresh interval (seconds) for the trusted-providers
+        /// snapshot. Defaults to 10 minutes — short enough to pick up
+        /// a fresh authorization quickly without hammering the points
+        /// service.
+        #[clap(long, default_value_t = 600)]
+        trusted_providers_refresh_secs: u64,
+        /// Disable the trusted-providers filter entirely. Routes
+        /// through every provider that satisfies the price / SLA
+        /// filters regardless of authorization status. Use this in
+        /// localnet, in tests, and when running with a custom
+        /// `--indexer-url` whose providers aren't on the public
+        /// points list.
+        #[clap(long)]
+        include_untrusted: bool,
     },
 }
 
@@ -112,6 +135,9 @@ impl InferenceCommand {
                 provider_cache_ttl_secs,
                 routing,
                 indexer_url,
+                trusted_providers_url,
+                trusted_providers_refresh_secs,
+                include_untrusted,
             } => {
                 let (wallet, signer) = build_wallet(client, address).await?;
                 let soma_home =
@@ -134,6 +160,11 @@ impl InferenceCommand {
                         weights: Default::default(),
                         indexer_url: Some(indexer_url),
                     },
+                    // Trusted-providers filter on by default (somacode
+                    // posture); `--include-untrusted` opts out.
+                    trusted_providers_only: !include_untrusted,
+                    trusted_providers_url,
+                    trusted_providers_refresh_secs,
                 };
                 inference::proxy::run(cfg, wallet, signer, registry, soma_home).await
             }

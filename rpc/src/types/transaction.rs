@@ -179,6 +179,11 @@ pub enum TransactionKind {
     RegisterProvider(RegisterProviderArgs),
     UpdateProvider(UpdateProviderArgs),
 
+    // Per-(provider, model) offerings
+    RegisterOffering(RegisterOfferingArgs),
+    UpdateOffering(UpdateOfferingArgs),
+    DeactivateOffering(DeactivateOfferingArgs),
+
     /// Per-commit accumulator settlement system transaction (Stage 6a).
     /// Injected by the consensus handler exactly once per commit;
     /// applies aggregated balance-event deltas to the on-chain
@@ -289,12 +294,22 @@ pub struct OpenChannelArgs {
     /// fails fast in conversion rather than at consensus-time.
     pub token: types::object::CoinType,
     pub deposit_amount: u64,
+    /// Canonical model_id from the protocol-config ModelRegistry.
+    /// Channel binds to this single model for its lifetime; the
+    /// executor copies the `(payee, model_id)` offering's price + SLA
+    /// onto the channel at open.
+    pub model_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct SettleArgs {
     pub channel_id: Address,
     pub cumulative_amount: u64,
+    pub cumulative_prompt_tokens: u64,
+    pub cumulative_completion_tokens: u64,
+    pub cumulative_cache_read_tokens: u64,
+    pub cumulative_cache_write_tokens: u64,
+    pub cumulative_requests: u64,
     /// `GenericSignature` byte form (`flag || sig || pk`). Decoded
     /// to `types::crypto::GenericSignature` by the executor.
     pub voucher_signature: Vec<u8>,
@@ -327,6 +342,11 @@ pub struct TopUpArgs {
 pub struct RateChannelArgs {
     pub channel_id: Address,
     pub negative: bool,
+    /// Reason code — auto-emitted by the proxy for TTFT/TTOT breach
+    /// or no-response, or `Quality` for user-driven rates. Stored as
+    /// `u8` over the wire to allow future codes without breaking
+    /// readers (unknown codes project to `Other`).
+    pub reason_code: u8,
 }
 
 // Provider registry arg types
@@ -340,6 +360,39 @@ pub struct RegisterProviderArgs {
 pub struct UpdateProviderArgs {
     pub provider_id: Address,
     pub endpoint: String,
+}
+
+// Per-(provider, model) offering arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RegisterOfferingArgs {
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct UpdateOfferingArgs {
+    pub offering_id: Address,
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct DeactivateOfferingArgs {
+    pub offering_id: Address,
+    pub model_id: String,
 }
 
 // Supporting types for validator management

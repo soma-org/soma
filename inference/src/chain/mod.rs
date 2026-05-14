@@ -38,13 +38,15 @@ pub trait ProviderRegistry: Send + Sync + 'static {
 /// `WalletContext`/transaction building.
 #[async_trait]
 pub trait ChannelSurface: Send + Sync + 'static {
-    /// Open a new channel with `payee` as the provider's address.
-    /// Returns the on-chain `Channel`'s `ObjectID`.
+    /// Open a new channel with `payee` as the provider's address,
+    /// bound to the given `model_id`. The chain executor snapshots
+    /// the provider's offering for that model into the channel.
     async fn open(
         &self,
         payee: SomaAddress,
         coin_type: CoinType,
         deposit_amount: u64,
+        model_id: String,
     ) -> Result<ObjectID, ChainError>;
 
     /// Look up the on-chain `Channel` object by id.

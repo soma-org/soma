@@ -40,7 +40,7 @@ use ::types::crypto::GenericSignature;
 use ::types::object::ObjectID;
 
 use crate::channel::header::{decode_onchain_sig, encode_onchain_sig, SomaPayHeader};
-use crate::channel::{ChannelError, PaymentChannel, RequestMeta};
+use crate::channel::{ChannelError, PaymentChannel, RequestMeta, RequestUsage};
 use crate::now_ms;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +61,41 @@ pub struct TabClientState {
     /// next `authorize` call that uses it.
     #[serde(default)]
     pub realized: HashMap<String, u64>,
+    /// SLA bounds snapshotted onto the channel from the offering at
+    /// open time. The relay layer compares measured TTFT/TTOT against
+    /// these and emits negative `RateChannel` ratings on breach. `0`
+    /// disables the check.
+    #[serde(default)]
+    pub ttft_bound_ms: u32,
+    #[serde(default)]
+    pub ttot_bound_ms: u32,
+    /// Model id bound to this channel — set at slot install from the
+    /// on-chain `Channel.model_id`. The relay rejects requests whose
+    /// payload `model` doesn't match.
+    #[serde(default)]
+    pub model_id: String,
+    /// Cumulative usage breakdown signed alongside `cumulative_authorized_micros`
+    /// onto each on-chain voucher. The relay bumps these counters from the
+    /// upstream `usage` block in `reconcile`, and the next `authorize` call
+    /// embeds the running totals into the signed `Voucher` so the indexer
+    /// can materialize exact per-channel token volume at Settle time.
+    #[serde(default)]
+    pub cumulative_prompt_tokens: u64,
+    #[serde(default)]
+    pub cumulative_completion_tokens: u64,
+    #[serde(default)]
+    pub cumulative_cache_read_tokens: u64,
+    #[serde(default)]
+    pub cumulative_cache_write_tokens: u64,
+    #[serde(default)]
+    pub cumulative_requests: u64,
+    /// Last epoch in which the proxy emitted a `RateChannel(TtftBreach|TtotBreach)`
+    /// for this channel. Used by the relay layer to rate-limit breach ratings
+    /// to at most one per channel per epoch (a tx per breach would balloon gas
+    /// without adding observability — the indexer aggregates ratings per epoch).
+    /// `0` means "never emitted"; the next breach can fire freely.
+    #[serde(default)]
+    pub last_breach_emitted_at_epoch: u64,
 }
 
 impl TabClientState {
@@ -78,6 +113,15 @@ impl TabClientState {
             cumulative_authorized_micros: 0,
             last_authorized: None,
             realized: HashMap::new(),
+            ttft_bound_ms: 0,
+            ttot_bound_ms: 0,
+            model_id: String::new(),
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
+            last_breach_emitted_at_epoch: 0,
         }
     }
 }
@@ -111,6 +155,42 @@ pub struct TabProviderState {
     /// "no progress recorded" and waits for the next live update.
     #[serde(default)]
     pub last_settled_at_amount: u64,
+    /// Cumulative usage breakdown tracked from upstream `post_flight` calls.
+    /// Persisted into `final_settlement`'s `Voucher` so the on-chain
+    /// signature validates against the same per-channel totals the indexer
+    /// records.
+    #[serde(default)]
+    pub cumulative_prompt_tokens: u64,
+    #[serde(default)]
+    pub cumulative_completion_tokens: u64,
+    #[serde(default)]
+    pub cumulative_cache_read_tokens: u64,
+    #[serde(default)]
+    pub cumulative_cache_write_tokens: u64,
+    #[serde(default)]
+    pub cumulative_requests: u64,
+    /// Snapshot of the Voucher fields the *client* signed when it issued
+    /// the most recent on-chain signature in `last_onchain_sig`. The
+    /// client signs over `(channel_id, cumulative_amount, prompt_tokens,
+    /// completion_tokens, cache_read_tokens, cache_write_tokens, requests)`
+    /// using its own counters at sign time (pre-reconcile). The provider
+    /// must reconstruct exactly that voucher at settle time — otherwise
+    /// the chain-side signature verification fails. The provider's own
+    /// `cumulative_*_tokens` counters are advanced by `post_flight` and
+    /// therefore drift past the signed values for the most recent
+    /// request, so we can't reuse them as-is.
+    #[serde(default)]
+    pub last_signed_cumulative_amount: u64,
+    #[serde(default)]
+    pub last_signed_prompt_tokens: u64,
+    #[serde(default)]
+    pub last_signed_completion_tokens: u64,
+    #[serde(default)]
+    pub last_signed_cache_read_tokens: u64,
+    #[serde(default)]
+    pub last_signed_cache_write_tokens: u64,
+    #[serde(default)]
+    pub last_signed_requests: u64,
 }
 
 mod onchain_sig_serde {
@@ -162,6 +242,17 @@ impl TabProviderState {
             // Match the chain's view — anything below this would
             // be rejected by the executor as non-monotonic anyway.
             last_settled_at_amount: on_chain_settled,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
+            last_signed_cumulative_amount: on_chain_settled,
+            last_signed_prompt_tokens: 0,
+            last_signed_completion_tokens: 0,
+            last_signed_cache_read_tokens: 0,
+            last_signed_cache_write_tokens: 0,
+            last_signed_requests: 0,
         }
     }
 }
@@ -275,13 +366,25 @@ impl PaymentChannel for RunningTab {
         .await
         .map_err(|e| ChannelError::Internal(format!("sign_http_voucher: {e}")))?;
 
-        // 4. Sign the on-chain Voucher pair (cumulative+channel_id).
-        //    The provider stores this for `Settle`.
+        // 4. Sign the on-chain Voucher pair (cumulative + per-channel usage
+        //    breakdown). The provider stores this for `Settle`. The usage
+        //    fields are the running cumulative totals that `reconcile` has
+        //    been accumulating from upstream `usage` blocks — the on-chain
+        //    voucher therefore reflects realized token volume exactly, which
+        //    lets the indexer materialize per-channel token deltas in
+        //    `soma_channel_events`.
         let onchain_sig = sdk::channel::sign_voucher(
             &ctx.config.keystore,
             signer,
             state.channel_id,
             new_cum,
+            sdk::channel::VoucherUsage {
+                prompt_tokens: state.cumulative_prompt_tokens,
+                completion_tokens: state.cumulative_completion_tokens,
+                cache_read_tokens: state.cumulative_cache_read_tokens,
+                cache_write_tokens: state.cumulative_cache_write_tokens,
+                requests: state.cumulative_requests,
+            },
         )
         .await
         .map_err(|e| ChannelError::Internal(format!("sign_voucher: {e}")))?;
@@ -369,6 +472,21 @@ impl PaymentChannel for RunningTab {
             return Err(ChannelError::PaymentRequired { need_micros: need });
         }
 
+        // Snapshot the client's signing-time values for this request.
+        // The client signs the on-chain voucher AT AUTH TIME (before its
+        // own `reconcile` runs), so the signature is over
+        // `(channel_id, cum, state.cumulative_*_tokens BEFORE post_flight)`.
+        // At this point in `pre_flight`, the provider's own counters
+        // mirror the client's signing-time values (post_flight for this
+        // request hasn't fired yet). Cache them for `final_settlement`
+        // to rebuild the exact voucher the chain will verify.
+        state.last_signed_cumulative_amount = cum;
+        state.last_signed_prompt_tokens = state.cumulative_prompt_tokens;
+        state.last_signed_completion_tokens = state.cumulative_completion_tokens;
+        state.last_signed_cache_read_tokens = state.cumulative_cache_read_tokens;
+        state.last_signed_cache_write_tokens = state.cumulative_cache_write_tokens;
+        state.last_signed_requests = state.cumulative_requests;
+
         state.cumulative_authorized_micros = cum;
         state.last_request_id = Some(meta.request_id.to_string());
         Ok(())
@@ -379,10 +497,24 @@ impl PaymentChannel for RunningTab {
         state: &mut Self::ProviderState,
         _meta: &RequestMeta<'_>,
         actual_cost_micros: u64,
+        usage: RequestUsage,
     ) -> Result<(), ChannelError> {
         state.total_consumed_micros = state
             .total_consumed_micros
             .saturating_add(actual_cost_micros);
+        state.cumulative_prompt_tokens = state
+            .cumulative_prompt_tokens
+            .saturating_add(usage.prompt_tokens);
+        state.cumulative_completion_tokens = state
+            .cumulative_completion_tokens
+            .saturating_add(usage.completion_tokens);
+        state.cumulative_cache_read_tokens = state
+            .cumulative_cache_read_tokens
+            .saturating_add(usage.cache_read_tokens);
+        state.cumulative_cache_write_tokens = state
+            .cumulative_cache_write_tokens
+            .saturating_add(usage.cache_write_tokens);
+        state.cumulative_requests = state.cumulative_requests.saturating_add(1);
         if state.total_consumed_micros > state.cumulative_authorized_micros {
             tracing::warn!(
                 channel = %state.channel_id,
@@ -399,14 +531,42 @@ impl PaymentChannel for RunningTab {
         state: &mut Self::ClientState,
         request_id: &str,
         actual_cost_micros: u64,
+        usage: RequestUsage,
     ) {
         state.realized.insert(request_id.to_string(), actual_cost_micros);
+        state.cumulative_prompt_tokens = state
+            .cumulative_prompt_tokens
+            .saturating_add(usage.prompt_tokens);
+        state.cumulative_completion_tokens = state
+            .cumulative_completion_tokens
+            .saturating_add(usage.completion_tokens);
+        state.cumulative_cache_read_tokens = state
+            .cumulative_cache_read_tokens
+            .saturating_add(usage.cache_read_tokens);
+        state.cumulative_cache_write_tokens = state
+            .cumulative_cache_write_tokens
+            .saturating_add(usage.cache_write_tokens);
+        state.cumulative_requests = state.cumulative_requests.saturating_add(1);
     }
 
     fn final_settlement(&self, state: &Self::ProviderState) -> Option<(Voucher, GenericSignature)> {
         state.last_onchain_sig.as_ref().map(|sig| {
+            // Settlement voucher MUST be rebuilt from the exact fields the
+            // client signed over for the most recent on-chain voucher.
+            // Provider-side `cumulative_*_tokens` (bumped by `post_flight`)
+            // drift past the signed values by the most recent request's
+            // usage, so they would not match the signature. Use the
+            // snapshot captured in `pre_flight` instead.
             (
-                Voucher::new(state.channel_id, state.cumulative_authorized_micros),
+                Voucher::new(
+                    state.channel_id,
+                    state.last_signed_cumulative_amount,
+                    state.last_signed_prompt_tokens,
+                    state.last_signed_completion_tokens,
+                    state.last_signed_cache_read_tokens,
+                    state.last_signed_cache_write_tokens,
+                    state.last_signed_requests,
+                ),
                 sig.clone(),
             )
         })
@@ -417,7 +577,7 @@ impl PaymentChannel for RunningTab {
 /// `authorized_signer` is read by `verify_http_voucher`. Avoids a
 /// fresh chain read on every request.
 fn synthetic_channel(authorized_signer: SomaAddress) -> Channel {
-    Channel::new(
+    Channel::new_for_testing(
         SomaAddress::ZERO,
         SomaAddress::ZERO,
         authorized_signer,
