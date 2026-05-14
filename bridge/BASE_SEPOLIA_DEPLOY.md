@@ -12,10 +12,10 @@ provider uses the EVM id.
 
 1. `foundryup && cd bridge/evm && forge install`
 2. Each validator: register their bridge key via `soma validator register-bridge-key --bridge-pubkey ... --http-url ...`, then wait one epoch.
-3. `cargo run --bin bridge-committee-export -- --soma-rpc http://<rpc>:9000 --target-chain-id 13 >committee.json 2>committee.env`
-4. `source committee.env`
+3. Edit `bridge/evm/deploy_configs/84532.json` once with USDC address, limiter cap, and supported source chains. (Repo ships a sane default.)
+4. `cargo run --bin bridge-committee-export -- --soma-rpc http://<rpc>:9000 --target-chain-id 13 --output bridge/evm/deploy_configs/84532.json` (MERGES committee fields into the file; re-runnable per committee rotation.)
 5. Fund deployer wallet from https://portal.cdp.coinbase.com/products/faucet
-6. `ETH_CHAIN_ID=13 USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e LIMITER_TOTAL_LIMIT=1000000000000 SUPPORTED_SOMA_CHAINS=2 forge script script/Deploy.s.sol:Deploy --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK --broadcast --verify --etherscan-api-key $BASESCAN_KEY`
+6. `cd bridge/evm && forge script script/DeployBridge.s.sol:DeployBridge --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK --broadcast --verify --etherscan-api-key $BASESCAN_KEY` (the script auto-reads `deploy_configs/84532.json` keyed off `block.chainid`.)
 7. Materialize per-validator configs from `bridge-node/configs/base-sepolia.toml.template` with the four deployed addresses substituted in.
 8. Fund every validator's operator wallet with ~0.5 ETH on Base Sepolia.
 9. On each validator host: `bridge-node --config /etc/soma/bridge.toml` (under systemd / supervisor).
@@ -92,6 +92,50 @@ normal release.
 
 ---
 
+## Pre-deployment validation
+
+Before any deploy or upgrade, validate that every upgradeable bridge
+contract is upgrade-safe. The OpenZeppelin Foundry Upgrades plugin
+statically checks: storage layout (no reorders / no holes / no retyped
+slots), UUPS shape (impl exports `_authorizeUpgrade`, no `selfdestruct`,
+no raw `delegatecall`), and initializer wiring. A storage-layout
+regression in an impl will brick every existing proxy at upgrade time —
+this check is the only thing standing between a typo and a permanent
+fund-locking event.
+
+Run:
+
+```sh
+cd bridge/evm
+forge clean
+forge test --force --match-path test/UpgradeValidationTest.t.sol -vvv
+```
+
+Expected: 3 `[PASS]` lines, one each for `BridgeCommittee`, `BridgeLimiter`,
+and `SomaBridge`.
+
+Failures here MUST block the deploy. The most likely cause is a
+state-variable reorder in an impl — fix the order to match the previous
+version's layout, **NOT** the validation test.
+
+### One-time machine setup
+
+The OZ plugin shells out to a Node.js binary (`@openzeppelin/upgrades-core`)
+via `ffi` to do storage-layout diffing. On a fresh machine `npx` will
+auto-install it the first time the test runs (one-time, then cached);
+subsequent runs are offline. If the auto-install is blocked by your
+network policy, pre-install with:
+
+```sh
+npm install --global @openzeppelin/upgrades-core
+```
+
+The `forge clean && --force` is intentional — the plugin needs a *full*
+compilation in `out/build-info/`, not the partial one Foundry produces
+on incremental rebuilds.
+
+---
+
 ## Phase 1: Validators register their bridge keys
 
 Each validator must add their secp256k1 bridge pubkey to `BridgeState.bridge_committee` **before** the export step. This is a per-validator on-chain action, not something the operator does centrally.
@@ -136,75 +180,85 @@ soma tx <register-tx-digest>     # confirm execution
 ### Verification
 
 ```sh
+# Dry-run the committee export to stdout (no merge) and inspect:
 cargo run --bin bridge-committee-export -- \
     --soma-rpc $SOMA_RPC --target-chain-id 13 \
-    -o /tmp/committee.json 2>/tmp/committee.err
+    > /tmp/committee-preview.json 2>/tmp/committee.err
 
-jq '.members | length' /tmp/committee.json
+jq '.committeeMembers | length' /tmp/committee-preview.json
 # Expect N.
-jq '.stakes' /tmp/committee.json
+jq '.committeeStake' /tmp/committee-preview.json
 # Expect each validator's BPS share, summing to 10000.
 ```
 
-If `members.length` is less than your validator count, one or more
-registrations didn't land — re-check each validator's submitted tx
-and rerun after the next epoch.
+If `committeeMembers.length` is less than your validator count, one or
+more registrations didn't land — re-check each validator's submitted
+tx and rerun after the next epoch.
 
 ---
 
-## Phase 2: Export the committee
+## Phase 2: Edit deploy_configs + export the committee
 
-Run the export tool against any Soma fullnode RPC. JSON goes to stdout;
-the env-var snippet for the Foundry script goes to stderr, so redirect
-them separately:
+Deployment config lives in `bridge/evm/deploy_configs/<EVM-CHAIN-ID>.json`
+(checked into the repo). For Base Sepolia the file is
+`bridge/evm/deploy_configs/84532.json`. The Foundry script picks the
+file up automatically — there are no env vars to set anymore.
+
+The file has two kinds of fields:
+
+| Field                  | Owned by   | Source                                      |
+|------------------------|------------|---------------------------------------------|
+| `committeeMembers`     | export tool| `bridge-committee-export` populates         |
+| `committeeStake`       | export tool| `bridge-committee-export` populates         |
+| `somaCommitteeDigest`  | export tool| `bridge-committee-export` populates         |
+| `ethChainId`           | operator   | edit once (BridgeChainId byte)              |
+| `usdcAddress`          | operator   | edit once (Circle USDC on target chain)     |
+| `limiterTotalLimit`    | operator   | edit per policy (string-encoded uint64)     |
+| `supportedSomaChains`  | operator   | edit once (`BridgeChainId` bytes)           |
+
+Edit the operator-owned fields once (the file ships with sane defaults
+for Base Sepolia). Then run the export tool with `--output` pointing
+at the SAME file — it will MERGE the committee fields into the existing
+JSON, preserving all your other fields:
 
 ```sh
 cargo run --bin bridge-committee-export -- \
     --soma-rpc $SOMA_RPC \
     --target-chain-id 13 \
-    > committee.json \
-    2> committee.env
+    --output bridge/evm/deploy_configs/84532.json
 ```
 
-Example `committee.json`:
+Re-run this command whenever the on-chain committee rotates. Your
+`usdcAddress` / `limiterTotalLimit` / etc. stay untouched.
+
+Example `deploy_configs/84532.json` after a successful export:
 
 ```json
 {
-  "members": [
+  "committeeMembers": [
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "0xcccccccccccccccccccccccccccccccccccccccc",
     "0xdddddddddddddddddddddddddddddddddddddddd"
   ],
-  "stakes": [2500, 2500, 2500, 2500],
-  "chain_id": 13,
-  "total_stake_bps_before_normalize": 10000,
-  "soma_committee_digest": "0x9b1c...e4f0"
+  "committeeStake": [2500, 2500, 2500, 2500],
+  "ethChainId": 13,
+  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "limiterTotalLimit": "1000000000000",
+  "supportedSomaChains": [2],
+  "somaCommitteeDigest": "0x9b1c...e4f0"
 }
 ```
 
-Example `committee.env`:
-
-```sh
-# Source this in your shell before running the Foundry deploy:
-export COMMITTEE_MEMBERS="0xaaaa...,0xbbbb...,0xcccc...,0xdddd..."
-export COMMITTEE_STAKES="2500,2500,2500,2500"
-export COMMITTEE_CHAIN_ID="13"
-export SOMA_COMMITTEE_DIGEST="0x9b1c...e4f0"
-```
-
-Source it before Phase 4 so the Foundry script picks up the env vars:
-
-```sh
-source committee.env
-```
+If `--output` is omitted, the export tool writes a full JSON blob to
+stdout (with empty operator placeholders); use this for dry-runs and
+inspection, never as the deploy file.
 
 ### Verification
 
-- `total_stake_bps_before_normalize` should equal `10000` (the
-  `SystemParameters::bridge_total_voting_power` invariant). A large
-  delta means either a Soma-side bug or a stale RPC — DO NOT proceed.
-- Record `soma_committee_digest` in your deployment ledger. The bridge
+- `jq '.committeeStake | add' bridge/evm/deploy_configs/84532.json`
+  must return `10000`. (`BridgeCommittee.initialize` reverts otherwise.)
+- Record `somaCommitteeDigest` in your deployment ledger. The bridge
   nodes recompute it at runtime and refuse to relay if the on-chain
   committee diverges from the one baked into `BridgeCommittee.initialize`.
 
@@ -229,56 +283,63 @@ cast balance --rpc-url $BASE_SEPOLIA_RPC $(cast wallet address --private-key $DE
 
 ## Phase 4: Deploy Eth contracts
 
-Make sure `committee.env` is sourced and the deployer wallet is funded.
-Then run the Foundry script. All env vars below are read by
-`script/Deploy.s.sol` via `vm.envXxx` — see the docstring at the top
-of that file for the canonical list.
+Make sure `bridge/evm/deploy_configs/84532.json` is filled in (Phase 2)
+and the deployer wallet is funded (Phase 3). Then run the Foundry
+script. There are no env vars to pass — the script reads
+`deploy_configs/<block.chainid>.json` automatically.
 
 ```sh
 cd bridge/evm
 
-ETH_CHAIN_ID=13 \
-USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e \
-LIMITER_TOTAL_LIMIT=1000000000000 \
-SUPPORTED_SOMA_CHAINS=2 \
-forge script script/Deploy.s.sol:Deploy \
+forge script script/DeployBridge.s.sol:DeployBridge \
     --rpc-url $BASE_SEPOLIA_RPC \
     --private-key $DEPLOYER_PK \
     --broadcast \
     --verify --etherscan-api-key $BASESCAN_KEY
 ```
 
-Notes on each env var:
+Notes on the config fields (see `bridge/evm/deploy_configs/84532.json`):
 
-- `ETH_CHAIN_ID=13` — Soma's `BridgeChainId::BaseSepolia` byte. NOT the
+- `ethChainId: 13` — Soma's `BridgeChainId::BaseSepolia` byte. NOT the
   EVM chain id (`84532`). The script narrows to `uint8` and embeds it
   in `BridgeCommittee.initialize`.
-- `USDC_ADDRESS` — Circle's Base Sepolia USDC. Stable. Verify at
+- `usdcAddress` — Circle's Base Sepolia USDC. Stable. Verify at
   https://developers.circle.com/stablecoins/usdc-on-test-networks.
-- `LIMITER_TOTAL_LIMIT=1000000000000` — 1,000,000 USDC in micro
+- `limiterTotalLimit: "1000000000000"` — 1,000,000 USDC in micro
   (USDC has 6 decimals). Per-day outbound cap. Tighten or loosen
-  per ops policy.
-- `SUPPORTED_SOMA_CHAINS=2` — Soma testnet (`BridgeChainId::SomaCustom`
-  byte). For multi-source-chain deployments pass a comma list, e.g.
-  `0,1,2`.
+  per ops policy. **String-encoded** to dodge JSON number-precision
+  issues.
+- `supportedSomaChains: [2]` — Soma testnet
+  (`BridgeChainId::SomaCustom` byte). For multi-source-chain
+  deployments pass an array, e.g. `[0, 1, 2]`.
 
 The script's `--broadcast` flag is what actually submits txs;
 `--verify` runs Etherscan verification for each contract right after
 deployment. If verification flakes (BaseScan can be rate-limited),
 re-run it later with `forge verify-contract`.
 
+### CI / integration-test override
+
+For ad-hoc Anvil runs where `block.chainid` doesn't match a deploy_configs
+file, set `OVERRIDE_CONFIG_PATH=/abs/path/to/config.json` in the
+environment. The script echoes a loud `!! OVERRIDE_CONFIG_PATH is in
+effect !!` line whenever it triggers — **do not** rely on this for
+production deploys.
+
 ### Expected output (final stdout lines)
 
 ```
 == Soma bridge deployment ==
-ETH_CHAIN_ID         = 13
-USDC_ADDRESS         = 0x036CbD53842c5426634e7929541eC2318f3dCF7e
-LIMITER_TOTAL_LIMIT  = 1000000000000
-COMMITTEE size       = 4
+block.chainid       = 84532
+config path         = /.../bridge/evm/deploy_configs/84532.json
+ethChainId          = 13
+usdcAddress         = 0x036CbD53842c5426634e7929541eC2318f3dCF7e
+limiterTotalLimit   = 1000000000000
+committee size      = 4
   member 0 0xaaaa...
   stake  0 2500
   ...
-SUPPORTED_SOMA_CHAINS count = 1
+supportedSomaChains count = 1
   soma chain 0 2
 BRIDGE_COMMITTEE_PROXY= 0x1111...
 BRIDGE_VAULT=          0x2222...
@@ -315,6 +376,9 @@ bridge nodes; the deployer EOA could front-run release calls.
 Pin the deployed addresses into your operator ledger:
 
 ```sh
+# Pull the digest from the deploy_configs file you just deployed against.
+SOMA_COMMITTEE_DIGEST=$(jq -r .somaCommitteeDigest bridge/evm/deploy_configs/84532.json)
+
 cat <<EOF > deployment-base-sepolia.env
 SOMA_COMMITTEE_DIGEST=$SOMA_COMMITTEE_DIGEST
 BRIDGE_COMMITTEE_PROXY=0x1111...
@@ -587,8 +651,9 @@ inclusion to Soma-side mint, depending on Base finalization cadence.
 
 | Symptom | Diagnosis & fix |
 |---|---|
-| `Deploy: COMMITTEE_STAKES must sum to 10000 BPS` revert | `committee.env` came from a stale export, or someone manually edited it. Rerun `bridge-committee-export` and re-source. The export tool normalizes to exactly 10000 BPS; only manual edits or a `total_stake_bps_before_normalize` of zero can break this. |
-| `Deploy: ETH_CHAIN_ID exceeds uint8` revert | You passed `84532` (EVM chain id) instead of `13` (`BridgeChainId::BaseSepolia` byte). |
+| `DeployBridge: committeeStake must sum to 10000 BPS` revert | `deploy_configs/<chain>.json` was hand-edited or the export merge corrupted it. Rerun `bridge-committee-export --output deploy_configs/<chain>.json`; the tool normalizes to exactly 10000 BPS. |
+| `DeployBridge: committeeMembers is empty — run bridge-committee-export ...` revert | You haven't run `bridge-committee-export --output deploy_configs/<chain>.json` yet (or the file ships with empty `committeeMembers` and you forgot). Run it. |
+| `DeployBridge: ethChainId exceeds uint8` revert | You set `ethChainId` to `84532` (EVM chain id) instead of `13` (`BridgeChainId::BaseSepolia` byte) in `deploy_configs/84532.json`. |
 | Bridge node startup fails: `Bridge key file not found` | `bridge_key_path` in the TOML doesn't match where you copied the key on the host. Check `ls -l /etc/soma/bridge.key` and that the daemon user can read it. |
 | Bridge node can't reach peers (sig aggregation hangs) | The `http_url` registered on-chain in Phase 1 isn't reachable from peer nodes' egress. Open the port in your firewall/security group; verify with `curl https://bridge-N:9191/ping` from each peer. |
 | Inbound deposit observed (event seen in logs) but never signed | One of: (a) the deposit's source chain id isn't in `SUPPORTED_SOMA_CHAINS`, (b) the deposit amount blows the `BridgeLimiter` daily cap, (c) the validator's operator hasn't whitelisted the action shape in `approved_governance_actions`. Inbound token transfers do NOT require governance whitelisting — they're server-verified — so (c) only applies to governance txs. |
@@ -686,7 +751,8 @@ you're not racing whitelist deploys during an incident.
 
 | Topic | File |
 |---|---|
-| Foundry deploy script env vars | [`bridge/evm/script/Deploy.s.sol`](evm/script/Deploy.s.sol) |
+| Foundry deploy script + JSON schema | [`bridge/evm/script/DeployBridge.s.sol`](evm/script/DeployBridge.s.sol) |
+| Per-chain deploy config (Base Sepolia) | [`bridge/evm/deploy_configs/84532.json`](evm/deploy_configs/84532.json) |
 | Committee export tool CLI | [`bridge-node/src/bin/bridge_committee_export.rs`](../bridge-node/src/bin/bridge_committee_export.rs) |
 | Bridge node config struct | [`bridge-node/src/config.rs`](../bridge-node/src/config.rs) |
 | Watchdog behavior | [`bridge-node/src/watchdog.rs`](../bridge-node/src/watchdog.rs) |

@@ -1,5 +1,6 @@
 //! `bridge-committee-export` — read the live Soma `BridgeState.bridge_committee`
-//! via RPC and emit it in the shape the Foundry `Deploy.s.sol` script consumes.
+//! via RPC and emit it in the shape the Foundry `DeployBridge.s.sol` script
+//! consumes.
 //!
 //! # Deployment flow this fits into
 //!
@@ -8,25 +9,31 @@
 //!    membership is established via the normal validator-side
 //!    `BridgeRegistration` flow, not by this tool.)
 //!
-//! 2. **Run this tool** against any Soma fullnode RPC. It fetches the live
-//!    committee, drops blocklisted members, derives the 20-byte Ethereum
-//!    address for each via `keccak256(uncompressed_pubkey[1..])[12..]`
-//!    (Sui parity), and normalizes the voting powers so they sum to
-//!    exactly 10000 BPS — which is what `BridgeCommittee.initialize()`
-//!    on the Solidity side requires.
+//! 2. **Edit `bridge/evm/deploy_configs/<EVM-CHAIN-ID>.json`** once with the
+//!    chain-specific bits the operator owns (USDC address, limiter cap,
+//!    supported source chains, etc.).
 //!
-//! 3. **Source the emitted env-vars** into your Foundry deploy script:
+//! 3. **Run this tool** against any Soma fullnode RPC, pointing `--output`
+//!    at the same deploy_configs file. It fetches the live committee,
+//!    drops blocklisted members, derives the 20-byte Ethereum address for
+//!    each via `keccak256(uncompressed_pubkey[1..])[12..]` (Sui parity),
+//!    normalizes the voting powers so they sum to exactly 10000 BPS, and
+//!    **merges** the committee fields (`committeeMembers`, `committeeStake`,
+//!    `somaCommitteeDigest`) into the existing JSON — preserving the
+//!    operator's other fields. If `--output` is not provided, the full
+//!    JSON is written to stdout instead and no merge is performed.
+//!
+//! 4. **Run the Foundry deploy:**
 //!
 //!    ```text
-//!    bridge-committee-export --soma-rpc http://localhost:9000 > committee.json
-//!    eval "$(bridge-committee-export --soma-rpc http://localhost:9000 2>&1 1>/dev/null | grep export)"
-//!    # or simpler — redirect stderr to a tmpfile and `source` it:
-//!    bridge-committee-export --soma-rpc ... 2>committee.env >committee.json
-//!    source committee.env
-//!    forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC ...
+//!    cd bridge/evm
+//!    forge script script/DeployBridge.s.sol:DeployBridge \
+//!        --rpc-url $BASE_SEPOLIA_RPC \
+//!        --private-key $DEPLOYER_PK \
+//!        --broadcast
 //!    ```
 //!
-//! 4. **Record `soma_committee_digest`** from the JSON in your deployment
+//! 5. **Record `somaCommitteeDigest`** from the JSON in your deployment
 //!    ledger. It's a SHA-256 over the (sorted-by-Eth-address) committee
 //!    state; if it doesn't match what the bridge-node sees at runtime,
 //!    the on-chain `SomaBridge` is bound to a stale committee and
@@ -43,16 +50,17 @@
 //! 10000 even if the on-chain numbers drift.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use bridge_node::soma_client::SomaBridgeClient;
 use clap::Parser;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use types::bridge::{BridgeChainId, derive_eth_address};
 
 /// Operator tool: export the live Soma BridgeState committee in the format
-/// the Foundry `Deploy.s.sol` script consumes.
+/// the Foundry `DeployBridge.s.sol` script consumes.
 ///
 /// Connects to a Soma fullnode RPC, reads `BridgeState.bridge_committee`,
 /// drops blocklisted members, derives each member's 20-byte Ethereum
@@ -60,9 +68,19 @@ use types::bridge::{BridgeChainId, derive_eth_address};
 /// voting powers so they sum to exactly 10000 BPS (the Solidity-side
 /// `BridgeCommittee.initialize` invariant).
 ///
-/// Writes JSON to stdout and an `export …` env-var snippet to stderr.
-/// Redirect them separately:
-///   bridge-committee-export --soma-rpc ... > committee.json 2> committee.env
+/// With `--output <FILE>`:
+///   * If FILE exists, MERGE the committee fields (`committeeMembers`,
+///     `committeeStake`, `somaCommitteeDigest`) into the existing JSON,
+///     preserving all other fields. This is the production flow: the
+///     operator owns `usdcAddress` / `limiterTotalLimit` / etc., and
+///     re-runs this tool whenever the on-chain committee rotates.
+///   * If FILE doesn't exist, write a full deploy_configs-shaped JSON
+///     with empty placeholders for the operator-owned fields so the
+///     missing fields surface as deploy-time errors rather than silent
+///     zeros.
+///
+/// Without `--output`, the full JSON is written to stdout (useful for
+/// piping into `jq` or for ad-hoc inspection).
 #[derive(Parser, Debug)]
 #[command(
     name = "bridge-committee-export",
@@ -81,35 +99,18 @@ struct Args {
     #[arg(long, default_value_t = 13)]
     target_chain_id: u8,
 
-    /// Write JSON to this file instead of stdout. The env-var snippet
-    /// still goes to stderr regardless — redirect it separately.
-    #[arg(long)]
+    /// Path to a deploy_configs JSON file to write or merge into.
+    ///
+    /// * If the path EXISTS, the committee fields (`committeeMembers`,
+    ///   `committeeStake`, `somaCommitteeDigest`) are merged into the
+    ///   existing JSON. All other fields (`usdcAddress`, `ethChainId`,
+    ///   `limiterTotalLimit`, `supportedSomaChains`) are preserved.
+    /// * If the path does NOT exist, a fresh deploy_configs JSON is
+    ///   written with empty placeholders for the operator-owned fields.
+    ///
+    /// If omitted, full JSON goes to stdout and no merge happens.
+    #[arg(long, short = 'o')]
     output: Option<PathBuf>,
-}
-
-/// JSON payload emitted to stdout. Field shape is chosen to match what
-/// the Foundry `Deploy.s.sol` script reads via `vm.readJson(...)`.
-#[derive(serde::Serialize)]
-struct CommitteeExport {
-    /// 20-byte Eth addresses, lowercase `0x`-hex, in the order the
-    /// `stakes` array indexes into.
-    members: Vec<String>,
-    /// Normalized stakes in basis points, indexed parallel to `members`.
-    /// Sums to exactly 10000.
-    stakes: Vec<u16>,
-    /// Echo of `--target-chain-id` so a downstream consumer reading the
-    /// JSON doesn't need to re-pass the flag.
-    chain_id: u8,
-    /// Raw on-chain stake total *before* normalization. Operators should
-    /// compare this to `SystemParameters::bridge_total_voting_power`
-    /// (10000 in dev configs) to detect drift; a large delta means a
-    /// bug elsewhere even if normalization "fixed" it.
-    total_stake_bps_before_normalize: u64,
-    /// SHA-256 over the sorted-by-Eth-address (addr || stake_u16_be)
-    /// concatenation. Stable identifier for "this committee state";
-    /// record in your deployment ledger and compare against the live
-    /// bridge-node digest at runtime to catch silent committee rotations.
-    soma_committee_digest: String,
 }
 
 fn main() -> ExitCode {
@@ -154,7 +155,7 @@ enum RunError {
     /// an operational error, not a system fault, and demands a human
     /// looking at chain state before retrying.
     Empty(String),
-    /// `--output` file write failed. Exit status 1.
+    /// `--output` file read / write / parse failed. Exit status 1.
     Io(String),
 }
 
@@ -323,7 +324,7 @@ async fn run(args: Args) -> Result<(), RunError> {
         format!("0x{}", hex::encode(bytes))
     };
 
-    eprintln!("[4/4] Emitting JSON to stdout and env-vars to stderr.");
+    eprintln!("[4/4] Writing committee fields.");
     eprintln!();
     eprintln!(
         "       active_members           = {}",
@@ -334,50 +335,138 @@ async fn run(args: Args) -> Result<(), RunError> {
     eprintln!("       target_chain_id          = {}", args.target_chain_id);
     eprintln!("       soma_committee_digest    = {digest_hex}");
 
-    // --- Build the JSON payload ---------------------------------------
-    let export = CommitteeExport {
-        members: members_with_stake
-            .iter()
-            .map(|(addr, _)| format!("0x{}", hex::encode(addr)))
-            .collect(),
-        stakes: members_with_stake.iter().map(|(_, s)| *s).collect(),
-        chain_id: args.target_chain_id,
-        total_stake_bps_before_normalize: raw_total.min(u64::MAX as u128)
-            as u64,
-        soma_committee_digest: digest_hex.clone(),
-    };
+    // Build the JSON values that we'll either merge or write fresh.
+    let members_json: Vec<Value> = members_with_stake
+        .iter()
+        .map(|(addr, _)| Value::String(format!("0x{}", hex::encode(addr))))
+        .collect();
+    let stakes_json: Vec<Value> = members_with_stake
+        .iter()
+        .map(|(_, s)| Value::Number((*s).into()))
+        .collect();
 
-    let json = serde_json::to_string_pretty(&export).map_err(|e| {
-        RunError::Io(format!("serialize JSON: {e}"))
-    })?;
-
-    if let Some(path) = &args.output {
-        fs::write(path, &json).map_err(|e| {
-            RunError::Io(format!("write {}: {e}", path.display()))
-        })?;
-        eprintln!();
-        eprintln!("       Wrote JSON to {}", path.display());
-    } else {
-        // stdout — the machine-consumable channel. Anything verbose goes
-        // to stderr so `cargo run ... > committee.json` works.
-        println!("{json}");
+    match &args.output {
+        Some(path) => {
+            write_or_merge(
+                path,
+                members_json,
+                stakes_json,
+                &digest_hex,
+                args.target_chain_id,
+            )?;
+        }
+        None => {
+            // No output path — write the full deploy_configs JSON to
+            // stdout for inspection. Empty operator-owned fields are
+            // emitted so a downstream `> file.json` redirect produces
+            // a file that's structurally correct but will (loudly) fail
+            // the deploy-time validation until the operator fills them.
+            let full = build_full_config(
+                members_json,
+                stakes_json,
+                &digest_hex,
+                args.target_chain_id,
+            );
+            let pretty = serde_json::to_string_pretty(&full).map_err(|e| {
+                RunError::Io(format!("serialize JSON: {e}"))
+            })?;
+            println!("{pretty}");
+        }
     }
 
-    // --- Env-var snippet to stderr ------------------------------------
-    let members_csv = export.members.join(",");
-    let stakes_csv = export
-        .stakes
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
+    Ok(())
+}
 
-    eprintln!();
-    eprintln!("# Source this in your shell before running the Foundry deploy:");
-    eprintln!("export COMMITTEE_MEMBERS=\"{members_csv}\"");
-    eprintln!("export COMMITTEE_STAKES=\"{stakes_csv}\"");
-    eprintln!("export COMMITTEE_CHAIN_ID=\"{}\"", args.target_chain_id);
-    eprintln!("export SOMA_COMMITTEE_DIGEST=\"{digest_hex}\"");
+/// Build a full deploy_configs-shaped JSON value, with empty placeholders
+/// for the operator-owned fields. Used when `--output` points at a path
+/// that doesn't exist yet (greenfield deploy).
+fn build_full_config(
+    members: Vec<Value>,
+    stakes: Vec<Value>,
+    digest_hex: &str,
+    target_chain_id: u8,
+) -> Value {
+    json!({
+        "committeeMembers": members,
+        "committeeStake": stakes,
+        "ethChainId": target_chain_id,
+        "usdcAddress": "",
+        "limiterTotalLimit": "",
+        "supportedSomaChains": [],
+        "somaCommitteeDigest": digest_hex,
+    })
+}
+
+/// Write the committee fields to `path`. If the file exists, parse it as
+/// JSON and merge only the committee-owned fields, preserving everything
+/// else the operator put there. If it doesn't exist, write a fresh
+/// deploy_configs-shaped file with empty placeholders for the
+/// operator-owned fields.
+///
+/// Both branches pretty-print with 2-space indent to match the on-disk
+/// example file — diffs against the canonical file should be limited to
+/// the fields we touched.
+fn write_or_merge(
+    path: &Path,
+    members: Vec<Value>,
+    stakes: Vec<Value>,
+    digest_hex: &str,
+    target_chain_id: u8,
+) -> Result<(), RunError> {
+    let value = if path.exists() {
+        // Read + parse the existing JSON, then mutate the three
+        // committee-owned fields in place. `serde_json::Value` preserves
+        // ordering of object keys (it uses a BTreeMap by default unless
+        // `preserve_order` is enabled — and even with BTreeMap, ordering
+        // is stable). The operator's other fields ride through untouched.
+        let existing = fs::read_to_string(path).map_err(|e| {
+            RunError::Io(format!("read {}: {e}", path.display()))
+        })?;
+        let mut parsed: Value = serde_json::from_str(&existing).map_err(|e| {
+            RunError::Io(format!("parse {} as JSON: {e}", path.display()))
+        })?;
+        let obj = parsed.as_object_mut().ok_or_else(|| {
+            RunError::Io(format!(
+                "{}: top-level JSON value is not an object",
+                path.display()
+            ))
+        })?;
+        obj.insert("committeeMembers".to_string(), Value::Array(members));
+        obj.insert("committeeStake".to_string(), Value::Array(stakes));
+        obj.insert(
+            "somaCommitteeDigest".to_string(),
+            Value::String(digest_hex.to_string()),
+        );
+
+        eprintln!(
+            "       Merged committee fields into existing {}",
+            path.display()
+        );
+        parsed
+    } else {
+        eprintln!(
+            "       File {} did not exist — writing fresh template.",
+            path.display()
+        );
+        build_full_config(members, stakes, digest_hex, target_chain_id)
+    };
+
+    // 2-space indent matches the example file. `serde_json::to_string_pretty`
+    // emits 2-space by default — explicit here for clarity / future-proofing.
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
+    let mut buf = Vec::new();
+    let mut ser =
+        serde_json::Serializer::with_formatter(&mut buf, formatter);
+    serde::Serialize::serialize(&value, &mut ser).map_err(|e| {
+        RunError::Io(format!("serialize merged JSON: {e}"))
+    })?;
+    // Trailing newline for POSIX-friendly diffs.
+    buf.push(b'\n');
+
+    fs::write(path, &buf).map_err(|e| {
+        RunError::Io(format!("write {}: {e}", path.display()))
+    })?;
+    eprintln!("       Wrote {}", path.display());
 
     Ok(())
 }

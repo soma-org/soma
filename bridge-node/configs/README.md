@@ -48,10 +48,10 @@ done
 |---|---|
 | `{{VALIDATOR_NAME}}` | Operator's chosen short name. Used in paths (`bridge_key_path`, `wal_path`). Lowercase alphanum. |
 | `{{ALCHEMY_API_KEY}}` | Alchemy dashboard → create a Base Sepolia app → copy API key. |
-| `{{SOMA_BRIDGE_CONTRACT_ADDRESS}}` | `forge script bridge/evm/script/Deploy.s.sol --broadcast ...` stdout — the `SomaBridge proxy:` line. Same value for every validator in the committee. |
+| `{{SOMA_BRIDGE_CONTRACT_ADDRESS}}` | `forge script bridge/evm/script/DeployBridge.s.sol --broadcast ...` stdout — the `SomaBridge proxy:` line. Same value for every validator in the committee. |
 | `{{USDC_CONTRACT_ADDRESS}}` | Circle's Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`. Verify against [Circle's docs](https://developers.circle.com/stablecoins/usdc-on-test-networks) before paste. |
 | `{{SOMA_RPC_URL}}` | The validator's own fullnode RPC — usually `http://localhost:9000`. Don't share an RPC across validators. |
-| `{{ETH_DEPLOY_BLOCK}}` | `jq '.transactions[0].blockNumber' bridge/evm/broadcast/Deploy.s.sol/84532/run-latest.json` (decimal). Avoids re-scanning logs back to genesis on first WAL boot. |
+| `{{ETH_DEPLOY_BLOCK}}` | `jq '.transactions[0].blockNumber' bridge/evm/broadcast/DeployBridge.s.sol/84532/run-latest.json` (decimal). Avoids re-scanning logs back to genesis on first WAL boot. |
 | `{{OPERATOR_PRIVATE_KEY_HEX}}` | Per-validator Eth wallet — see "Provisioning the operator wallet" below. **NOT** the bridge committee key. |
 
 ## Provisioning the operator wallet
@@ -136,8 +136,8 @@ cargo test -p bridge-node config::tests
   trip on stale invariants, and the node will auto-pause.
 - **`eth_start_block_fallback = 0`.** The first WAL boot will fan
   `eth_getLogs` requests across millions of blocks back to Base Sepolia
-  genesis. Set this to the actual `Deploy.s.sol` broadcast block — pull
-  it from `broadcast/Deploy.s.sol/84532/run-latest.json`.
+  genesis. Set this to the actual `DeployBridge.s.sol` broadcast block
+  — pull it from `broadcast/DeployBridge.s.sol/84532/run-latest.json`.
 - **Field order edits without re-checking against `config.rs`.** The
   template tracks struct order in `BridgeNodeConfig` deliberately —
   keep it that way so a `git diff` after a struct change is greppable.
