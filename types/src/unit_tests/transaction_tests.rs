@@ -351,11 +351,15 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             recipient: SomaAddress::random(),
             amount: 1000,
             timestamp_ms: 0,
+            sender_eth_address: [0u8; 20],
+            target_chain: crate::bridge::BridgeChainId::SomaCustom,
+            token_type: crate::bridge::USDC_TOKEN_TYPE,
             signatures: Default::default(),
         }),
         TransactionKind::BridgeWithdraw(crate::transaction::BridgeWithdrawArgs {
             amount: 500,
             recipient_eth_address: [0u8; 20],
+            target_chain: crate::bridge::BridgeChainId::EthCustom,
         }),
         TransactionKind::BridgeEmergencyPause(crate::transaction::BridgeEmergencyPauseArgs {
             nonce: 0,

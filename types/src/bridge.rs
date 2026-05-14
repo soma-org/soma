@@ -32,6 +32,11 @@ pub enum BridgeChainId {
     EthMainnet = 10,
     EthSepolia = 11,
     EthCustom = 12,
+    /// Base Sepolia — Coinbase L2 testnet (chain id 84532 on Eth side,
+    /// but our wire-format byte is independent). Picked 13 to keep the
+    /// Eth-family range contiguous. Pair this with Base mainnet at 14
+    /// when that lands.
+    BaseSepolia = 13,
 }
 
 impl BridgeChainId {
@@ -40,7 +45,10 @@ impl BridgeChainId {
     }
 
     pub const fn is_eth_chain(self) -> bool {
-        matches!(self, Self::EthMainnet | Self::EthSepolia | Self::EthCustom)
+        matches!(
+            self,
+            Self::EthMainnet | Self::EthSepolia | Self::EthCustom | Self::BaseSepolia
+        )
     }
 
     pub const fn as_u8(self) -> u8 {
@@ -57,6 +65,7 @@ impl BridgeChainId {
             10 => Some(Self::EthMainnet),
             11 => Some(Self::EthSepolia),
             12 => Some(Self::EthCustom),
+            13 => Some(Self::BaseSepolia),
             _ => None,
         }
     }
@@ -947,6 +956,38 @@ pub fn generate_test_bridge_committee(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every defined `BridgeChainId` byte round-trips through `from_u8`.
+    /// Pins the wire-format byte values so a future variant addition
+    /// can't silently renumber an existing one.
+    #[test]
+    fn bridge_chain_id_byte_values_roundtrip() {
+        let cases = [
+            (0u8, BridgeChainId::SomaMainnet),
+            (1, BridgeChainId::SomaTestnet),
+            (2, BridgeChainId::SomaCustom),
+            (10, BridgeChainId::EthMainnet),
+            (11, BridgeChainId::EthSepolia),
+            (12, BridgeChainId::EthCustom),
+            (13, BridgeChainId::BaseSepolia),
+        ];
+        for (byte, expected) in cases {
+            assert_eq!(BridgeChainId::from_u8(byte), Some(expected));
+            assert_eq!(expected.as_u8(), byte);
+        }
+        // Unassigned bytes return None.
+        assert_eq!(BridgeChainId::from_u8(3), None);
+        assert_eq!(BridgeChainId::from_u8(14), None);
+        assert_eq!(BridgeChainId::from_u8(255), None);
+    }
+
+    /// BaseSepolia is on the Eth side of the bridge, not the Soma side.
+    /// is_eth_chain must accept it; is_soma_chain must reject it.
+    #[test]
+    fn base_sepolia_classified_as_eth_chain() {
+        assert!(BridgeChainId::BaseSepolia.is_eth_chain());
+        assert!(!BridgeChainId::BaseSepolia.is_soma_chain());
+    }
 
     fn hex_decode(s: &str) -> Vec<u8> {
         (0..s.len())
