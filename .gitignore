@@ -228,6 +228,11 @@ __pycache__/
 .venv/
 env/
 bin/
+# Negate the Python-virtualenv `bin/` pattern above for our Rust `[[bin]]`
+# directories. Cargo discovers per-crate auxiliary binaries from
+# `<crate>/src/bin/` (each .rs file becomes a separate binary target).
+!**/src/bin/
+!**/src/bin/**
 build/
 develop-eggs/
 dist/
