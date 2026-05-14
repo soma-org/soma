@@ -36,8 +36,13 @@ contract BridgeLimiter is IBridgeLimiter, CommitteeUpgradeable, OwnableUpgradeab
     /// `transferOwnership(address(somaBridge))` immediately so only the
     /// bridge can call `recordUSDCTransfer`.
     function initialize(address _committee, uint64 _totalLimit) external initializer {
-        __CommitteeUpgradeable_init(_committee);
+        // Init parents in C3 linearization order; see
+        // CommitteeUpgradeable.__CommitteeUpgradeable_init doc for the
+        // OZ-plugin rationale.
+        __ReentrancyGuard_init();
+        __MessageVerifier_init(_committee);
         __UUPSUpgradeable_init();
+        __CommitteeUpgradeable_init(_committee);
         __Ownable_init(msg.sender);
         totalLimit = _totalLimit;
     }

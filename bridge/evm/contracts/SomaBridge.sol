@@ -80,8 +80,13 @@ contract SomaBridge is ISomaBridge, CommitteeUpgradeable, PausableUpgradeable {
         address _limiter,
         uint8[] memory _supportedChainIDs
     ) external initializer {
-        __CommitteeUpgradeable_init(_committee);
+        // Init parents in C3 linearization order; see
+        // CommitteeUpgradeable.__CommitteeUpgradeable_init doc for the
+        // OZ-plugin rationale.
+        __ReentrancyGuard_init();
+        __MessageVerifier_init(_committee);
         __UUPSUpgradeable_init();
+        __CommitteeUpgradeable_init(_committee);
         __Pausable_init();
         require(_usdc != address(0), "SomaBridge: USDC address required");
         require(_vault != address(0), "SomaBridge: Vault address required");

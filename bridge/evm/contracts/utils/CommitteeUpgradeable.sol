@@ -54,10 +54,23 @@ abstract contract CommitteeUpgradeable is
         _disableInitializers();
     }
 
-    function __CommitteeUpgradeable_init(address _committee) internal onlyInitializing {
-        __ReentrancyGuard_init();
-        __MessageVerifier_init(_committee);
-    }
+    /// @dev Initializer hook for the CommitteeUpgradeable layer itself.
+    /// CommitteeUpgradeable owns no init-time state (the
+    /// `_upgradeAuthorized` flag is set on demand, never at init).
+    /// Each transitive parent — `ReentrancyGuardUpgradeable`,
+    /// `MessageVerifier`, `UUPSUpgradeable` — MUST be initialized by
+    /// the most-derived contract in C3 linearization order, NOT from
+    /// inside this function. That split satisfies the OZ Foundry
+    /// upgrades plugin's parent-init order check, which traces every
+    /// `__XXX_init` call from the child's body and expects them in
+    /// linearization order. See each child's `initialize()` for the
+    /// required sequence.
+    ///
+    /// `_committee` is unused at this layer — it's threaded through
+    /// to `__MessageVerifier_init` which children call themselves.
+    /// Kept on the signature so the call site documents intent.
+    // solhint-disable-next-line no-empty-blocks
+    function __CommitteeUpgradeable_init(address /* _committee */) internal onlyInitializing {}
 
     /// @dev UUPS gate. The default deny means the only path to an
     /// upgrade is [`upgradeWithSignatures`] below. Clearing the flag

@@ -47,11 +47,18 @@ contract BridgeCommittee is IBridgeCommittee, CommitteeUpgradeable {
         uint16[] memory _stake,
         uint8 _chainID
     ) external initializer {
+        // Init parents in C3 linearization order (deepest first), so
+        // the OZ Foundry upgrades plugin's parent-init order check is
+        // satisfied. See CommitteeUpgradeable.__CommitteeUpgradeable_init
+        // doc for why these calls live here rather than in the wrapper.
+        //
         // Bootstrap the committee reference *to ourselves* — verification
         // calls flow back through `committee.verifySignatures()`, so this
         // contract is both the verifier and the verified.
-        __CommitteeUpgradeable_init(address(this));
+        __ReentrancyGuard_init();
+        __MessageVerifier_init(address(this));
         __UUPSUpgradeable_init();
+        __CommitteeUpgradeable_init(address(this));
 
         uint256 _committeeLength = _committeeMembers.length;
         // Sui parity: the dedup bitmap in verifySignatures is uint256
