@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import "../contracts/BridgeCommittee.sol";
 import "../contracts/BridgeLimiter.sol";
@@ -56,43 +57,120 @@ contract SomaBridgeTest is Test {
             signerAddrs[i] = vm.addr(signerKeys[i]);
         }
 
-        // 2) Deploy USDC + committee.
+        // 2) USDC (not upgradeable).
         usdc = new MockUSDC();
-        committee = new BridgeCommittee();
+
+        // 3) Committee — deploy impl + ERC1967 proxy, init through proxy.
+        // The CommitteeUpgradeable constructor calls _disableInitializers,
+        // so we MUST go through a proxy (the proxy's storage is what
+        // initialize() writes; the impl's own storage is frozen).
         address[] memory members = new address[](4);
         uint16[] memory stakes = new uint16[](4);
         for (uint256 i = 0; i < 4; i++) {
             members[i] = signerAddrs[i];
             stakes[i] = 2500;
         }
-        committee.initialize(members, stakes, ETH_CHAIN_ID);
-
-        // 3) Vault — deploy then transfer ownership to bridge after deploy.
-        vault = new BridgeVault(address(usdc));
-
-        // 4) Limiter — deploy, init, then transfer ownership to bridge.
-        // 1e12 in USD-multiplier scale (1e4 = $1) = $1e8 / day. Plenty.
-        limiter = new BridgeLimiter();
-        limiter.initialize(address(committee), 1_000_000_000_000);
-
-        // 5) Bridge — deploy, init. Supports a single Soma chain
-        // (SomaCustom = 2); production deployments may pass multiple
-        // (mainnet + testnet + custom) so one Eth contract can route
-        // across them.
-        bridge = new SomaBridge();
-        uint8[] memory supportedChains = new uint8[](1);
-        supportedChains[0] = SOMA_CHAIN_ID;
-        bridge.initialize(
-            address(committee),
-            address(usdc),
-            address(vault),
-            address(limiter),
-            supportedChains
+        committee = BridgeCommittee(
+            _proxy(
+                address(new BridgeCommittee()),
+                abi.encodeCall(
+                    BridgeCommittee.initialize,
+                    (members, stakes, ETH_CHAIN_ID)
+                )
+            )
         );
 
-        // 6) Ownership: vault + limiter → bridge.
+        // 4) Vault — non-upgradeable (Ownable, not OwnableUpgradeable),
+        // takes USDC in its constructor.
+        vault = new BridgeVault(address(usdc));
+
+        // 5) Limiter — proxy-deployed. 1e12 USD-multiplier scale
+        // (1e4 = $1) = $1e8 / day. Plenty.
+        limiter = BridgeLimiter(
+            _proxy(
+                address(new BridgeLimiter()),
+                abi.encodeCall(
+                    BridgeLimiter.initialize,
+                    (address(committee), 1_000_000_000_000)
+                )
+            )
+        );
+
+        // 6) Bridge — proxy-deployed. Supports a single Soma chain
+        // (SomaCustom = 2); production deployments may pass multiple.
+        uint8[] memory supportedChains = new uint8[](1);
+        supportedChains[0] = SOMA_CHAIN_ID;
+        bridge = SomaBridge(
+            _proxy(
+                address(new SomaBridge()),
+                abi.encodeCall(
+                    SomaBridge.initialize,
+                    (
+                        address(committee),
+                        address(usdc),
+                        address(vault),
+                        address(limiter),
+                        supportedChains
+                    )
+                )
+            )
+        );
+
+        // 7) Ownership: vault + limiter → bridge.
         vault.transferOwnership(address(bridge));
         limiter.transferOwnership(address(bridge));
+    }
+
+    /// Deploy a UUPS implementation behind an ERC1967Proxy and return
+    /// the proxy address. Centralized so every test that needs an
+    /// upgradeable contract uses the same deployment pattern (production
+    /// will too).
+    function _proxy(address impl, bytes memory initData)
+        internal
+        returns (address)
+    {
+        ERC1967Proxy p = new ERC1967Proxy(impl, initData);
+        return address(p);
+    }
+
+    /// Tight-cap limiter for maturity-bypass / fresh-message limit tests.
+    /// `totalLimit = 1` so any non-bypassed debit would revert.
+    function _deployTightLimiter() internal returns (BridgeLimiter) {
+        return BridgeLimiter(
+            _proxy(
+                address(new BridgeLimiter()),
+                abi.encodeCall(
+                    BridgeLimiter.initialize,
+                    (address(committee), 1)
+                )
+            )
+        );
+    }
+
+    /// Deploy a SomaBridge proxy wired against pre-deployed vault and
+    /// limiter. Used by the maturity-bypass / fresh-message tests
+    /// that want a sibling bridge separate from the suite's setUp().
+    function _deployBridge(
+        BridgeVault _vault,
+        BridgeLimiter _limiter
+    ) internal returns (SomaBridge) {
+        uint8[] memory chains = new uint8[](1);
+        chains[0] = SOMA_CHAIN_ID;
+        return SomaBridge(
+            _proxy(
+                address(new SomaBridge()),
+                abi.encodeCall(
+                    SomaBridge.initialize,
+                    (
+                        address(committee),
+                        address(usdc),
+                        address(_vault),
+                        address(_limiter),
+                        chains
+                    )
+                )
+            )
+        );
     }
 
     // ============================================================
@@ -421,9 +499,10 @@ contract SomaBridgeTest is Test {
     }
 
     /// Init guard: duplicate member addresses in the constructor
-    /// array fail.
+    /// array fail. Reverts during proxy deployment because the proxy
+    /// constructor delegatecalls initialize() on the impl.
     function test_committeeInit_rejectsDuplicateMember() public {
-        BridgeCommittee fresh = new BridgeCommittee();
+        address impl = address(new BridgeCommittee());
         address[] memory dups = new address[](2);
         dups[0] = address(0x11);
         dups[1] = address(0x11);
@@ -431,12 +510,15 @@ contract SomaBridgeTest is Test {
         stakes[0] = 5000;
         stakes[1] = 5000;
         vm.expectRevert(bytes("BridgeCommittee: Duplicate committee member"));
-        fresh.initialize(dups, stakes, ETH_CHAIN_ID);
+        new ERC1967Proxy(
+            impl,
+            abi.encodeCall(BridgeCommittee.initialize, (dups, stakes, ETH_CHAIN_ID))
+        );
     }
 
     /// Init guard: mismatched array lengths.
     function test_committeeInit_rejectsLengthMismatch() public {
-        BridgeCommittee fresh = new BridgeCommittee();
+        address impl = address(new BridgeCommittee());
         address[] memory members = new address[](2);
         members[0] = address(0x11);
         members[1] = address(0x22);
@@ -445,13 +527,16 @@ contract SomaBridgeTest is Test {
         vm.expectRevert(
             bytes("BridgeCommittee: Committee and stake arrays must be of the same length")
         );
-        fresh.initialize(members, stakes, ETH_CHAIN_ID);
+        new ERC1967Proxy(
+            impl,
+            abi.encodeCall(BridgeCommittee.initialize, (members, stakes, ETH_CHAIN_ID))
+        );
     }
 
     /// Init guard: 256-member cap. Sui's dedup bitmap is uint256, so
     /// 255 is the hard ceiling on committee size.
     function test_committeeInit_rejectsOver255Members() public {
-        BridgeCommittee fresh = new BridgeCommittee();
+        address impl = address(new BridgeCommittee());
         address[] memory members = new address[](256);
         uint16[] memory stakes = new uint16[](256);
         for (uint256 i = 0; i < 256; i++) {
@@ -461,13 +546,16 @@ contract SomaBridgeTest is Test {
         vm.expectRevert(
             bytes("BridgeCommittee: Committee length must be less than 256")
         );
-        fresh.initialize(members, stakes, ETH_CHAIN_ID);
+        new ERC1967Proxy(
+            impl,
+            abi.encodeCall(BridgeCommittee.initialize, (members, stakes, ETH_CHAIN_ID))
+        );
     }
 
     /// Init guard: total stake must equal exactly 10000 BPS. Reject
     /// either under-stake or over-stake.
     function test_committeeInit_rejectsTotalStakeNot10000() public {
-        BridgeCommittee fresh = new BridgeCommittee();
+        address impl = address(new BridgeCommittee());
         address[] memory members = new address[](2);
         members[0] = address(0x11);
         members[1] = address(0x22);
@@ -475,7 +563,10 @@ contract SomaBridgeTest is Test {
         stakes[0] = 2000;
         stakes[1] = 2000; // total 4000, not 10000
         vm.expectRevert(bytes("BridgeCommittee: Total stake must equal 10000 BPS"));
-        fresh.initialize(members, stakes, ETH_CHAIN_ID);
+        new ERC1967Proxy(
+            impl,
+            abi.encodeCall(BridgeCommittee.initialize, (members, stakes, ETH_CHAIN_ID))
+        );
     }
 
     // ============================================================
@@ -686,20 +777,9 @@ contract SomaBridgeTest is Test {
         // Stand up a fresh limiter with a *very tight* cap so any debit
         // would be visible. Tight enough that a non-bypassed write
         // would revert the call.
-        BridgeLimiter tightLimiter = new BridgeLimiter();
-        tightLimiter.initialize(address(committee), /*totalLimit*/ 1);
-
+        BridgeLimiter tightLimiter = _deployTightLimiter();
         BridgeVault tightVault = new BridgeVault(address(usdc));
-        SomaBridge tightBridge = new SomaBridge();
-        uint8[] memory chains = new uint8[](1);
-        chains[0] = SOMA_CHAIN_ID;
-        tightBridge.initialize(
-            address(committee),
-            address(usdc),
-            address(tightVault),
-            address(tightLimiter),
-            chains
-        );
+        SomaBridge tightBridge = _deployBridge(tightVault, tightLimiter);
         tightVault.transferOwnership(address(tightBridge));
         tightLimiter.transferOwnership(address(tightBridge));
 
@@ -741,19 +821,9 @@ contract SomaBridgeTest is Test {
     function test_transferBridgedTokens_freshMessageHitsLimiter() public {
         vm.warp(7 days);
 
-        BridgeLimiter tightLimiter = new BridgeLimiter();
-        tightLimiter.initialize(address(committee), /*totalLimit*/ 1);
+        BridgeLimiter tightLimiter = _deployTightLimiter();
         BridgeVault tightVault = new BridgeVault(address(usdc));
-        SomaBridge tightBridge = new SomaBridge();
-        uint8[] memory chains = new uint8[](1);
-        chains[0] = SOMA_CHAIN_ID;
-        tightBridge.initialize(
-            address(committee),
-            address(usdc),
-            address(tightVault),
-            address(tightLimiter),
-            chains
-        );
+        SomaBridge tightBridge = _deployBridge(tightVault, tightLimiter);
         tightVault.transferOwnership(address(tightBridge));
         tightLimiter.transferOwnership(address(tightBridge));
 
@@ -935,8 +1005,15 @@ contract SomaBridgeTest is Test {
 
         // Configure a tight limit by re-deploying the limiter with
         // totalLimit = 30000 USD-scale = 3 USDC equivalent.
-        BridgeLimiter tight = new BridgeLimiter();
-        tight.initialize(address(committee), 30_000);
+        BridgeLimiter tight = BridgeLimiter(
+            _proxy(
+                address(new BridgeLimiter()),
+                abi.encodeCall(
+                    BridgeLimiter.initialize,
+                    (address(committee), 30_000)
+                )
+            )
+        );
         tight.transferOwnership(address(bridge));
         vm.stopPrank();
 

@@ -70,9 +70,18 @@ mod soma_bridge {
         "../bridge/evm/out/SomaBridge.sol/SomaBridge.json"
     );
 }
+mod erc1967_proxy {
+    alloy::sol!(
+        #[allow(missing_docs)]
+        #[sol(rpc)]
+        ERC1967Proxy,
+        "../bridge/evm/out/ERC1967Proxy.sol/ERC1967Proxy.json"
+    );
+}
 use bridge_committee::BridgeCommittee;
 use bridge_limiter::BridgeLimiter;
 use bridge_vault::BridgeVault;
+use erc1967_proxy::ERC1967Proxy;
 use mock_usdc::MockUSDC;
 use soma_bridge::SomaBridge;
 
@@ -116,33 +125,43 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     // ---- deploy ----
     let usdc = MockUSDC::deploy(&deployer).await.unwrap();
 
-    let committee = BridgeCommittee::deploy(&deployer).await.unwrap();
+    // Proxy-based deployment (impls have _disableInitializers in
+    // their constructors, so initialize must run via delegatecall
+    // through a proxy).
+    let committee_impl = BridgeCommittee::deploy(&deployer).await.unwrap();
     let members: Vec<Address> = (0..4)
         .map(|i| Address::from_slice(&[i as u8 + 0x10; 20]))
         .collect();
     let stake: Vec<u16> = vec![2500, 2500, 2500, 2500];
-    committee
+    let committee_init = committee_impl
         .initialize(members, stake, ETH_CHAIN_ID)
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+        .calldata()
+        .clone();
+    let committee_proxy = ERC1967Proxy::deploy(
+        &deployer,
+        *committee_impl.address(),
+        committee_init,
+    )
+    .await
+    .unwrap();
+    let committee = BridgeCommittee::new(*committee_proxy.address(), &deployer);
 
     let vault = BridgeVault::deploy(&deployer, *usdc.address()).await.unwrap();
-    let limiter = BridgeLimiter::deploy(&deployer).await.unwrap();
-    limiter
+
+    let limiter_impl = BridgeLimiter::deploy(&deployer).await.unwrap();
+    let limiter_init = limiter_impl
         .initialize(*committee.address(), 1_000_000_000_000u64)
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    let bridge = SomaBridge::deploy(&deployer).await.unwrap();
+        .calldata()
+        .clone();
+    let limiter_proxy =
+        ERC1967Proxy::deploy(&deployer, *limiter_impl.address(), limiter_init)
+            .await
+            .unwrap();
+    let limiter = BridgeLimiter::new(*limiter_proxy.address(), &deployer);
+
+    let bridge_impl = SomaBridge::deploy(&deployer).await.unwrap();
     let supported: Vec<u8> = vec![SOMA_CHAIN_ID];
-    bridge
+    let bridge_init = bridge_impl
         .initialize(
             *committee.address(),
             *usdc.address(),
@@ -150,12 +169,13 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
             *limiter.address(),
             supported,
         )
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+        .calldata()
+        .clone();
+    let bridge_proxy =
+        ERC1967Proxy::deploy(&deployer, *bridge_impl.address(), bridge_init)
+            .await
+            .unwrap();
+    let bridge = SomaBridge::new(*bridge_proxy.address(), &deployer);
     vault
         .transferOwnership(*bridge.address())
         .send()

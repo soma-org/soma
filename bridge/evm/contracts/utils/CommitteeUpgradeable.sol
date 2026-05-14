@@ -43,14 +43,16 @@ abstract contract CommitteeUpgradeable is
     /// divergence to manage.
     uint256[50] private __gap;
 
-    // NOTE: Sui's CommitteeUpgradeable has a `constructor { _disableInitializers(); }`
-    // to prevent direct calls to `initialize` on the implementation
-    // contract. Soma's Foundry tests currently deploy the impl directly
-    // and call initialize on it (no proxy in test setUp), so adding the
-    // disabler breaks tests with InvalidInitialization(). Wiring proper
-    // ERC1967Proxy-based test deployment is a separate refactor; until
-    // then the gate is "only the proxy's initializer can succeed in
-    // production" — relying on deployment scripts to use a proxy.
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        // Disable initializers on the implementation contract itself.
+        // The proxy reaches `initialize()` through `delegatecall`, so
+        // disabling here only affects direct calls to the impl —
+        // which is what we want, because the impl's storage is unused
+        // in production and any state written to it could mislead
+        // observers or be retrieved via accident. Sui parity.
+        _disableInitializers();
+    }
 
     function __CommitteeUpgradeable_init(address _committee) internal onlyInitializing {
         __ReentrancyGuard_init();

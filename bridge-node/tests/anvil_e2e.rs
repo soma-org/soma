@@ -96,9 +96,18 @@ mod soma_bridge {
         "../bridge/evm/out/SomaBridge.sol/SomaBridge.json"
     );
 }
+mod erc1967_proxy {
+    alloy::sol!(
+        #[allow(missing_docs)]
+        #[sol(rpc)]
+        ERC1967Proxy,
+        "../bridge/evm/out/ERC1967Proxy.sol/ERC1967Proxy.json"
+    );
+}
 use bridge_committee::BridgeCommittee;
 use bridge_limiter::BridgeLimiter;
 use bridge_vault::BridgeVault;
+use erc1967_proxy::ERC1967Proxy;
 use mock_usdc::MockUSDC;
 use soma_bridge::SomaBridge;
 
@@ -172,48 +181,58 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
     let usdc = MockUSDC::deploy(&provider).await.expect("deploy MockUSDC");
     println!("[anvil_e2e] MockUSDC @ {:?}", usdc.address());
 
-    // BridgeCommittee — initialize with the 4 ECDSA addresses.
-    let committee = BridgeCommittee::deploy(&provider)
+    // BridgeCommittee — proxy-deployed. The impl's constructor calls
+    // _disableInitializers, so direct calls to initialize on the impl
+    // would revert; the proxy delegatecalls initialize into its own
+    // storage, which is what we want.
+    let committee_impl = BridgeCommittee::deploy(&provider)
         .await
-        .expect("deploy BridgeCommittee");
+        .expect("deploy BridgeCommittee impl");
     let stake: Vec<u16> = vec![2500, 2500, 2500, 2500];
-    committee
+    let committee_init_calldata = committee_impl
         .initialize(committee_eth_addresses.clone(), stake, ETH_CHAIN_ID)
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    println!("[anvil_e2e] BridgeCommittee @ {:?}", committee.address());
+        .calldata()
+        .clone();
+    let committee_proxy = ERC1967Proxy::deploy(
+        &provider,
+        *committee_impl.address(),
+        committee_init_calldata,
+    )
+    .await
+    .expect("deploy committee proxy");
+    let committee = BridgeCommittee::new(*committee_proxy.address(), &provider);
+    println!("[anvil_e2e] BridgeCommittee proxy @ {:?}", committee.address());
 
-    // BridgeVault — constructor takes USDC.
+    // BridgeVault — non-upgradeable, takes USDC in constructor.
     let vault = BridgeVault::deploy(&provider, *usdc.address())
         .await
         .expect("deploy BridgeVault");
     println!("[anvil_e2e] BridgeVault @ {:?}", vault.address());
 
-    // BridgeLimiter — tight cap (1 USD-scale unit) so we'd catch any
-    // un-bypassed limiter write; we'll be sending a mature msg.
-    let limiter = BridgeLimiter::deploy(&provider)
+    // BridgeLimiter — proxy-deployed.
+    let limiter_impl = BridgeLimiter::deploy(&provider)
         .await
-        .expect("deploy BridgeLimiter");
-    limiter
+        .expect("deploy BridgeLimiter impl");
+    let limiter_init_calldata = limiter_impl
         .initialize(*committee.address(), 1_000_000_000_000u64)
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    println!("[anvil_e2e] BridgeLimiter @ {:?}", limiter.address());
+        .calldata()
+        .clone();
+    let limiter_proxy = ERC1967Proxy::deploy(
+        &provider,
+        *limiter_impl.address(),
+        limiter_init_calldata,
+    )
+    .await
+    .expect("deploy limiter proxy");
+    let limiter = BridgeLimiter::new(*limiter_proxy.address(), &provider);
+    println!("[anvil_e2e] BridgeLimiter proxy @ {:?}", limiter.address());
 
-    // SomaBridge — initialize, then transfer vault + limiter ownership.
-    let bridge = SomaBridge::deploy(&provider)
+    // SomaBridge — proxy-deployed.
+    let bridge_impl = SomaBridge::deploy(&provider)
         .await
-        .expect("deploy SomaBridge");
+        .expect("deploy SomaBridge impl");
     let supported_chains: Vec<u8> = vec![SOMA_CHAIN_ID];
-    bridge
+    let bridge_init_calldata = bridge_impl
         .initialize(
             *committee.address(),
             *usdc.address(),
@@ -221,13 +240,17 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
             *limiter.address(),
             supported_chains,
         )
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    println!("[anvil_e2e] SomaBridge @ {:?}", bridge.address());
+        .calldata()
+        .clone();
+    let bridge_proxy = ERC1967Proxy::deploy(
+        &provider,
+        *bridge_impl.address(),
+        bridge_init_calldata,
+    )
+    .await
+    .expect("deploy bridge proxy");
+    let bridge = SomaBridge::new(*bridge_proxy.address(), &provider);
+    println!("[anvil_e2e] SomaBridge proxy @ {:?}", bridge.address());
 
     vault
         .transferOwnership(*bridge.address())
