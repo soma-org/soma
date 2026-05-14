@@ -78,6 +78,12 @@ pub type SomaSupplyReader =
 pub type SomaPausedReader =
     Arc<dyn Fn() -> futures_pin::PinnedFuture<BridgeResult<bool>> + Send + Sync>;
 
+/// `BridgeState.system_message_seq_nums[EmergencyOp]` reader — returns
+/// the next expected per-message-type seq num for the auto-pause
+/// emit. Same indirection rationale as the supply reader.
+pub type ExpectedPauseNonceReader =
+    Arc<dyn Fn() -> futures_pin::PinnedFuture<BridgeResult<u64>> + Send + Sync>;
+
 // ---------------------------------------------------------------------------
 // Observable trait + registry
 // ---------------------------------------------------------------------------
@@ -416,9 +422,12 @@ pub struct ConservationInvariantObservable {
     /// Signing queue handle — auto-pause posts an EmergencyPause
     /// action here when the violation threshold trips.
     pub signing_tx: mpsc::Sender<BridgeActionExecutionWrapper>,
-    /// Closure returning the next expected EmergencyOp seq num.
-    /// Re-read on each violation so we don't burn a stale nonce.
-    pub expected_pause_nonce: Arc<dyn Fn() -> u64 + Send + Sync>,
+    /// Async reader for the next expected EmergencyOp seq num.
+    /// Re-read on each violation so we don't burn a stale nonce. If
+    /// the read fails the auto-pause attempt is logged + skipped —
+    /// firing with a guessed nonce that collides with an already-used
+    /// one would just bounce on-chain anyway.
+    pub expected_pause_nonce: ExpectedPauseNonceReader,
     consecutive_violations: AtomicU32,
     auto_pause_emitted: AtomicBool,
 }
@@ -434,7 +443,7 @@ impl ConservationInvariantObservable {
         failure_threshold: u32,
         in_flight_tolerance_micro: u128,
         signing_tx: mpsc::Sender<BridgeActionExecutionWrapper>,
-        expected_pause_nonce: Arc<dyn Fn() -> u64 + Send + Sync>,
+        expected_pause_nonce: ExpectedPauseNonceReader,
     ) -> Self {
         Self {
             eth_client,
@@ -475,7 +484,11 @@ impl ConservationInvariantObservable {
     /// The executor fans out via the peer-broadcast aggregator and
     /// submits the resulting cert on Soma.
     async fn emit_auto_pause(&self) -> BridgeResult<()> {
-        let nonce = (self.expected_pause_nonce)();
+        let nonce = (self.expected_pause_nonce)().await.map_err(|e| {
+            crate::error::BridgeError::Internal(format!(
+                "watchdog: failed to read expected pause nonce: {e}"
+            ))
+        })?;
         let pause_action = BridgeAction::EmergencyPause { nonce };
         submit_to_executor(&self.signing_tx, pause_action)
             .await
@@ -564,7 +577,8 @@ mod tests {
     async fn conservation_emit_auto_pause_queues_emergency_pause() {
         let (signing_tx, mut signing_rx) =
             mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| 42);
+        let nonce_fn: ExpectedPauseNonceReader =
+            Arc::new(|| Box::pin(async { Ok(42u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
         let obs = ConservationInvariantObservable::new(
@@ -595,7 +609,8 @@ mod tests {
     async fn conservation_survives_rpc_errors() {
         let (signing_tx, _signing_rx) =
             mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| 0);
+        let nonce_fn: ExpectedPauseNonceReader =
+            Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
         let watchdog = BridgeWatchdog::new().with(Box::new(
@@ -627,7 +642,8 @@ mod tests {
     async fn conservation_err_not_counted_as_violation() {
         let (signing_tx, _signing_rx) =
             mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| 0);
+        let nonce_fn: ExpectedPauseNonceReader =
+            Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
         let obs = ConservationInvariantObservable::new(
@@ -655,7 +671,8 @@ mod tests {
     async fn registry_spawns_one_task_per_observable() {
         let (signing_tx, _rx) =
             mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| 0);
+        let nonce_fn: ExpectedPauseNonceReader =
+            Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
         let paused_reader: SomaPausedReader =
             Arc::new(|| Box::pin(async { Ok(false) }));

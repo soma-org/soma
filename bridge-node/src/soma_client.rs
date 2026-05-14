@@ -88,6 +88,18 @@ pub trait SomaBridgeClientInner: Send + Sync + 'static {
     /// to guess a fixed upper bound.
     async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64>;
 
+    /// Next expected per-message-type sequence number for `msg_type`,
+    /// read off `BridgeState.system_message_seq_nums[msg_type]`.
+    /// Returns 0 if the key is absent (the seq map starts empty and
+    /// gets populated on first use). The watchdog reads this for
+    /// EmergencyOp before firing an auto-pause cert — without it,
+    /// the auto-pause would burn nonce 0 every time and collide with
+    /// any manual EmergencyPause that already used it.
+    async fn get_next_system_message_seq(
+        &self,
+        msg_type: types::bridge::BridgeMessageType,
+    ) -> BridgeResult<u64>;
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee>;
 
     /// Membership query against `BridgeState.processed_deposit_nonces`.
@@ -188,6 +200,13 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
         self.inner.get_next_withdrawal_nonce().await
+    }
+
+    pub async fn get_next_system_message_seq(
+        &self,
+        msg_type: types::bridge::BridgeMessageType,
+    ) -> BridgeResult<u64> {
+        self.inner.get_next_system_message_seq(msg_type).await
     }
 
     pub async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
@@ -404,6 +423,26 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         Ok(state.bridge_state().next_withdrawal_nonce)
     }
 
+    async fn get_next_system_message_seq(
+        &self,
+        msg_type: types::bridge::BridgeMessageType,
+    ) -> BridgeResult<u64> {
+        let mut c = self.client.lock().await;
+        let state = c
+            .get_latest_system_state()
+            .await
+            .map_err(|s| BridgeError::Internal(format!("get_latest_system_state: {s}")))?;
+        // Absent key = 0 (the seq map starts empty; first message of
+        // a type expects seq=0). Mirrors the on-chain executor's read
+        // semantics in authority/src/execution/bridge.rs.
+        Ok(state
+            .bridge_state()
+            .system_message_seq_nums
+            .get(&msg_type)
+            .copied()
+            .unwrap_or(0))
+    }
+
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         let mut c = self.client.lock().await;
         let state = c
@@ -513,6 +552,9 @@ pub mod tests {
     pub struct MockSomaClient {
         pub paused: std::sync::atomic::AtomicBool,
         pub total_usdc_supply: AtomicU64,
+        pub system_message_seq_nums: std::sync::Mutex<
+            std::collections::BTreeMap<types::bridge::BridgeMessageType, u64>,
+        >,
         pub deposit_nonces_seen: std::sync::Mutex<std::collections::BTreeSet<u64>>,
         pub committee: std::sync::Mutex<BridgeCommittee>,
         /// `nonce -> PendingWithdrawal`. Tests insert here to drive
@@ -534,6 +576,7 @@ pub mod tests {
             Self {
                 paused: false.into(),
                 total_usdc_supply: 0.into(),
+                system_message_seq_nums: Default::default(),
                 deposit_nonces_seen: Default::default(),
                 committee: std::sync::Mutex::new(BridgeCommittee::empty()),
                 pending_withdrawals: Default::default(),
@@ -588,6 +631,19 @@ pub mod tests {
             // covers everything the test installed.
             let pending = self.pending_withdrawals.lock().unwrap();
             Ok(pending.keys().copied().max().map(|n| n + 1).unwrap_or(0))
+        }
+
+        async fn get_next_system_message_seq(
+            &self,
+            msg_type: types::bridge::BridgeMessageType,
+        ) -> BridgeResult<u64> {
+            Ok(self
+                .system_message_seq_nums
+                .lock()
+                .unwrap()
+                .get(&msg_type)
+                .copied()
+                .unwrap_or(0))
         }
 
         async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {

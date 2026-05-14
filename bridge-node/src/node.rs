@@ -283,14 +283,26 @@ impl BridgeNode {
                                     })
                                 };
 
-                                // TODO(soma#watchdog-nonce): real reader
-                                // off Soma's `BridgeState
-                                // .system_message_seq_nums[EmergencyOp]`.
-                                // Stub at 0 means a fired auto-pause
-                                // collides with manual ops at nonce 0.
-                                let expected_pause_nonce: Arc<
-                                    dyn Fn() -> u64 + Send + Sync,
-                                > = Arc::new(|| 0u64);
+                                // Real reader: read the on-chain
+                                // BridgeState.system_message_seq_nums[EmergencyOp]
+                                // every time the watchdog fires an
+                                // auto-pause. Re-read each time so a
+                                // pause cert that landed since the
+                                // last watchdog tick (manual op or
+                                // peer-fired) doesn't get the same
+                                // nonce as our about-to-fire cert.
+                                let expected_pause_nonce: crate::watchdog::ExpectedPauseNonceReader = {
+                                    let c = Arc::clone(&client);
+                                    Arc::new(move || {
+                                        let c = Arc::clone(&c);
+                                        Box::pin(async move {
+                                            c.get_next_system_message_seq(
+                                                types::bridge::BridgeMessageType::EmergencyOp,
+                                            )
+                                            .await
+                                        })
+                                    })
+                                };
 
                                 let watchdog = crate::watchdog::BridgeWatchdog::new()
                                     .with(Box::new(

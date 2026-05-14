@@ -80,6 +80,12 @@ impl SomaBridgeClientInner for InTestSomaClient {
             .map(|n| n + 1)
             .unwrap_or(0))
     }
+    async fn get_next_system_message_seq(
+        &self,
+        _msg_type: types::bridge::BridgeMessageType,
+    ) -> BridgeResult<u64> {
+        Ok(0)
+    }
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         Ok(BridgeCommittee::empty())
     }
