@@ -138,8 +138,7 @@ fn action_to_transaction_kind(
         // Soma). They have no Soma-side `TransactionKind`, so building a
         // Soma tx for them is a programmer error and we surface it as
         // such instead of silently constructing nothing.
-        BridgeAction::CommitteeUpdate { .. }
-        | BridgeAction::LimitUpdate { .. }
+        BridgeAction::LimitUpdate { .. }
         | BridgeAction::EvmContractUpgrade { .. } => {
             return Err(BridgeError::Internal(format!(
                 "BridgeAction targets Eth side, no Soma TransactionKind: {:?}",
@@ -301,15 +300,6 @@ mod tests {
             signatures: empty_sigs(),
         };
         assert!(build_bridge_transaction(sender, &kp, &upgrade).is_err());
-
-        let committee_update = CertifiedBridgeAction {
-            action: BridgeAction::CommitteeUpdate {
-                nonce: 1,
-                new_members: vec![],
-            },
-            signatures: empty_sigs(),
-        };
-        assert!(build_bridge_transaction(sender, &kp, &committee_update).is_err());
     }
 
     /// `Ed25519SomaSignature` import is here only to make the test file

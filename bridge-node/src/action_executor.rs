@@ -499,8 +499,7 @@ async fn is_already_processed<C: SomaBridgeClientInner>(
         | BridgeAction::EmergencyUnpause { .. }
         | BridgeAction::UpdateCommitteeBlocklist { .. } => false,
         // Eth-targeted actions never land on the Soma side.
-        BridgeAction::CommitteeUpdate { .. }
-        | BridgeAction::LimitUpdate { .. }
+        BridgeAction::LimitUpdate { .. }
         | BridgeAction::EvmContractUpgrade { .. } => false,
     }
 }

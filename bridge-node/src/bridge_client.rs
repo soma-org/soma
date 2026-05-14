@@ -186,7 +186,7 @@ impl BridgeClient {
 
 /// Build the URL path for a governance action. Returns
 /// `InvalidBridgeClientRequest` for non-governance actions or those
-/// not yet routed (e.g. `CommitteeUpdate` — TODO).
+/// not yet routed.
 pub fn governance_url(base_url: &str, action: &BridgeAction) -> BridgeResult<String> {
     use types::bridge::derive_eth_address;
     match action {
@@ -247,16 +247,6 @@ pub fn governance_url(base_url: &str, action: &BridgeAction) -> BridgeResult<Str
                     chain_id.as_u8(),
                 ))
             }
-        }
-        BridgeAction::CommitteeUpdate { nonce, new_members } => {
-            // Encode members as `pubkey_hex:power,pubkey_hex:power,…`.
-            // Matches `http_server::handle_committee_update`.
-            let members = new_members
-                .iter()
-                .map(|(pk, power)| format!("0x{}:{power}", hex::encode(pk.as_bytes())))
-                .collect::<Vec<_>>()
-                .join(",");
-            Ok(format!("{base_url}/sign/update_committee/{nonce}/{members}"))
         }
         BridgeAction::Deposit { .. } | BridgeAction::Withdrawal { .. } => {
             Err(BridgeError::InvalidBridgeClientRequest(
@@ -540,24 +530,6 @@ mod tests {
         assert_eq!(
             url,
             "http://x:9/sign/upgrade_evm_contract/12/1/0x1111111111111111111111111111111111111111/0x2222222222222222222222222222222222222222"
-        );
-    }
-
-    #[test]
-    fn test_governance_url_committee_update() {
-        let kp = fresh_kp(99);
-        let pk = BridgePubkey::from_keypair(&kp);
-        let action = BridgeAction::CommitteeUpdate {
-            nonce: 7,
-            new_members: vec![(pk.clone(), 5000)],
-        };
-        let url = governance_url("http://x:9", &action).unwrap();
-        assert_eq!(
-            url,
-            format!(
-                "http://x:9/sign/update_committee/7/0x{}:5000",
-                hex::encode(pk.as_bytes())
-            )
         );
     }
 

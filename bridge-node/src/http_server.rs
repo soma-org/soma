@@ -75,16 +75,6 @@ pub const EVM_CONTRACT_UPGRADE_PATH: &str =
 pub const EVM_CONTRACT_UPGRADE_PATH_WITH_CALLDATA: &str =
     "/sign/upgrade_evm_contract/{chain_id}/{nonce}/{proxy_address}/{new_impl_address}/{calldata}";
 
-/// Committee-update route. `members` is a comma-separated list of
-/// `pubkey_hex:power` pairs (e.g.
-/// `0x02ab…:5000,0x03cd…:5000`). Each pubkey is a 33-byte compressed
-/// secp256k1 (66 hex chars + `0x`); each power is a `u64`. The handler
-/// reconstructs the action and runs it through the governance
-/// whitelist before signing — same security model as the other
-/// governance endpoints.
-pub const COMMITTEE_UPDATE_PATH: &str =
-    "/sign/update_committee/{nonce}/{members}";
-
 /// Public metadata exposed at [`PING_PATH`]. Mirrors Sui's
 /// `BridgeNodePublicMetadata`. Currently minimal — extends as we add
 /// metrics auth or runtime feature flags.
@@ -166,7 +156,6 @@ where
             EVM_CONTRACT_UPGRADE_PATH_WITH_CALLDATA,
             get(handle_evm_contract_upgrade_with_calldata::<H>),
         )
-        .route(COMMITTEE_UPDATE_PATH, get(handle_committee_update::<H>))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_SIZE))
         .layer(middleware::from_fn(reject_oversized_uri))
         .with_state((handler, metadata))
@@ -376,44 +365,6 @@ where
         .and_then(|a| Ok((handler, a)))
         .map(|(h, a)| async move { h.handle_governance_action(a).await.map(Json) })?
         .await
-}
-
-#[instrument(level = "info", skip_all, fields(nonce, member_count))]
-async fn handle_committee_update<H>(
-    Path((nonce, members)): Path<(u64, String)>,
-    State((handler, _)): State<AppState<H>>,
-) -> Result<Json<SignedBridgeAction>, BridgeError>
-where
-    H: BridgeRequestHandlerTrait,
-{
-    validate_list_size(&members, "members")?;
-    let mut parsed: Vec<(BridgePubkey, u64)> = Vec::new();
-    for entry in members.split(',') {
-        let (pk_hex, power_str) = entry.split_once(':').ok_or_else(|| {
-            BridgeError::InvalidBridgeClientRequest(format!(
-                "committee member entry `{entry}` is not `pubkey_hex:power`"
-            ))
-        })?;
-        let stripped = pk_hex.strip_prefix("0x").unwrap_or(pk_hex);
-        let bytes = hex::decode(stripped).map_err(|e| {
-            BridgeError::InvalidBridgeClientRequest(format!("bad pubkey hex: {e}"))
-        })?;
-        let pk = BridgePubkey::from_bytes(&bytes).map_err(|e| {
-            BridgeError::InvalidBridgeClientRequest(format!("invalid pubkey: {e:?}"))
-        })?;
-        let power: u64 = power_str.parse().map_err(|e| {
-            BridgeError::InvalidBridgeClientRequest(format!(
-                "voting power `{power_str}` not a u64: {e}"
-            ))
-        })?;
-        parsed.push((pk, power));
-    }
-    let action = BridgeAction::CommitteeUpdate {
-        nonce,
-        new_members: parsed,
-    };
-    let signed = handler.handle_governance_action(action).await?;
-    Ok(Json(signed))
 }
 
 fn upgrade_action(
@@ -747,62 +698,6 @@ mod tests {
             }
             other => panic!("expected EvmContractUpgrade, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn test_committee_update_route_parses_members() {
-        use fastcrypto::secp256k1::Secp256k1KeyPair;
-        use fastcrypto::traits::KeyPair;
-        use rand::SeedableRng;
-        use rand::rngs::StdRng;
-        let (router, h) = test_router();
-        let mut rng = StdRng::from_seed([7; 32]);
-        let kp1 = Secp256k1KeyPair::generate(&mut rng);
-        let kp2 = Secp256k1KeyPair::generate(&mut rng);
-        let pk1 = BridgePubkey::from_keypair(&kp1);
-        let pk2 = BridgePubkey::from_keypair(&kp2);
-        let members_str = format!(
-            "0x{}:5000,0x{}:5000",
-            hex::encode(pk1.as_bytes()),
-            hex::encode(pk2.as_bytes())
-        );
-        let resp = router
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/sign/update_committee/3/{members_str}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        match h.last_governance.lock().unwrap().clone().unwrap() {
-            BridgeAction::CommitteeUpdate { nonce, new_members } => {
-                assert_eq!(nonce, 3);
-                assert_eq!(new_members.len(), 2);
-                assert_eq!(new_members[0].0, pk1);
-                assert_eq!(new_members[0].1, 5000);
-                assert_eq!(new_members[1].0, pk2);
-                assert_eq!(new_members[1].1, 5000);
-            }
-            other => panic!("expected CommitteeUpdate, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_committee_update_route_rejects_bad_format() {
-        let (router, _) = test_router();
-        // Missing `:power` part.
-        let resp = router
-            .oneshot(
-                Request::builder()
-                    .uri("/sign/update_committee/3/abcd_no_colon")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

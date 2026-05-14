@@ -533,80 +533,18 @@ impl BridgeNode {
                         }
                     }
                     CheckpointEvent::EpochBoundary { epoch } => {
-                        // At each epoch boundary, build a
-                        // CommitteeUpdate action from the latest
-                        // committee snapshot and push it to the
-                        // executor. The executor's PeerBroadcastAggregator
-                        // collects sigs from peers; the resulting cert
-                        // is what an off-chain relayer (or operator)
-                        // submits to the Eth-side contract so it can
-                        // keep its ecrecover allowlist in sync with
-                        // Soma's rotated committee.
-                        //
-                        // TODO(soma#bridge-committee-nonce): read the
-                        // per-message-type sequence number from Soma's
-                        // `BridgeState.system_message_seq_nums
-                        // [CommitteeUpdate]` instead of stubbing as
-                        // the epoch number. Stubbing collides with
-                        // any manual CommitteeUpdate ops; fine for the
-                        // wiring landing, not for production.
-                        let Some(committee_arc) = epoch_committee.as_ref() else {
-                            info!(
-                                epoch,
-                                "Epoch boundary — no committee snapshot (sig-cache-only mode); skipping CommitteeUpdate"
-                            );
-                            continue;
-                        };
-                        let Some(tx) = withdrawal_executor_tx.as_ref() else {
-                            info!(
-                                epoch,
-                                "Epoch boundary — no executor (sig-cache-only mode); skipping CommitteeUpdate"
-                            );
-                            continue;
-                        };
-                        let committee = committee_arc.load_full();
-                        let new_members: Vec<(types::bridge::BridgePubkey, u64)> =
-                            committee
-                                .members
-                                .iter()
-                                .filter(|(_, m)| !m.is_blocklisted)
-                                .map(|(pk, m)| (pk.clone(), m.voting_power))
-                                .collect();
-                        if new_members.is_empty() {
-                            warn!(
-                                epoch,
-                                "Epoch boundary — committee snapshot is empty; not emitting CommitteeUpdate"
-                            );
-                            continue;
-                        }
-                        let action = BridgeAction::CommitteeUpdate {
-                            nonce: epoch,
-                            new_members,
-                        };
-                        let digest_hex = hex::encode(action.digest());
-                        if let Err(e) = withdrawal_wal.insert_pending_action(&action) {
-                            warn!(
-                                epoch,
-                                action_digest = %digest_hex,
-                                error = %e,
-                                "WAL insert failed for CommitteeUpdate"
-                            );
-                            continue;
-                        }
-                        if let Err(e) = submit_to_executor(tx, action).await {
-                            warn!(
-                                epoch,
-                                action_digest = %digest_hex,
-                                error = %e,
-                                "submit_to_executor failed for CommitteeUpdate"
-                            );
-                        } else {
-                            info!(
-                                epoch,
-                                action_digest = %digest_hex,
-                                "CommitteeUpdate enqueued for sig collection"
-                            );
-                        }
+                        // Sui parity: there is no automatic on-chain
+                        // CommitteeUpdate at epoch boundary. Sui's
+                        // Eth-side BridgeCommittee membership is set
+                        // at deploy and only changes via UUPS upgrade
+                        // (the existing committee signs a quorum
+                        // EvmContractUpgrade message that swaps the
+                        // BridgeCommittee impl to one with new members
+                        // baked into its initializer). The blocklist
+                        // gives operators a fast lever to neutralize
+                        // an individual member without rotation. So
+                        // epoch boundaries are a no-op here.
+                        info!(epoch, "epoch boundary observed (no-op: Eth committee rotation is via UUPS upgrade)");
                     }
                 }
             }

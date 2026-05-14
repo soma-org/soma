@@ -79,15 +79,6 @@ pub enum BridgeAction {
     /// Emergency unpause — resumes bridge operations. Shares the EmergencyOp
     /// counter with pause.
     EmergencyUnpause { nonce: u64 },
-    /// Committee update — sync Ethereum contract with new validator set at epoch boundary.
-    /// Carries a per-message-type nonce so a quorum-signed cert can't be
-    /// replayed against the Eth contract after a future committee rotation.
-    /// (Soma's on-chain rotation happens implicitly at epoch boundary —
-    /// Stage 5 — so this action exists purely for Eth-side sync today.)
-    CommitteeUpdate {
-        nonce: u64,
-        new_members: Vec<(types::bridge::BridgePubkey, u64)>,
-    },
     /// Surgically blocklist or unblocklist individual committee members without
     /// rotating the whole committee. Members are carried as typed
     /// [`types::bridge::BridgePubkey`]s; encoding derives 20-byte Eth
@@ -129,7 +120,6 @@ impl BridgeAction {
             BridgeAction::EmergencyPause { .. } | BridgeAction::EmergencyUnpause { .. } => {
                 BridgeMessageType::EmergencyOp
             }
-            BridgeAction::CommitteeUpdate { .. } => BridgeMessageType::CommitteeUpdate,
             BridgeAction::UpdateCommitteeBlocklist { .. } => {
                 BridgeMessageType::UpdateCommitteeBlocklist
             }
@@ -139,8 +129,8 @@ impl BridgeAction {
     }
 
     /// Returns `true` for governance-class actions (pause/unpause,
-    /// blocklist updates, limit updates, EVM contract upgrades,
-    /// committee updates) and `false` for token transfers.
+    /// blocklist updates, limit updates, EVM contract upgrades) and
+    /// `false` for token transfers.
     ///
     /// Used by the bridge server's `GovernanceVerifier` to reject
     /// token-transfer sigs from governance endpoints and vice versa.
@@ -150,7 +140,6 @@ impl BridgeAction {
             BridgeAction::Deposit { .. } | BridgeAction::Withdrawal { .. } => false,
             BridgeAction::EmergencyPause { .. }
             | BridgeAction::EmergencyUnpause { .. }
-            | BridgeAction::CommitteeUpdate { .. }
             | BridgeAction::UpdateCommitteeBlocklist { .. }
             | BridgeAction::LimitUpdate { .. }
             | BridgeAction::EvmContractUpgrade { .. } => true,
@@ -161,15 +150,13 @@ impl BridgeAction {
     ///
     /// `EmergencyPause`/`EmergencyUnpause` carry the per-message-type seq
     /// num (Stage 3 — pause and unpause share the EmergencyOp counter,
-    /// mirroring Sui's `execute_system_message`). `CommitteeUpdate` carries
-    /// its own counter for Eth-side sync replay defense (L9).
+    /// mirroring Sui's `execute_system_message`).
     pub fn nonce(&self) -> u64 {
         match self {
             BridgeAction::Deposit { nonce, .. }
             | BridgeAction::Withdrawal { nonce, .. }
             | BridgeAction::EmergencyPause { nonce }
             | BridgeAction::EmergencyUnpause { nonce }
-            | BridgeAction::CommitteeUpdate { nonce, .. }
             | BridgeAction::UpdateCommitteeBlocklist { nonce, .. }
             | BridgeAction::LimitUpdate { nonce, .. }
             | BridgeAction::EvmContractUpgrade { nonce, .. } => *nonce,
@@ -177,17 +164,16 @@ impl BridgeAction {
     }
 
     /// Returns the chain id this action targets — i.e. the chain that will
-    /// verify and execute the message. Token-transfer / emergency / committee-update
-    /// actions are scoped to Soma; new governance actions carry their own chain id
-    /// so an EVM contract upgrade can target Ethereum without colliding with
+    /// verify and execute the message. Token-transfer / emergency actions are
+    /// scoped to Soma; new governance actions carry their own chain id so an
+    /// EVM contract upgrade can target Ethereum without colliding with
     /// Soma-targeted messages.
     pub fn chain_id(&self) -> types::bridge::BridgeChainId {
         match self {
             BridgeAction::Deposit { .. }
             | BridgeAction::Withdrawal { .. }
             | BridgeAction::EmergencyPause { .. }
-            | BridgeAction::EmergencyUnpause { .. }
-            | BridgeAction::CommitteeUpdate { .. } => SOMA_BRIDGE_CHAIN_ID,
+            | BridgeAction::EmergencyUnpause { .. } => SOMA_BRIDGE_CHAIN_ID,
             BridgeAction::UpdateCommitteeBlocklist { chain_id, .. }
             | BridgeAction::LimitUpdate { chain_id, .. }
             | BridgeAction::EvmContractUpgrade { chain_id, .. } => *chain_id,
@@ -201,7 +187,6 @@ impl BridgeAction {
             BridgeAction::Withdrawal { .. } => committee.threshold_withdraw,
             BridgeAction::EmergencyPause { .. } => committee.threshold_pause,
             BridgeAction::EmergencyUnpause { .. } => committee.threshold_unpause,
-            BridgeAction::CommitteeUpdate { .. } => committee.threshold_unpause,
             BridgeAction::UpdateCommitteeBlocklist { .. } => committee.threshold_blocklist,
             BridgeAction::LimitUpdate { .. } => committee.threshold_limit_update,
             BridgeAction::EvmContractUpgrade { .. } => committee.threshold_evm_upgrade,
@@ -274,16 +259,6 @@ impl BridgeAction {
             ),
             BridgeAction::EmergencyPause { .. } => encode_emergency_payload(EmergencyOpCode::Freeze),
             BridgeAction::EmergencyUnpause { .. } => encode_emergency_payload(EmergencyOpCode::Unfreeze),
-            BridgeAction::CommitteeUpdate { new_members, .. } => {
-                // Encode: count(4,BE) || (pubkey(33) || voting_power(8,BE))*
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&(new_members.len() as u32).to_be_bytes());
-                for (pubkey, power) in new_members {
-                    payload.extend_from_slice(pubkey.as_bytes());
-                    payload.extend_from_slice(&power.to_be_bytes());
-                }
-                payload
-            }
             BridgeAction::UpdateCommitteeBlocklist {
                 blocklist_type,
                 members,
@@ -807,37 +782,6 @@ mod tests {
     }
 
     #[test]
-    fn test_committee_update_encoding() {
-        // Use real keypairs so the typed BridgePubkey is valid.
-        let (_committee, keypairs) = generate_test_bridge_committee(2);
-        let pk0 = types::bridge::BridgePubkey::from_keypair(&keypairs[0]);
-        let pk1 = types::bridge::BridgePubkey::from_keypair(&keypairs[1]);
-        let action = BridgeAction::CommitteeUpdate {
-            nonce: 42,
-            new_members: vec![(pk0, 5000), (pk1, 5000)],
-        };
-
-        let msg_bytes = action.to_message_bytes();
-
-        assert_eq!(msg_bytes[19], 3); // CommitteeUpdate
-        // L9: CommitteeUpdate now carries a real nonce (was hardcoded 0
-        // before this fix — replay risk for Eth-side committee sync).
-        assert_eq!(&msg_bytes[21..29], &42u64.to_be_bytes());
-
-        // Header now ends at byte 30 (1-byte chain id).
-        // Payload: count(4) + (pubkey(33) + power(8)) * 2
-        let payload_start = 30;
-        let expected_payload_len = 4 + 2 * (33 + 8); // 86 bytes
-        assert_eq!(msg_bytes.len(), payload_start + expected_payload_len);
-
-        // Count = 2
-        assert_eq!(
-            &msg_bytes[payload_start..payload_start + 4],
-            &2u32.to_be_bytes()
-        );
-    }
-
-    #[test]
     fn test_all_action_types_ecrecover_roundtrip() {
         // Verify sign → ecrecover works for every action type.
         let (_committee, keypairs) = generate_test_bridge_committee(1);
@@ -867,15 +811,11 @@ mod tests {
             },
             BridgeAction::EmergencyPause { nonce: 0 },
             BridgeAction::EmergencyUnpause { nonce: 0 },
-            BridgeAction::CommitteeUpdate {
-                nonce: 0,
-                new_members: vec![(pubkey0.clone(), 10000)],
-            },
             BridgeAction::UpdateCommitteeBlocklist {
                 nonce: 7,
                 chain_id: SOMA_BRIDGE_CHAIN_ID,
                 blocklist_type: BlocklistType::Blocklist,
-                members: vec![pubkey0],
+                members: vec![pubkey0.clone()],
             },
             BridgeAction::LimitUpdate {
                 nonce: 8,

@@ -201,7 +201,13 @@ pub enum BridgeMessageType {
     UsdcDeposit = 0,
     UsdcWithdraw = 1,
     EmergencyOp = 2,
-    CommitteeUpdate = 3,
+    // Byte 3 is intentionally unused. Sui's BridgeUtils.sol reserves
+    // byte 3 for UPDATE_BRIDGE_LIMIT (which we put at byte 5); the
+    // gap here originally held a Soma-only `CommitteeUpdate` variant
+    // that we deleted because Sui has no analog — Eth-side committee
+    // rotation goes through UUPS upgrade, not a dedicated message
+    // type. Retaining the byte gap keeps existing serialized values
+    // for variants 4/5/6 stable.
     UpdateCommitteeBlocklist = 4,
     LimitUpdate = 5,
     EvmContractUpgrade = 6,

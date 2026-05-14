@@ -132,7 +132,6 @@ impl PeerBroadcastAggregator {
             },
             BridgeAction::EmergencyPause { .. }
             | BridgeAction::EmergencyUnpause { .. }
-            | BridgeAction::CommitteeUpdate { .. }
             | BridgeAction::UpdateCommitteeBlocklist { .. }
             | BridgeAction::LimitUpdate { .. }
             | BridgeAction::EvmContractUpgrade { .. } => SignRequest::Governance(action),
