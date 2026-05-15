@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::base::{ExecutionDigests, SomaAddress};
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::checkpoints::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber, CheckpointSummary,
     EndOfEpochData,
@@ -23,11 +24,8 @@ use crate::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet}
 use crate::object::{
     CoinType, OBJECT_START_VERSION, Object, ObjectData, ObjectID, ObjectType, Owner, Version,
 };
-use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::system_state::{SystemState, SystemStateTrait as _};
-use crate::transaction::{
-    ChangeEpoch, GenesisTransaction, TransactionData, TransactionKind,
-};
+use crate::transaction::{ChangeEpoch, GenesisTransaction, TransactionData, TransactionKind};
 use crate::tx_fee::TransactionFee;
 
 /// Builder for creating synthetic `Checkpoint` data.
@@ -504,13 +502,12 @@ pub fn default_test_system_state() -> SystemState {
         protocol_config::ProtocolVersion::MAX.as_u64(),
         1_000_000, // epoch_start_timestamp_ms
         &protocol_config,
-        0,                       // emission_fund
-        100_000_000_000_000,     // emission_initial_distribution_amount (100K SOMA in shannons)
-        10,                      // emission_period_length
-        1000,                    // emission_decrease_rate (10% in bps)
+        0,                   // emission_fund
+        100_000_000_000_000, // emission_initial_distribution_amount (100K SOMA in shannons)
+        10,                  // emission_period_length
+        1000,                // emission_decrease_rate (10% in bps)
         None,
         MarketplaceParameters::default(),
         BridgeCommittee::empty(),
     )
 }
-

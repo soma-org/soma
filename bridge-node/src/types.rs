@@ -257,28 +257,22 @@ impl BridgeAction {
                 *amount,
                 *timestamp_ms,
             ),
-            BridgeAction::EmergencyPause { .. } => encode_emergency_payload(EmergencyOpCode::Freeze),
-            BridgeAction::EmergencyUnpause { .. } => encode_emergency_payload(EmergencyOpCode::Unfreeze),
-            BridgeAction::UpdateCommitteeBlocklist {
-                blocklist_type,
-                members,
-                ..
-            } => {
-                let eth_addresses: Vec<[u8; 20]> =
-                    members.iter().map(derive_eth_address).collect();
+            BridgeAction::EmergencyPause { .. } => {
+                encode_emergency_payload(EmergencyOpCode::Freeze)
+            }
+            BridgeAction::EmergencyUnpause { .. } => {
+                encode_emergency_payload(EmergencyOpCode::Unfreeze)
+            }
+            BridgeAction::UpdateCommitteeBlocklist { blocklist_type, members, .. } => {
+                let eth_addresses: Vec<[u8; 20]> = members.iter().map(derive_eth_address).collect();
                 encode_blocklist_payload(*blocklist_type, &eth_addresses)
             }
-            BridgeAction::LimitUpdate {
-                sending_chain_id,
-                new_usd_limit,
-                ..
-            } => encode_limit_update_payload(*sending_chain_id, *new_usd_limit),
-            BridgeAction::EvmContractUpgrade {
-                proxy,
-                new_impl,
-                call_data,
-                ..
-            } => encode_evm_contract_upgrade_payload(proxy, new_impl, call_data),
+            BridgeAction::LimitUpdate { sending_chain_id, new_usd_limit, .. } => {
+                encode_limit_update_payload(*sending_chain_id, *new_usd_limit)
+            }
+            BridgeAction::EvmContractUpgrade { proxy, new_impl, call_data, .. } => {
+                encode_evm_contract_upgrade_payload(proxy, new_impl, call_data)
+            }
         }
     }
 }
@@ -387,8 +381,8 @@ mod tests {
     use fastcrypto::secp256k1::recoverable::Secp256k1RecoverableSignature;
     use fastcrypto::traits::{KeyPair, RecoverableSignature, ToFromBytes};
     use types::bridge::{
-        build_bridge_signatures, generate_test_bridge_committee, sign_bridge_message,
-        TOKEN_TRANSFER_MESSAGE_VERSION_V2,
+        TOKEN_TRANSFER_MESSAGE_VERSION_V2, build_bridge_signatures, generate_test_bridge_committee,
+        sign_bridge_message,
     };
 
     #[test]
@@ -461,8 +455,7 @@ mod tests {
         let got_hex = hex::encode(hash.as_ref());
         // Computed once via `cast keccak <canonical hex>`. Pinned both
         // here and in the matching Solidity test.
-        const EXPECTED: &str =
-            "920f174c925e333236cfc68cf2023e6028c7d843b004d4786f5fb37ac2c5db79";
+        const EXPECTED: &str = "920f174c925e333236cfc68cf2023e6028c7d843b004d4786f5fb37ac2c5db79";
         assert_eq!(
             got_hex, EXPECTED,
             "wire-format keccak diverged from the cross-language sentinel"
@@ -550,9 +543,8 @@ mod tests {
         let sig = sign_bridge_message(&keypairs[0], &msg_bytes);
 
         // ecrecover: hash with Keccak256, then recover public key from signature
-        let recovered_pubkey = sig
-            .recover_with_hash::<Keccak256>(&msg_bytes)
-            .expect("ecrecover should succeed");
+        let recovered_pubkey =
+            sig.recover_with_hash::<Keccak256>(&msg_bytes).expect("ecrecover should succeed");
 
         assert_eq!(
             recovered_pubkey.as_bytes(),
@@ -835,9 +827,8 @@ mod tests {
         for action in &actions {
             let msg = action.to_message_bytes();
             let sig = sign_bridge_message(kp, &msg);
-            let recovered = sig
-                .recover_with_hash::<Keccak256>(&msg)
-                .expect("ecrecover should succeed");
+            let recovered =
+                sig.recover_with_hash::<Keccak256>(&msg).expect("ecrecover should succeed");
             assert_eq!(
                 recovered.as_bytes(),
                 kp.public().as_bytes(),

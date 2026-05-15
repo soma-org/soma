@@ -313,12 +313,7 @@ mod tests {
         let alice = SomaAddress::random();
         let mut executor = BalanceTransferExecutor::new();
         let err = executor
-            .execute(
-                &mut store,
-                alice,
-                xfer(CoinType::Usdc, vec![]),
-                TransactionDigest::default(),
-            )
+            .execute(&mut store, alice, xfer(CoinType::Usdc, vec![]), TransactionDigest::default())
             .expect_err("empty transfer list must be rejected");
         let msg = format!("{:?}", err);
         assert!(msg.contains("at least one recipient"), "got: {}", msg);

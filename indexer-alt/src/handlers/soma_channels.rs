@@ -138,14 +138,7 @@ impl Processor for SomaChannels {
                         } else {
                             STATUS_OPEN
                         };
-                        out.push(channel_to_stored(
-                            id,
-                            &chan,
-                            cp,
-                            tx_digest.clone(),
-                            cp,
-                            status,
-                        ));
+                        out.push(channel_to_stored(id, &chan, cp, tx_digest.clone(), cp, status));
                     }
                 }
                 TransactionKind::RequestClose(_) => {
@@ -166,13 +159,8 @@ impl Processor for SomaChannels {
                     // immutable identity columns and override the
                     // mutating ones.
                     let id = args.channel_id;
-                    let chan = pre.iter().find_map(|o| {
-                        if o.id() == id {
-                            o.as_channel()
-                        } else {
-                            None
-                        }
-                    });
+                    let chan =
+                        pre.iter().find_map(|o| if o.id() == id { o.as_channel() } else { None });
                     if let Some(chan) = chan {
                         // Manual: deposit=0, status=withdrawn,
                         // close_requested_at_ms preserved (the timer
@@ -188,9 +176,7 @@ impl Processor for SomaChannels {
                             token: coin_type_label(chan.token()).to_string(),
                             deposit: 0,
                             settled_amount: chan.settled_amount() as i64,
-                            close_requested_at_ms: chan
-                                .close_requested_at_ms()
-                                .map(|v| v as i64),
+                            close_requested_at_ms: chan.close_requested_at_ms().map(|v| v as i64),
                             status: STATUS_WITHDRAWN,
                             opened_at_cp: cp,
                             opened_tx_digest: tx_digest.clone(),
@@ -229,23 +215,19 @@ impl Handler for SomaChannels {
             .on_conflict(soma_channels::channel_id)
             .do_update()
             .set((
-                soma_channels::deposit.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.deposit",
-                )),
-                soma_channels::settled_amount.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.settled_amount",
-                )),
+                soma_channels::deposit
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.deposit")),
+                soma_channels::settled_amount
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.settled_amount")),
                 soma_channels::close_requested_at_ms.eq(diesel::dsl::sql::<
                     diesel::sql_types::Nullable<diesel::sql_types::Int8>,
                 >(
-                    "EXCLUDED.close_requested_at_ms",
+                    "EXCLUDED.close_requested_at_ms"
                 )),
-                soma_channels::status.eq(diesel::dsl::sql::<diesel::sql_types::Int2>(
-                    "EXCLUDED.status",
-                )),
-                soma_channels::last_update_cp.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.last_update_cp",
-                )),
+                soma_channels::status
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int2>("EXCLUDED.status")),
+                soma_channels::last_update_cp
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.last_update_cp")),
             ))
             .execute(conn)
             .await?)

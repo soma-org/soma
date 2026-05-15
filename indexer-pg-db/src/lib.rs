@@ -235,13 +235,12 @@ impl store::Connection for Connection<'_> {
         let default_next_checkpoint = checkpoint_hi_inclusive_hint.map_or(0, |c| c + 1);
         let Some(checkpoint_hi_inclusive) = default_next_checkpoint.checked_sub(1) else {
             // Delegate to the existing watermark — return its checkpoint if any.
-            return Ok(self
-                .committer_watermark(pipeline_task)
-                .await?
-                .map(|w| store::InitWatermark {
+            return Ok(self.committer_watermark(pipeline_task).await?.map(|w| {
+                store::InitWatermark {
                     checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
                     reader_lo: None,
-                }));
+                }
+            }));
         };
 
         let stored = StoredWatermark {

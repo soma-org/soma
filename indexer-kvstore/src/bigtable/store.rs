@@ -83,14 +83,10 @@ impl Connection for BigTableConnection<'_> {
         pipeline_task: &str,
         _checkpoint_hi_inclusive: Option<u64>,
     ) -> Result<Option<InitWatermark>> {
-        Ok(self
-            .client
-            .get_pipeline_watermark(pipeline_task)
-            .await?
-            .map(|wm| InitWatermark {
-                checkpoint_hi_inclusive: Some(wm.checkpoint_hi_inclusive),
-                reader_lo: None,
-            }))
+        Ok(self.client.get_pipeline_watermark(pipeline_task).await?.map(|wm| InitWatermark {
+            checkpoint_hi_inclusive: Some(wm.checkpoint_hi_inclusive),
+            reader_lo: None,
+        }))
     }
 
     async fn accepts_chain_id(
@@ -149,10 +145,7 @@ impl Connection for BigTableConnection<'_> {
 
 #[async_trait]
 impl ConcurrentConnection for BigTableConnection<'_> {
-    async fn reader_watermark(
-        &mut self,
-        _pipeline: &str,
-    ) -> Result<Option<ReaderWatermark>> {
+    async fn reader_watermark(&mut self, _pipeline: &str) -> Result<Option<ReaderWatermark>> {
         Ok(None)
     }
 

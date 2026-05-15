@@ -527,9 +527,9 @@ impl IndexStoreTables {
                                 let owner_key = OwnerIndexKey::from_object(old_object);
                                 batch.delete_batch(&self.owner, [owner_key])?;
                             }
-                            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
+                            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {
+                            }
                         }
-
                     }
                 }
             }
@@ -573,7 +573,6 @@ impl IndexStoreTables {
                 }
                 Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
             }
-
         }
 
         batch.write()?;

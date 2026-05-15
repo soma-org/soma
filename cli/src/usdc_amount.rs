@@ -96,10 +96,7 @@ pub fn parse_duration_ms(s: &str) -> Result<u64, String> {
         return v.parse::<u64>().map_err(|_| format!("invalid duration: {}", s));
     }
     if let Some(v) = s.strip_suffix('s') {
-        return v
-            .parse::<u64>()
-            .map(|v| v * 1_000)
-            .map_err(|_| format!("invalid duration: {}", s));
+        return v.parse::<u64>().map(|v| v * 1_000).map_err(|_| format!("invalid duration: {}", s));
     }
     if let Some(v) = s.strip_suffix('m') {
         return v
@@ -119,10 +116,7 @@ pub fn parse_duration_ms(s: &str) -> Result<u64, String> {
             .map(|v| v * 86_400_000)
             .map_err(|_| format!("invalid duration: {}", s));
     }
-    Err(format!(
-        "invalid duration: '{}'. Use: 30s, 5m, 1h, 1d, 500ms, or raw milliseconds",
-        s
-    ))
+    Err(format!("invalid duration: '{}'. Use: 30s, 5m, 1h, 1d, 500ms, or raw milliseconds", s))
 }
 
 #[cfg(test)]

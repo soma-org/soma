@@ -71,11 +71,7 @@ pub struct RoutingConfig {
 
 impl Default for RoutingConfig {
     fn default() -> Self {
-        Self {
-            mode: RoutingMode::Price,
-            weights: RoutingWeights::default(),
-            indexer_url: None,
-        }
+        Self { mode: RoutingMode::Price, weights: RoutingWeights::default(), indexer_url: None }
     }
 }
 

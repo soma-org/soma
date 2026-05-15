@@ -109,10 +109,7 @@ async fn main() -> anyhow::Result<()> {
         client_options = client_options.with_default_headers(headers)
     }
 
-    let retry_config = RetryConfig {
-        max_retries: 0,
-        ..Default::default()
-    };
+    let retry_config = RetryConfig { max_retries: 0, ..Default::default() };
 
     let object_store: Arc<dyn object_store::ObjectStore> = if let Some(bucket) = args.s3 {
         info!(bucket, "Using S3 storage");
@@ -172,16 +169,11 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let committer = config.committer.finish(CommitterConfig::default());
-    let base = ConcurrentConfig {
-        committer,
-        ..Default::default()
-    };
+    let base = ConcurrentConfig { committer, ..Default::default() };
 
     indexer
         .concurrent_pipeline(
-            CheckpointBlobPipeline {
-                compression_level: args.compression_level,
-            },
+            CheckpointBlobPipeline { compression_level: args.compression_level },
             config.pipeline.checkpoint_blob.finish(base.clone()),
         )
         .await?;

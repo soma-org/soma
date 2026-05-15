@@ -40,16 +40,8 @@ pub struct EthSyncerHandle {
 }
 
 impl EthSyncer {
-    pub fn new(
-        eth_client: Arc<EthClient>,
-        poll_interval: Duration,
-        max_block_range: u64,
-    ) -> Self {
-        Self {
-            eth_client,
-            poll_interval,
-            max_block_range,
-        }
+    pub fn new(eth_client: Arc<EthClient>, poll_interval: Duration, max_block_range: u64) -> Self {
+        Self { eth_client, poll_interval, max_block_range }
     }
 
     /// Start the syncer. Returns handles for the spawned tasks and event channels.
@@ -102,11 +94,9 @@ async fn run_finalized_block_poller(
     let mut timer = interval(poll_interval);
     loop {
         timer.tick().await;
-        match retry_with_backoff(
-            "get_finalized_block",
-            DEFAULT_RETRY_ELAPSED,
-            || client.get_last_finalized_block_id(),
-        )
+        match retry_with_backoff("get_finalized_block", DEFAULT_RETRY_ELAPSED, || {
+            client.get_last_finalized_block_id()
+        })
         .await
         {
             Ok(block) => {
@@ -154,12 +144,7 @@ async fn run_event_listener(
             match query_events_with_retry(&client, from, to, max_block_range).await {
                 Ok(events) => {
                     if !events.is_empty() {
-                        info!(
-                            from,
-                            to,
-                            count = events.len(),
-                            "Found deposit events"
-                        );
+                        info!(from, to, count = events.len(), "Found deposit events");
                         if event_tx.send((to, events)).await.is_err() {
                             info!("Event channel closed, shutting down event listener");
                             return;
@@ -198,11 +183,9 @@ async fn query_events_with_retry(
 
     // If the range is within limits, try with retry
     if current_range <= max_range {
-        return retry_with_backoff(
-            "get_deposit_events",
-            DEFAULT_RETRY_ELAPSED,
-            || client.get_deposit_events_in_range(from, to),
-        )
+        return retry_with_backoff("get_deposit_events", DEFAULT_RETRY_ELAPSED, || {
+            client.get_deposit_events_in_range(from, to)
+        })
         .await;
     }
 
@@ -210,10 +193,7 @@ async fn query_events_with_retry(
     let mut all_events = Vec::new();
     while current_from <= to {
         let current_to = std::cmp::min(current_from + current_range - 1, to);
-        match client
-            .get_deposit_events_in_range(current_from, current_to)
-            .await
-        {
+        match client.get_deposit_events_in_range(current_from, current_to).await {
             Ok(events) => {
                 all_events.extend(events);
                 current_from = current_to + 1;
@@ -221,10 +201,7 @@ async fn query_events_with_retry(
             Err(BridgeError::TransientProviderError(_)) if current_range > 1 => {
                 // Halve the range and retry (Sui's -32005 retry pattern)
                 current_range = std::cmp::max(current_range / 2, 1);
-                debug!(
-                    new_range = current_range,
-                    "Halving query range after transient error"
-                );
+                debug!(new_range = current_range, "Halving query range after transient error");
             }
             Err(e) => return Err(e),
         }
@@ -243,9 +220,7 @@ mod tests {
     /// Helper: mock a JSON-RPC response for `eth_getBlockByNumber("finalized")`.
     async fn mock_finalized_block(server: &MockServer, block_number: u64) {
         Mock::given(method("POST"))
-            .and(body_partial_json(
-                json!({"method": "eth_getBlockByNumber"}),
-            ))
+            .and(body_partial_json(json!({"method": "eth_getBlockByNumber"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -381,11 +356,10 @@ mod tests {
         let mut handle = syncer.start(0);
 
         // Wait for deposit events
-        let (block, events) =
-            tokio::time::timeout(Duration::from_secs(5), handle.event_rx.recv())
-                .await
-                .expect("should receive events within 5s")
-                .expect("channel should not be closed");
+        let (block, events) = tokio::time::timeout(Duration::from_secs(5), handle.event_rx.recv())
+            .await
+            .expect("should receive events within 5s")
+            .expect("channel should not be closed");
 
         assert!(block <= 50);
         assert_eq!(events.len(), 2);

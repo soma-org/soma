@@ -10,7 +10,12 @@ use crate::object::*;
 
 /// Helper to create a simple ObjectData for testing.
 fn make_test_object_data(id: ObjectID) -> ObjectData {
-    ObjectData::new_with_id(id, ObjectType::Coin(CoinType::Soma), Version::from_u64(1), vec![1, 2, 3, 4])
+    ObjectData::new_with_id(
+        id,
+        ObjectType::Coin(CoinType::Soma),
+        Version::from_u64(1),
+        vec![1, 2, 3, 4],
+    )
 }
 
 /// Helper to create a full Object for testing.
@@ -267,10 +272,7 @@ fn test_set_balance_accumulator_preserves_id_and_owner() {
 
 #[test]
 fn test_object_type_accumulator_fromstr_roundtrip() {
-    assert_eq!(
-        ObjectType::from_str("BalanceAccumulator").unwrap(),
-        ObjectType::BalanceAccumulator,
-    );
+    assert_eq!(ObjectType::from_str("BalanceAccumulator").unwrap(), ObjectType::BalanceAccumulator,);
     assert_eq!(
         ObjectType::from_str("DelegationAccumulator").unwrap(),
         ObjectType::DelegationAccumulator,

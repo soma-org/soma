@@ -81,36 +81,36 @@ impl Handler for SomaOfferings {
             .on_conflict((soma_offerings::provider, soma_offerings::model_id))
             .do_update()
             .set((
-                soma_offerings::prompt_micros_per_1k.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.prompt_micros_per_1k",
+                soma_offerings::prompt_micros_per_1k.eq(
+                    diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.prompt_micros_per_1k"),
+                ),
+                soma_offerings::completion_micros_per_1k.eq(diesel::dsl::sql::<
+                    diesel::sql_types::Int8,
+                >(
+                    "EXCLUDED.completion_micros_per_1k"
                 )),
-                soma_offerings::completion_micros_per_1k.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.completion_micros_per_1k",
+                soma_offerings::cache_read_micros_per_1k.eq(diesel::dsl::sql::<
+                    diesel::sql_types::Int8,
+                >(
+                    "EXCLUDED.cache_read_micros_per_1k"
                 )),
-                soma_offerings::cache_read_micros_per_1k.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.cache_read_micros_per_1k",
-                )),
-                soma_offerings::cache_write_micros_per_1k.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
+                soma_offerings::cache_write_micros_per_1k.eq(diesel::dsl::sql::<
+                    diesel::sql_types::Int8,
+                >(
                     "EXCLUDED.cache_write_micros_per_1k",
                 )),
-                soma_offerings::request_micros.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.request_micros",
-                )),
-                soma_offerings::ttft_bound_ms.eq(diesel::dsl::sql::<diesel::sql_types::Int4>(
-                    "EXCLUDED.ttft_bound_ms",
-                )),
-                soma_offerings::ttot_bound_ms.eq(diesel::dsl::sql::<diesel::sql_types::Int4>(
-                    "EXCLUDED.ttot_bound_ms",
-                )),
-                soma_offerings::active.eq(diesel::dsl::sql::<diesel::sql_types::Bool>(
-                    "EXCLUDED.active",
-                )),
-                soma_offerings::updated_at_cp.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.updated_at_cp",
-                )),
-                soma_offerings::updated_at_ms.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.updated_at_ms",
-                )),
+                soma_offerings::request_micros
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.request_micros")),
+                soma_offerings::ttft_bound_ms
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int4>("EXCLUDED.ttft_bound_ms")),
+                soma_offerings::ttot_bound_ms
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int4>("EXCLUDED.ttot_bound_ms")),
+                soma_offerings::active
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Bool>("EXCLUDED.active")),
+                soma_offerings::updated_at_cp
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.updated_at_cp")),
+                soma_offerings::updated_at_ms
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.updated_at_ms")),
             ))
             .execute(conn)
             .await?)

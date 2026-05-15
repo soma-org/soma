@@ -58,10 +58,7 @@ pub fn ensure_stream_options_include_usage(req: &mut ChatRequest) {
     if !matches!(req.stream, Some(true)) {
         return;
     }
-    let so = req
-        .stream_options
-        .clone()
-        .unwrap_or_else(|| serde_json::json!({}));
+    let so = req.stream_options.clone().unwrap_or_else(|| serde_json::json!({}));
     let mut so_obj = match so {
         Value::Object(m) => m,
         _ => serde_json::Map::new(),

@@ -483,7 +483,6 @@ pub trait TransactionCacheRead: Send + Sync {
         }
         .boxed()
     }
-
 }
 pub trait ExecutionCacheWrite: Send + Sync {
     /// Write the output of a transaction.

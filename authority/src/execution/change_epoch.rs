@@ -23,7 +23,6 @@ impl ChangeEpochExecutor {
     }
 }
 
-
 /// Under msim, optionally inject a failure for specific epochs.
 /// Tests register a `fail_point_if` callback for "advance_epoch_result_injection"
 /// that returns `true` when the epoch should fail.
@@ -150,11 +149,8 @@ impl TransactionExecutor for ChangeEpochExecutor {
                         .map(|v| &v.staking_pool);
 
                     // 1. Compute the new row state.
-                    let mut row = store
-                        .prefetched_delegations
-                        .get(&pool_id)
-                        .copied()
-                        .unwrap_or_default();
+                    let mut row =
+                        store.prefetched_delegations.get(&pool_id).copied().unwrap_or_default();
                     if let Some(pool) = pool_view {
                         types::system_state::staking::auto_settle(
                             &mut row,
@@ -228,4 +224,3 @@ impl TransactionExecutor for ChangeEpochExecutor {
         Ok(())
     }
 }
-

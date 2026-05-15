@@ -72,10 +72,7 @@ mod delegation_tests {
     #[test]
     fn add_stake_increases_pool_total_stake() {
         let mut state = set_up_2_validators();
-        assert_eq!(
-            validator_total_stake(&state, validator_addr(1)),
-            Some(100 * SHANNONS_PER_SOMA),
-        );
+        assert_eq!(validator_total_stake(&state, validator_addr(1)), Some(100 * SHANNONS_PER_SOMA),);
 
         // Stake 60 SOMA into v1.
         let pool_id = state
@@ -94,18 +91,12 @@ mod delegation_tests {
         );
 
         // v2 is untouched.
-        assert_eq!(
-            validator_total_stake(&state, validator_addr(2)),
-            Some(100 * SHANNONS_PER_SOMA),
-        );
+        assert_eq!(validator_total_stake(&state, validator_addr(2)), Some(100 * SHANNONS_PER_SOMA),);
 
         // Persists across an epoch boundary.
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
         advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
-        assert_eq!(
-            validator_total_stake(&state, validator_addr(1)),
-            Some(160 * SHANNONS_PER_SOMA),
-        );
+        assert_eq!(validator_total_stake(&state, validator_addr(1)), Some(160 * SHANNONS_PER_SOMA),);
     }
 
     /// Removing principal symmetrically drops `total_stake`. A full
@@ -115,13 +106,9 @@ mod delegation_tests {
     #[test]
     fn remove_stake_decreases_pool_total_stake() {
         let mut state = set_up_2_validators();
-        let pool_id = state
-            .add_stake_to_validator(validator_addr(1), 60 * SHANNONS_PER_SOMA)
-            .expect("add");
-        assert_eq!(
-            validator_total_stake(&state, validator_addr(1)),
-            Some(160 * SHANNONS_PER_SOMA),
-        );
+        let pool_id =
+            state.add_stake_to_validator(validator_addr(1), 60 * SHANNONS_PER_SOMA).expect("add");
+        assert_eq!(validator_total_stake(&state, validator_addr(1)), Some(160 * SHANNONS_PER_SOMA),);
 
         // The 60 we just added went to pending (pool is active),
         // so withdrawal drains pending. Caller controls the split
@@ -144,9 +131,8 @@ mod delegation_tests {
     #[test]
     fn zero_stake_amount_rejected() {
         let mut state = set_up_2_validators();
-        let err = state
-            .add_stake_to_validator(validator_addr(1), 0)
-            .expect_err("zero stake must error");
+        let err =
+            state.add_stake_to_validator(validator_addr(1), 0).expect_err("zero stake must error");
         match err {
             ExecutionFailureStatus::InvalidArguments { .. } => {}
             other => panic!("expected InvalidArguments, got {:?}", other),
@@ -176,9 +162,8 @@ mod delegation_tests {
         let mut state = set_up_2_validators();
 
         // Add a delegator's stake.
-        let pool_id = state
-            .add_stake_to_validator(validator_addr(1), 50 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id =
+            state.add_stake_to_validator(validator_addr(1), 50 * SHANNONS_PER_SOMA).expect("add");
         let total_before_removal = validator_total_stake(&state, validator_addr(1)).unwrap();
         assert_eq!(total_before_removal, 150 * SHANNONS_PER_SOMA);
 
@@ -250,8 +235,7 @@ mod delegation_tests {
     #[test]
     fn staking_pool_mappings_resolves_pool_id_to_validator() {
         let mut state = set_up_2_validators();
-        let pool_id =
-            state.add_stake_to_validator(validator_addr(1), 1).expect("add");
+        let pool_id = state.add_stake_to_validator(validator_addr(1), 1).expect("add");
         let mapped = state
             .validators()
             .staking_pool_mappings

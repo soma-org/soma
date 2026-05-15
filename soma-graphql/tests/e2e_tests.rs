@@ -220,11 +220,8 @@ async fn test_e2e_full_checkpoint_flow() {
     let recipient = SomaAddress::random();
 
     // Build a checkpoint with a transfer
-    let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(0)
-            .add_transfer_coin(sender, recipient, 3000)
-            .build(),
-    );
+    let checkpoint =
+        Arc::new(TestCheckpointBuilder::new(0).add_transfer_coin(sender, recipient, 3000).build());
 
     // Run all relevant handlers
     process_and_commit(&kv_checkpoints::KvCheckpoints, &checkpoint, &ctx.db).await;

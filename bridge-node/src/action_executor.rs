@@ -145,9 +145,7 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
     /// sender. The caller (orchestrator) pushes new `BridgeAction`s
     /// into the sender; replayed pending actions from the WAL also go
     /// in via this sender on startup.
-    pub fn run(
-        self,
-    ) -> (Vec<JoinHandle<()>>, mpsc::Sender<BridgeActionExecutionWrapper>) {
+    pub fn run(self) -> (Vec<JoinHandle<()>>, mpsc::Sender<BridgeActionExecutionWrapper>) {
         let (signing_tx, signing_rx) = mpsc::channel(CHANNEL_SIZE);
         let (execution_tx, execution_rx) = mpsc::channel(CHANNEL_SIZE);
         let mut handles = vec![];
@@ -226,10 +224,8 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
             let pause_rx = pause_rx.clone();
             tokio::spawn(
                 async move {
-                    let _permit = semaphore
-                        .acquire()
-                        .await
-                        .expect("signing semaphore should not be closed");
+                    let _permit =
+                        semaphore.acquire().await.expect("signing semaphore should not be closed");
                     Self::handle_signing_task(
                         wrap,
                         &signing_tx,
@@ -278,9 +274,7 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
             }
             // Re-enqueue without incrementing the attempt counter — a
             // pause is not a peer-side fault.
-            let _ = signing_tx
-                .send(BridgeActionExecutionWrapper(action, attempt))
-                .await;
+            let _ = signing_tx.send(BridgeActionExecutionWrapper(action, attempt)).await;
             return;
         }
 
@@ -299,10 +293,7 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
         match aggregator.request_committee_signatures(&action, threshold).await {
             Ok(cert) => {
                 info!("committee cert collected; forwarding to execution");
-                if execution_tx
-                    .send(CertifiedBridgeActionExecutionWrapper(cert, 0))
-                    .await
-                    .is_err()
+                if execution_tx.send(CertifiedBridgeActionExecutionWrapper(cert, 0)).await.is_err()
                 {
                     error!("execution queue closed; dropping cert");
                 }
@@ -322,9 +313,7 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
                     "sig collection failed; will retry"
                 );
                 delay(attempt).await;
-                let _ = signing_tx
-                    .send(BridgeActionExecutionWrapper(action, attempt + 1))
-                    .await;
+                let _ = signing_tx.send(BridgeActionExecutionWrapper(action, attempt + 1)).await;
             }
         }
     }
@@ -499,8 +488,7 @@ async fn is_already_processed<C: SomaBridgeClientInner>(
         | BridgeAction::EmergencyUnpause { .. }
         | BridgeAction::UpdateCommitteeBlocklist { .. } => false,
         // Eth-targeted actions never land on the Soma side.
-        BridgeAction::LimitUpdate { .. }
-        | BridgeAction::EvmContractUpgrade { .. } => false,
+        BridgeAction::LimitUpdate { .. } | BridgeAction::EvmContractUpgrade { .. } => false,
     }
 }
 
@@ -556,9 +544,7 @@ mod tests {
             self.observed_actions.lock().unwrap().push(action.clone());
             let n = self.attempt_count.fetch_add(1, Ordering::SeqCst);
             if n < self.succeed_after_attempts.load(Ordering::SeqCst) {
-                return Err(crate::error::BridgeError::Internal(format!(
-                    "mock failure {}", n
-                )));
+                return Err(crate::error::BridgeError::Internal(format!("mock failure {}", n)));
             }
             Ok(CertifiedBridgeAction {
                 action: action.clone(),
@@ -595,8 +581,7 @@ mod tests {
         let mock = MockSomaClient::new();
         mock.deposit_nonces_seen.lock().unwrap().insert(42);
         let client = Arc::new(SomaBridgeClient::new(mock, BridgeChainId::SomaCustom));
-        let aggregator = Arc::new(MockAggregator::new())
-            as Arc<dyn BridgeAuthorityAggregator>;
+        let aggregator = Arc::new(MockAggregator::new()) as Arc<dyn BridgeAuthorityAggregator>;
         let temp = tempfile::tempdir().unwrap();
         let store = BridgeOrchestratorTables::open(temp.path()).unwrap();
 
@@ -605,9 +590,8 @@ mod tests {
         store.insert_pending_action(&action).unwrap();
 
         let (addr, kp) = relayer();
-        let committee = Arc::new(ArcSwap::from_pointee(
-            types::bridge::generate_test_bridge_committee(4).0,
-        ));
+        let committee =
+            Arc::new(ArcSwap::from_pointee(types::bridge::generate_test_bridge_committee(4).0));
         let (_pause_tx, pause_rx) = watch::channel(false);
         let executor = BridgeActionExecutor::new(
             client.clone(),
@@ -664,9 +648,8 @@ mod tests {
         store.insert_pending_action(&action).unwrap();
 
         let (addr, kp) = relayer();
-        let committee = Arc::new(ArcSwap::from_pointee(
-            types::bridge::generate_test_bridge_committee(4).0,
-        ));
+        let committee =
+            Arc::new(ArcSwap::from_pointee(types::bridge::generate_test_bridge_committee(4).0));
         let (_pause_tx, pause_rx) = watch::channel(false);
         let executor = BridgeActionExecutor::new(
             client.clone(),
@@ -718,30 +701,20 @@ mod tests {
         let agg = Arc::new(MockAggregator::new());
         let aggregator: Arc<dyn BridgeAuthorityAggregator> = agg.clone();
         let mock = MockSomaClient::new();
-        let client = Arc::new(SomaBridgeClient::new(
-            mock,
-            types::bridge::BridgeChainId::SomaCustom,
-        ));
+        let client =
+            Arc::new(SomaBridgeClient::new(mock, types::bridge::BridgeChainId::SomaCustom));
         let temp = tempfile::tempdir().unwrap();
         let store = BridgeOrchestratorTables::open(temp.path()).unwrap();
         let action = dep(99);
         store.insert_pending_action(&action).unwrap();
 
         let (addr, kp) = relayer();
-        let committee = Arc::new(ArcSwap::from_pointee(
-            types::bridge::generate_test_bridge_committee(4).0,
-        ));
+        let committee =
+            Arc::new(ArcSwap::from_pointee(types::bridge::generate_test_bridge_committee(4).0));
         // Start paused.
         let (pause_tx, pause_rx) = watch::channel(true);
-        let executor = BridgeActionExecutor::new(
-            client,
-            aggregator,
-            store,
-            addr,
-            kp,
-            committee,
-            pause_rx,
-        );
+        let executor =
+            BridgeActionExecutor::new(client, aggregator, store, addr, kp, committee, pause_rx);
         let (_handles, signing_tx) = executor.run();
         submit_to_executor(&signing_tx, action.clone()).await.unwrap();
 
@@ -786,14 +759,11 @@ mod tests {
             let agg = Arc::new(MockAggregator::new());
             let aggregator: Arc<dyn BridgeAuthorityAggregator> = agg.clone();
             let mock = MockSomaClient::new();
-            let client = Arc::new(SomaBridgeClient::new(
-                mock,
-                types::bridge::BridgeChainId::SomaCustom,
-            ));
+            let client =
+                Arc::new(SomaBridgeClient::new(mock, types::bridge::BridgeChainId::SomaCustom));
             let (addr, kp) = relayer();
-            let committee = Arc::new(ArcSwap::from_pointee(
-                types::bridge::generate_test_bridge_committee(4).0,
-            ));
+            let committee =
+                Arc::new(ArcSwap::from_pointee(types::bridge::generate_test_bridge_committee(4).0));
             // Paused — guarantees the signing loop parks before it can
             // call the aggregator. We want to simulate a crash *with*
             // a pending action still in flight.
@@ -848,14 +818,11 @@ mod tests {
         let agg = Arc::new(MockAggregator::new());
         let aggregator: Arc<dyn BridgeAuthorityAggregator> = agg.clone();
         let mock = MockSomaClient::new();
-        let client = Arc::new(SomaBridgeClient::new(
-            mock,
-            types::bridge::BridgeChainId::SomaCustom,
-        ));
+        let client =
+            Arc::new(SomaBridgeClient::new(mock, types::bridge::BridgeChainId::SomaCustom));
         let (addr, kp) = relayer();
-        let committee = Arc::new(ArcSwap::from_pointee(
-            types::bridge::generate_test_bridge_committee(4).0,
-        ));
+        let committee =
+            Arc::new(ArcSwap::from_pointee(types::bridge::generate_test_bridge_committee(4).0));
         let (_pause_tx, pause_rx) = watch::channel(false); // unpaused
         let executor = BridgeActionExecutor::new(
             client,

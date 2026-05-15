@@ -70,15 +70,7 @@ impl SomaBridgeClientInner for InTestSomaClient {
         Ok(0)
     }
     async fn get_next_withdrawal_nonce(&self) -> BridgeResult<u64> {
-        Ok(self
-            .pending
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .max()
-            .map(|n| n + 1)
-            .unwrap_or(0))
+        Ok(self.pending.lock().unwrap().keys().copied().max().map(|n| n + 1).unwrap_or(0))
     }
     async fn get_next_system_message_seq(
         &self,
@@ -92,10 +84,7 @@ impl SomaBridgeClientInner for InTestSomaClient {
     async fn is_deposit_processed(&self, _nonce: u64) -> BridgeResult<bool> {
         Ok(false)
     }
-    async fn get_pending_withdrawal(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<Option<PendingWithdrawal>> {
+    async fn get_pending_withdrawal(&self, nonce: u64) -> BridgeResult<Option<PendingWithdrawal>> {
         Ok(self.pending.lock().unwrap().get(&nonce).cloned())
     }
     async fn get_chain_identifier(&self) -> BridgeResult<String> {
@@ -104,10 +93,7 @@ impl SomaBridgeClientInner for InTestSomaClient {
     async fn get_usdc_balance(&self, _addr: SomaAddress) -> BridgeResult<u64> {
         Ok(0)
     }
-    async fn execute_transaction(
-        &self,
-        _tx: &Transaction,
-    ) -> BridgeResult<TransactionEffects> {
+    async fn execute_transaction(&self, _tx: &Transaction) -> BridgeResult<TransactionEffects> {
         Err(BridgeError::Internal("execute_transaction not used in e2e".to_string()))
     }
 }
@@ -142,32 +128,24 @@ fn keypair(seed: u8) -> Secp256k1KeyPair {
 /// Spawn a peer at `0.0.0.0:0` (OS-picked port). Returns the peer once
 /// the listener is actually bound (so the aggregator can connect
 /// without racing the bind).
-async fn spawn_peer(
-    seed: u8,
-    approved: Vec<BridgeAction>,
-) -> Peer {
+async fn spawn_peer(seed: u8, approved: Vec<BridgeAction>) -> Peer {
     let kp = keypair(seed);
     let pubkey = BridgePubkey::from_keypair(&kp);
 
     // Bind first so we know the port before the server task starts.
-    let listener = tokio::net::TcpListener::bind(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        0,
-    ))
-    .await
-    .expect("bind 127.0.0.1:0");
+    let listener =
+        tokio::net::TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0))
+            .await
+            .expect("bind 127.0.0.1:0");
     let local = listener.local_addr().expect("local_addr");
     drop(listener); // close so the server can re-bind the same port
 
-    let soma = Arc::new(SomaBridgeClient::new(
-        InTestSomaClient::default(),
-        BridgeChainId::SomaCustom,
-    ));
-    let eth = Arc::new(EthClient::new_for_test(
-        "0x0000000000000000000000000000000000000000".to_string(),
-    ));
-    let handler = BridgeRequestHandler::new(kp, eth, Arc::clone(&soma), approved)
-        .expect("handler builds");
+    let soma =
+        Arc::new(SomaBridgeClient::new(InTestSomaClient::default(), BridgeChainId::SomaCustom));
+    let eth =
+        Arc::new(EthClient::new_for_test("0x0000000000000000000000000000000000000000".to_string()));
+    let handler =
+        BridgeRequestHandler::new(kp, eth, Arc::clone(&soma), approved).expect("handler builds");
     let metadata = Arc::new(BridgeNodePublicMetadata::empty_for_testing());
 
     let server_handle = run_server(&local, handler, metadata);
@@ -238,10 +216,8 @@ async fn three_of_three_governance() {
     let committee = committee_from(&[(&p1, 3334), (&p2, 3333), (&p3, 3333)]);
     let agg = aggregator(committee);
 
-    let cert = agg
-        .request_signatures(SignRequest::Governance(action.clone()), 6667)
-        .await
-        .expect("cert");
+    let cert =
+        agg.request_signatures(SignRequest::Governance(action.clone()), 6667).await.expect("cert");
     assert_eq!(cert.action, action);
     // At least 2 sigs (3334 + 3333 >= 6667). FuturesUnordered may
     // return before the 3rd lands; that's correct early-exit behavior.
@@ -328,10 +304,8 @@ async fn blocklisted_member_is_skipped() {
 
     // Threshold 7000 needs p1 + p2 (5000 + 3000 = 8000). p3 is
     // available but blocklisted — must not contribute.
-    let cert = agg
-        .request_signatures(SignRequest::Governance(action.clone()), 7000)
-        .await
-        .expect("cert");
+    let cert =
+        agg.request_signatures(SignRequest::Governance(action.clone()), 7000).await.expect("cert");
     assert_eq!(cert.action, action);
     assert!(cert.signatures.contains_key(&p1.pubkey));
     assert!(cert.signatures.contains_key(&p2.pubkey));
@@ -387,10 +361,7 @@ async fn withdrawal_end_to_end() {
     };
     let cert = agg
         .request_signatures(
-            SignRequest::SomaWithdrawal {
-                nonce: withdrawal.nonce,
-                expected: expected.clone(),
-            },
+            SignRequest::SomaWithdrawal { nonce: withdrawal.nonce, expected: expected.clone() },
             6667,
         )
         .await

@@ -41,15 +41,12 @@ pub enum ChannelStatus {
 impl ChannelStatus {
     /// Compute the status of an on-chain `Channel` given the current
     /// chain time and the protocol's `channel_grace_period_ms`.
-    pub fn from_channel(
-        ch: &types::channel::Channel,
-        grace_period_ms: u64,
-    ) -> Self {
+    pub fn from_channel(ch: &types::channel::Channel, grace_period_ms: u64) -> Self {
         match ch.close_requested_at_ms() {
             None => Self::Open,
-            Some(at_ms) => Self::Closing {
-                earliest_withdrawable_ms: at_ms.saturating_add(grace_period_ms),
-            },
+            Some(at_ms) => {
+                Self::Closing { earliest_withdrawable_ms: at_ms.saturating_add(grace_period_ms) }
+            }
         }
     }
 }

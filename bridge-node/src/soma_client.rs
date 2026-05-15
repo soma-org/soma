@@ -27,8 +27,7 @@ use tokio::sync::{Mutex, OnceCell};
 use tracing::{error, info, warn};
 use types::base::SomaAddress;
 use types::bridge::{
-    BridgeChainId, BridgeCommittee, BridgeMessageType, PendingWithdrawal,
-    derive_bridge_record_id,
+    BridgeChainId, BridgeCommittee, BridgeMessageType, PendingWithdrawal, derive_bridge_record_id,
 };
 use types::effects::TransactionEffects;
 use types::object::{CoinType, ObjectType};
@@ -112,10 +111,7 @@ pub trait SomaBridgeClientInner: Send + Sync + 'static {
     /// exists. The object id is derived deterministically — anyone can
     /// compute it offline. Returns `None` if not present (no on-chain
     /// withdrawal at that nonce yet).
-    async fn get_pending_withdrawal(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<Option<PendingWithdrawal>>;
+    async fn get_pending_withdrawal(&self, nonce: u64) -> BridgeResult<Option<PendingWithdrawal>>;
 
     /// Returns the chain identifier (used as a metric label).
     async fn get_chain_identifier(&self) -> BridgeResult<String>;
@@ -156,11 +152,7 @@ pub type ProductionSomaBridgeClient = SomaBridgeClient<SomaBridgeRpcClient>;
 
 impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
     pub fn new(inner: C, soma_chain_id: BridgeChainId) -> Self {
-        Self {
-            inner,
-            soma_chain_id,
-            chain_identifier: OnceCell::new(),
-        }
+        Self { inner, soma_chain_id, chain_identifier: OnceCell::new() }
     }
 
     pub fn soma_chain_id(&self) -> BridgeChainId {
@@ -228,15 +220,10 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
     /// Lets the executor pattern-match on lifecycle without re-checking
     /// `Option::is_some` + `verified_signatures.is_some()` at every call
     /// site.
-    pub async fn get_withdrawal_status(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<BridgeActionStatus> {
+    pub async fn get_withdrawal_status(&self, nonce: u64) -> BridgeResult<BridgeActionStatus> {
         match self.inner.get_pending_withdrawal(nonce).await? {
             None => Ok(BridgeActionStatus::NotFound),
-            Some(pw) if pw.verified_signatures.is_some() => {
-                Ok(BridgeActionStatus::CertAttached)
-            }
+            Some(pw) if pw.verified_signatures.is_some() => Ok(BridgeActionStatus::CertAttached),
             Some(_) => Ok(BridgeActionStatus::Pending),
         }
     }
@@ -251,9 +238,7 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
     /// every metric label / log line.
     pub async fn cached_chain_identifier(&self) -> BridgeResult<&str> {
         self.chain_identifier
-            .get_or_try_init(|| async {
-                self.inner.get_chain_identifier().await
-            })
+            .get_or_try_init(|| async { self.inner.get_chain_identifier().await })
             .await
             .map(|s| s.as_str())
     }
@@ -292,11 +277,9 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn is_bridge_paused_until_success(&self) -> bool {
         loop {
-            match retry_with_backoff(
-                "is_bridge_paused",
-                UNTIL_SUCCESS_ATTEMPT_BUDGET,
-                || self.inner.is_bridge_paused(),
-            )
+            match retry_with_backoff("is_bridge_paused", UNTIL_SUCCESS_ATTEMPT_BUDGET, || {
+                self.inner.is_bridge_paused()
+            })
             .await
             {
                 Ok(v) => return v,
@@ -310,11 +293,9 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn is_deposit_processed_until_success(&self, nonce: u64) -> bool {
         loop {
-            match retry_with_backoff(
-                "is_deposit_processed",
-                UNTIL_SUCCESS_ATTEMPT_BUDGET,
-                || self.inner.is_deposit_processed(nonce),
-            )
+            match retry_with_backoff("is_deposit_processed", UNTIL_SUCCESS_ATTEMPT_BUDGET, || {
+                self.inner.is_deposit_processed(nonce)
+            })
             .await
             {
                 Ok(v) => return v,
@@ -326,16 +307,11 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
         }
     }
 
-    pub async fn get_withdrawal_status_until_success(
-        &self,
-        nonce: u64,
-    ) -> BridgeActionStatus {
+    pub async fn get_withdrawal_status_until_success(&self, nonce: u64) -> BridgeActionStatus {
         loop {
-            match retry_with_backoff(
-                "get_withdrawal_status",
-                UNTIL_SUCCESS_ATTEMPT_BUDGET,
-                || self.get_withdrawal_status(nonce),
-            )
+            match retry_with_backoff("get_withdrawal_status", UNTIL_SUCCESS_ATTEMPT_BUDGET, || {
+                self.get_withdrawal_status(nonce)
+            })
             .await
             {
                 Ok(v) => return v,
@@ -349,11 +325,9 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn get_bridge_committee_until_success(&self) -> BridgeCommittee {
         loop {
-            match retry_with_backoff(
-                "get_bridge_committee",
-                UNTIL_SUCCESS_ATTEMPT_BUDGET,
-                || self.inner.get_bridge_committee(),
-            )
+            match retry_with_backoff("get_bridge_committee", UNTIL_SUCCESS_ATTEMPT_BUDGET, || {
+                self.inner.get_bridge_committee()
+            })
             .await
             {
                 Ok(v) => return v,
@@ -435,12 +409,7 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         // Absent key = 0 (the seq map starts empty; first message of
         // a type expects seq=0). Mirrors the on-chain executor's read
         // semantics in authority/src/execution/bridge.rs.
-        Ok(state
-            .bridge_state()
-            .system_message_seq_nums
-            .get(&msg_type)
-            .copied()
-            .unwrap_or(0))
+        Ok(state.bridge_state().system_message_seq_nums.get(&msg_type).copied().unwrap_or(0))
     }
 
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
@@ -461,10 +430,7 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         Ok(state.bridge_state().is_deposit_nonce_processed(nonce))
     }
 
-    async fn get_pending_withdrawal(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<Option<PendingWithdrawal>> {
+    async fn get_pending_withdrawal(&self, nonce: u64) -> BridgeResult<Option<PendingWithdrawal>> {
         let id = derive_bridge_record_id(
             // Soma-side outbound — the source chain in the record id is Soma.
             // (Eth-side counterpart for inbound deposits would use Eth's id.)
@@ -530,10 +496,7 @@ impl SomaBridgeClient<SomaBridgeRpcClient> {
     /// `describe()`, and wrap in an `Arc` for sharing across the
     /// signing-aggregation loop and the on-chain execution loop.
     /// Returns an error if the RPC is unreachable.
-    pub async fn new_rpc(
-        rpc_url: &str,
-        soma_chain_id: BridgeChainId,
-    ) -> BridgeResult<Arc<Self>> {
+    pub async fn new_rpc(rpc_url: &str, soma_chain_id: BridgeChainId) -> BridgeResult<Arc<Self>> {
         let inner = SomaBridgeRpcClient::new(rpc_url)?;
         let client = Self::new(inner, soma_chain_id);
         client.describe().await?;
@@ -552,9 +515,8 @@ pub mod tests {
     pub struct MockSomaClient {
         pub paused: std::sync::atomic::AtomicBool,
         pub total_usdc_supply: AtomicU64,
-        pub system_message_seq_nums: std::sync::Mutex<
-            std::collections::BTreeMap<types::bridge::BridgeMessageType, u64>,
-        >,
+        pub system_message_seq_nums:
+            std::sync::Mutex<std::collections::BTreeMap<types::bridge::BridgeMessageType, u64>>,
         pub deposit_nonces_seen: std::sync::Mutex<std::collections::BTreeSet<u64>>,
         pub committee: std::sync::Mutex<BridgeCommittee>,
         /// `nonce -> PendingWithdrawal`. Tests insert here to drive
@@ -567,8 +529,7 @@ pub mod tests {
         /// been called — used to assert the `cached_chain_identifier`
         /// only fetches once.
         pub chain_id_call_count: AtomicU64,
-        pub last_submitted_digest:
-            std::sync::Mutex<Option<types::digests::TransactionDigest>>,
+        pub last_submitted_digest: std::sync::Mutex<Option<types::digests::TransactionDigest>>,
     }
 
     impl MockSomaClient {
@@ -594,10 +555,7 @@ pub mod tests {
             use types::bridge::WithdrawalCertificate;
             use types::object::ObjectID;
             let cert = if cert_attached {
-                Some(WithdrawalCertificate {
-                    signatures: Default::default(),
-                    attached_at_epoch: 0,
-                })
+                Some(WithdrawalCertificate { signatures: Default::default(), attached_at_epoch: 0 })
             } else {
                 None
             };
@@ -637,13 +595,7 @@ pub mod tests {
             &self,
             msg_type: types::bridge::BridgeMessageType,
         ) -> BridgeResult<u64> {
-            Ok(self
-                .system_message_seq_nums
-                .lock()
-                .unwrap()
-                .get(&msg_type)
-                .copied()
-                .unwrap_or(0))
+            Ok(self.system_message_seq_nums.lock().unwrap().get(&msg_type).copied().unwrap_or(0))
         }
 
         async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
@@ -744,17 +696,11 @@ pub mod tests {
         let client = SomaBridgeClient::new(mock, BridgeChainId::SomaCustom);
 
         // No object → NotFound.
-        assert_eq!(
-            client.get_withdrawal_status(0).await.unwrap(),
-            BridgeActionStatus::NotFound,
-        );
+        assert_eq!(client.get_withdrawal_status(0).await.unwrap(), BridgeActionStatus::NotFound,);
 
         // Object exists, no cert → Pending.
         client.inner.install_withdrawal(0, false);
-        assert_eq!(
-            client.get_withdrawal_status(0).await.unwrap(),
-            BridgeActionStatus::Pending,
-        );
+        assert_eq!(client.get_withdrawal_status(0).await.unwrap(), BridgeActionStatus::Pending,);
 
         // Cert attached → CertAttached.
         client.inner.install_withdrawal(0, true);
@@ -764,10 +710,7 @@ pub mod tests {
         );
 
         // Different nonces are independent.
-        assert_eq!(
-            client.get_withdrawal_status(99).await.unwrap(),
-            BridgeActionStatus::NotFound,
-        );
+        assert_eq!(client.get_withdrawal_status(99).await.unwrap(), BridgeActionStatus::NotFound,);
     }
 
     /// `describe()` should round-trip the chain identifier through the

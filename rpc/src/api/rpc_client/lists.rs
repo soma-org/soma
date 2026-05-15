@@ -34,11 +34,7 @@ impl Client {
         request: impl tonic::IntoRequest<ListDelegationsRequest>,
     ) -> Result<ListDelegationsResponse> {
         let mut client = self.clone();
-        client
-            .state_client()
-            .list_delegations(request)
-            .await
-            .map(|r| r.into_inner())
+        client.state_client().list_delegations(request).await.map(|r| r.into_inner())
     }
 
     pub fn list_owned_objects(

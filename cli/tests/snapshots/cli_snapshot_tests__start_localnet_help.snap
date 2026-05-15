@@ -1,6 +1,5 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 58
 expression: stdout
 ---
 Start a local SOMA network for development and testing
@@ -23,9 +22,6 @@ Options:
 
       --epoch-duration-ms <EPOCH_DURATION_MS>
           Set the epoch duration. Can only be used when `--force-regenesis` flag is passed
-
-      --data-ingestion-dir <DATA_INGESTION_DIR>
-          Directory for data ingestion
 
       --no-full-node
           Start the network without a fullnode

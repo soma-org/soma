@@ -6,8 +6,8 @@
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-use types::object::ObjectID;
 use types::bridge::PendingWithdrawal;
+use types::object::ObjectID;
 use types::object::{Object, ObjectType};
 
 use crate::error::{BridgeError, BridgeResult};
@@ -39,13 +39,7 @@ impl CheckpointWatcher {
     /// Returns the watcher and a receiver for bridge events.
     pub fn new(buffer_size: usize) -> (Self, mpsc::Receiver<CheckpointEvent>) {
         let (tx, rx) = mpsc::channel(buffer_size);
-        (
-            Self {
-                event_tx: tx,
-                last_epoch: 0,
-            },
-            rx,
-        )
+        (Self { event_tx: tx, last_epoch: 0 }, rx)
     }
 
     /// Process a single checkpoint's worth of data.
@@ -65,9 +59,7 @@ impl CheckpointWatcher {
                 "Epoch boundary detected"
             );
             self.event_tx
-                .send(CheckpointEvent::EpochBoundary {
-                    epoch: checkpoint_epoch,
-                })
+                .send(CheckpointEvent::EpochBoundary { epoch: checkpoint_epoch })
                 .await
                 .map_err(|_| BridgeError::Internal("Event channel closed".into()))?;
         }
@@ -75,9 +67,9 @@ impl CheckpointWatcher {
 
         // Scan for PendingWithdrawal objects
         for (id, obj) in created_objects {
-            if let Some(pw) = obj.deserialize_contents::<PendingWithdrawal>(
-                ObjectType::PendingWithdrawal,
-            ) {
+            if let Some(pw) =
+                obj.deserialize_contents::<PendingWithdrawal>(ObjectType::PendingWithdrawal)
+            {
                 let withdrawal = ObservedWithdrawal {
                     id: *id,
                     nonce: pw.nonce,
@@ -88,17 +80,11 @@ impl CheckpointWatcher {
                     amount: pw.amount,
                     timestamp_ms: pw.created_at_ms,
                 };
-                info!(
-                    nonce = pw.nonce,
-                    amount = pw.amount,
-                    "Observed PendingWithdrawal"
-                );
+                info!(nonce = pw.nonce, amount = pw.amount, "Observed PendingWithdrawal");
                 self.event_tx
                     .send(CheckpointEvent::NewWithdrawal(withdrawal))
                     .await
-                    .map_err(|_| {
-                        BridgeError::Internal("Event channel closed".into())
-                    })?;
+                    .map_err(|_| BridgeError::Internal("Event channel closed".into()))?;
             }
         }
 
@@ -115,22 +101,13 @@ mod tests {
         let (mut watcher, mut rx) = CheckpointWatcher::new(16);
 
         // First checkpoint at epoch 1 — no event (last_epoch is 0, initial)
-        watcher
-            .process_checkpoint(1, &[])
-            .await
-            .unwrap();
+        watcher.process_checkpoint(1, &[]).await.unwrap();
 
         // Second checkpoint still epoch 1 — no event
-        watcher
-            .process_checkpoint(1, &[])
-            .await
-            .unwrap();
+        watcher.process_checkpoint(1, &[]).await.unwrap();
 
         // Third checkpoint at epoch 2 — epoch boundary detected
-        watcher
-            .process_checkpoint(2, &[])
-            .await
-            .unwrap();
+        watcher.process_checkpoint(2, &[]).await.unwrap();
 
         match rx.try_recv() {
             Ok(CheckpointEvent::EpochBoundary { epoch }) => assert_eq!(epoch, 2),

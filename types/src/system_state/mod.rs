@@ -29,8 +29,8 @@ use crate::committee::{
 };
 use crate::config::genesis_config::{SHANNONS_PER_SOMA, TokenDistributionSchedule};
 use crate::crypto::{
-    self, AuthorityPublicKey, DefaultHash, NetworkPublicKey, ProtocolPublicKey,
-    SomaKeyPair, SomaPublicKey,
+    self, AuthorityPublicKey, DefaultHash, NetworkPublicKey, ProtocolPublicKey, SomaKeyPair,
+    SomaPublicKey,
 };
 use crate::effects::ExecutionFailureStatus;
 use crate::error::{ExecutionResult, SomaError, SomaResult};
@@ -47,11 +47,11 @@ pub mod staking;
 pub mod validator;
 
 #[cfg(test)]
-#[path = "unit_tests/delegation_tests.rs"]
-mod delegation_tests;
-#[cfg(test)]
 #[path = "unit_tests/auto_compound_pool_tests.rs"]
 mod auto_compound_pool_tests;
+#[cfg(test)]
+#[path = "unit_tests/delegation_tests.rs"]
+mod delegation_tests;
 #[cfg(test)]
 #[path = "unit_tests/staking_lifecycle_tests.rs"]
 mod staking_lifecycle_tests;
@@ -401,15 +401,12 @@ impl SystemStateV1 {
             v.remove_active_stake_principal(from_active);
         };
 
-        if let Some(validator) =
-            self.validators.find_validator_with_pending_mut(validator_address)
+        if let Some(validator) = self.validators.find_validator_with_pending_mut(validator_address)
         {
             drain(validator);
             return Ok(());
         }
-        if let Some(inactive_validator) =
-            self.validators.inactive_validators.get_mut(&pool_id)
-        {
+        if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id) {
             drain(inactive_validator);
             return Ok(());
         }
@@ -497,7 +494,6 @@ impl SystemStateV1 {
 
         Ok(())
     }
-
 
     #[allow(clippy::result_large_err)]
     pub fn advance_epoch(
@@ -589,10 +585,8 @@ impl SystemStateV1 {
             .map(|v| (v.metadata.soma_address, v.voting_power))
             .collect();
         const MIN_BRIDGE_STAKE_PARTICIPATION_BPS: u64 = 5001;
-        self.bridge_state.try_rotate_committee(
-            &validator_voting_power,
-            MIN_BRIDGE_STAKE_PARTICIPATION_BPS,
-        );
+        self.bridge_state
+            .try_rotate_committee(&validator_voting_power, MIN_BRIDGE_STAKE_PARTICIPATION_BPS);
 
         Ok(validator_rewards)
     }
@@ -963,7 +957,6 @@ impl SystemState {
             ),
         }
     }
-
 
     pub fn fee_parameters(&self) -> FeeParameters {
         match self {

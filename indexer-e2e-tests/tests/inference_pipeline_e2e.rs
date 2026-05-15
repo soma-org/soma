@@ -33,9 +33,7 @@ use test_cluster::{TestCluster, TestClusterBuilder};
 fn grpc_client_args(test_cluster: &TestCluster) -> ClientArgs {
     ClientArgs {
         ingestion: IngestionClientArgs {
-            rpc_api_url: Some(
-                test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url"),
-            ),
+            rpc_api_url: Some(test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url")),
             ..Default::default()
         },
     }
@@ -69,11 +67,7 @@ async fn sign_voucher(
         .wallet
         .config
         .keystore
-        .sign_secure::<Voucher>(
-            &signer,
-            &voucher,
-            Intent::soma_app(IntentScope::PaymentVoucher),
-        )
+        .sign_secure::<Voucher>(&signer, &voucher, Intent::soma_app(IntentScope::PaymentVoucher))
         .await
         .expect("voucher signing succeeds");
     sig.into()
@@ -83,10 +77,7 @@ const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
 
 /// Ensure the payee has an on-chain offering for the test model so
 /// OpenChannel can snapshot it. Idempotent.
-async fn register_default_offering(
-    test_cluster: &test_cluster::TestCluster,
-    payee: SomaAddress,
-) {
+async fn register_default_offering(test_cluster: &test_cluster::TestCluster, payee: SomaAddress) {
     use types::offering::Offering;
     let offering_id = Offering::derive_id(payee, TEST_MODEL);
     if test_cluster
@@ -168,9 +159,7 @@ async fn register_provider(
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         signer,
-        TransactionKind::RegisterProvider(RegisterProviderArgs {
-            endpoint: endpoint.to_string(),
-        }),
+        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint: endpoint.to_string() }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok(), "RegisterProvider must succeed");
@@ -231,11 +220,7 @@ async fn submit_top_up(
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
-        TransactionKind::TopUp(TopUpArgs {
-            channel_id,
-            coin_type: CoinType::Usdc,
-            amount,
-        }),
+        TransactionKind::TopUp(TopUpArgs { channel_id, coin_type: CoinType::Usdc, amount }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok(), "TopUp must succeed");
@@ -277,26 +262,20 @@ async fn test_provider_registry_indexed() {
 
     let test_cluster = TestClusterBuilder::new().build().await;
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("OffchainCluster boot");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("OffchainCluster boot");
 
     let signer = test_cluster.wallet.get_addresses()[0];
 
     register_provider(&test_cluster, signer, "https://prov-v1.example").await;
     let cp1 = current_cp(&test_cluster).await;
-    cluster
-        .wait_for_indexer(cp1, Duration::from_secs(60))
-        .await
-        .expect("indexer reaches cp1");
+    cluster.wait_for_indexer(cp1, Duration::from_secs(60)).await.expect("indexer reaches cp1");
 
     let mut conn = cluster.db().connect().await.unwrap();
     let row: (Vec<u8>, String, i64) = soma_providers::table
-        .select((
-            soma_providers::address,
-            soma_providers::endpoint,
-            soma_providers::last_update_cp,
-        ))
+        .select((soma_providers::address, soma_providers::endpoint, soma_providers::last_update_cp))
         .filter(soma_providers::address.eq(signer.to_vec()))
         .first(conn.deref_mut())
         .await
@@ -307,10 +286,7 @@ async fn test_provider_registry_indexed() {
 
     update_provider(&test_cluster, signer, "https://prov-v2.example").await;
     let cp2 = current_cp(&test_cluster).await;
-    cluster
-        .wait_for_indexer(cp2, Duration::from_secs(60))
-        .await
-        .expect("indexer reaches cp2");
+    cluster.wait_for_indexer(cp2, Duration::from_secs(60)).await.expect("indexer reaches cp2");
 
     let row: (String, i64) = soma_providers::table
         .select((soma_providers::endpoint, soma_providers::last_update_cp))
@@ -333,9 +309,10 @@ async fn test_channel_lifecycle_indexed() {
 
     let test_cluster = TestClusterBuilder::new().build().await;
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("OffchainCluster boot");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("OffchainCluster boot");
 
     let addrs = test_cluster.wallet.get_addresses();
     let payer = addrs[0];
@@ -431,11 +408,7 @@ async fn test_channel_lifecycle_indexed() {
     cluster.wait_for_indexer(cp_s2, Duration::from_secs(60)).await.unwrap();
 
     let chan: (i64, i64, i16) = soma_channels::table
-        .select((
-            soma_channels::deposit,
-            soma_channels::settled_amount,
-            soma_channels::status,
-        ))
+        .select((soma_channels::deposit, soma_channels::settled_amount, soma_channels::status))
         .filter(soma_channels::channel_id.eq(channel_id.to_vec()))
         .first(conn.deref_mut())
         .await
@@ -467,10 +440,7 @@ async fn test_channel_lifecycle_indexed() {
     cluster.wait_for_indexer(cp_rc, Duration::from_secs(60)).await.unwrap();
 
     let chan: (i16, Option<i64>) = soma_channels::table
-        .select((
-            soma_channels::status,
-            soma_channels::close_requested_at_ms,
-        ))
+        .select((soma_channels::status, soma_channels::close_requested_at_ms))
         .filter(soma_channels::channel_id.eq(channel_id.to_vec()))
         .first(conn.deref_mut())
         .await
@@ -485,10 +455,7 @@ async fn test_channel_lifecycle_indexed() {
     cluster.wait_for_indexer(cp_tu2, Duration::from_secs(60)).await.unwrap();
 
     let chan: (i16, Option<i64>) = soma_channels::table
-        .select((
-            soma_channels::status,
-            soma_channels::close_requested_at_ms,
-        ))
+        .select((soma_channels::status, soma_channels::close_requested_at_ms))
         .filter(soma_channels::channel_id.eq(channel_id.to_vec()))
         .first(conn.deref_mut())
         .await

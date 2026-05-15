@@ -67,10 +67,8 @@ impl Processor for SomaChannelEvents {
                 }
                 TransactionKind::Settle(args) => {
                     let Some((id, post_c)) = post_chan else { continue };
-                    let pre_settled = pre_chan
-                        .as_ref()
-                        .map(|(_, c)| c.settled_amount())
-                        .unwrap_or(0);
+                    let pre_settled =
+                        pre_chan.as_ref().map(|(_, c)| c.settled_amount()).unwrap_or(0);
                     let delta = post_c.settled_amount().saturating_sub(pre_settled) as i64;
                     // Voucher-signed cumulative usage rides on the
                     // SettleArgs. The handler stores them as
@@ -92,22 +90,18 @@ impl Processor for SomaChannelEvents {
                 }
                 TransactionKind::TopUp(args) => {
                     let id = args.channel_id;
-                    let pre_dep =
-                        pre_chan.as_ref().map(|(_, c)| c.deposit()).unwrap_or(0);
+                    let pre_dep = pre_chan.as_ref().map(|(_, c)| c.deposit()).unwrap_or(0);
                     let post_dep = post_chan.as_ref().map(|(_, c)| c.deposit()).unwrap_or(0);
                     let delta = post_dep.saturating_sub(pre_dep) as i64;
                     (id, "top_up", delta)
                 }
                 TransactionKind::RequestClose(args) => (args.channel_id, "request_close", 0),
-                TransactionKind::WithdrawAfterTimeout(args) => {
-                    (args.channel_id, "withdraw", 0)
-                }
+                TransactionKind::WithdrawAfterTimeout(args) => (args.channel_id, "withdraw", 0),
                 TransactionKind::RateChannel(args) => {
                     // Two kinds for the binary flag, so consumers
                     // can filter on `kind` rather than reading a
                     // delta field. delta=0 — no value flow.
-                    let kind_label =
-                        if args.negative { "rate_negative" } else { "rate_positive" };
+                    let kind_label = if args.negative { "rate_negative" } else { "rate_positive" };
                     rating_reason_code = Some(args.reason_code as u8 as i16);
                     (args.channel_id, kind_label, 0)
                 }

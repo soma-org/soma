@@ -69,10 +69,7 @@ fn main() -> ExitCode {
     // node spawns many subsystem tasks; they need a multi-thread
     // runtime to overlap I/O without HOL-blocking. Use the default
     // worker count (= num_cpus).
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
+    let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
         Ok(rt) => rt,
         Err(e) => {
             error!(error = %e, "failed to build tokio runtime");
@@ -109,20 +106,12 @@ async fn run(args: Args) -> Result<(), RunError> {
     // 1. Load + parse the TOML config.
     info!(config_path = %args.config.display(), "loading bridge-node config");
     let config_str = std::fs::read_to_string(&args.config).map_err(|e| {
-        RunError::Startup(format!(
-            "read config file {}: {e}",
-            args.config.display()
-        ))
+        RunError::Startup(format!("read config file {}: {e}", args.config.display()))
     })?;
     let config: BridgeNodeConfig = toml::from_str(&config_str).map_err(|e| {
-        RunError::Startup(format!(
-            "parse {} as BridgeNodeConfig TOML: {e}",
-            args.config.display()
-        ))
+        RunError::Startup(format!("parse {} as BridgeNodeConfig TOML: {e}", args.config.display()))
     })?;
-    config.validate().map_err(|e| {
-        RunError::Startup(format!("config validation: {e}"))
-    })?;
+    config.validate().map_err(|e| RunError::Startup(format!("config validation: {e}")))?;
 
     // 2. Load the bridge keypair. The on-disk format is a base64
     // string (whitespace-trimmed) of either the raw private key bytes
@@ -159,21 +148,15 @@ async fn run(args: Args) -> Result<(), RunError> {
         soma_rpc = %config.soma_rpc_url,
         "connecting to Soma RPC and fetching bridge committee"
     );
-    let soma_client = SomaBridgeClient::new_rpc(&config.soma_rpc_url, soma_chain_id)
-        .await
-        .map_err(|e| {
-            RunError::Startup(format!(
-                "connect to Soma RPC at {}: {e}",
-                config.soma_rpc_url
-            ))
+    let soma_client =
+        SomaBridgeClient::new_rpc(&config.soma_rpc_url, soma_chain_id).await.map_err(|e| {
+            RunError::Startup(format!("connect to Soma RPC at {}: {e}", config.soma_rpc_url))
         })?;
-    let committee = soma_client.get_bridge_committee().await.map_err(|e| {
-        RunError::Startup(format!("fetch bridge committee: {e}"))
-    })?;
-    info!(
-        members = committee.members.len(),
-        "fetched live bridge committee"
-    );
+    let committee = soma_client
+        .get_bridge_committee()
+        .await
+        .map_err(|e| RunError::Startup(format!("fetch bridge committee: {e}")))?;
+    info!(members = committee.members.len(), "fetched live bridge committee");
 
     // Sanity-check membership: a daemon whose pubkey isn't on the
     // committee will still run (and serve sigs that nobody trusts),
@@ -216,9 +199,8 @@ async fn run(args: Args) -> Result<(), RunError> {
 
     // 5. Spawn all subsystems. `run()` returns the JoinHandles for
     // every spawned task — we wait on them below.
-    let handles = node.run().await.map_err(|e| {
-        RunError::Startup(format!("BridgeNode::run spawn: {e}"))
-    })?;
+    let handles =
+        node.run().await.map_err(|e| RunError::Startup(format!("BridgeNode::run spawn: {e}")))?;
     let handle_count = handles.len();
     info!(handle_count, "bridge-node subsystems spawned; waiting for shutdown signal");
 
@@ -309,12 +291,8 @@ async fn sigterm() {
 /// with `RUST_LOG=bridge_node=debug` can see which format actually
 /// matched.
 fn load_bridge_keypair(path: &std::path::Path) -> Result<Secp256k1KeyPair, RunError> {
-    let contents = std::fs::read(path).map_err(|e| {
-        RunError::Startup(format!(
-            "read bridge_key_path {}: {e}",
-            path.display()
-        ))
-    })?;
+    let contents = std::fs::read(path)
+        .map_err(|e| RunError::Startup(format!("read bridge_key_path {}: {e}", path.display())))?;
 
     // 1. fastcrypto base64.
     if let Ok(s) = std::str::from_utf8(&contents) {

@@ -56,10 +56,8 @@ pub fn balance_transfer_data_with_window(
     min_epoch: u64,
     max_epoch: u64,
 ) -> TransactionData {
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
     let nonce = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     TransactionData::new_with_expiration(
         TransactionKind::BalanceTransfer(BalanceTransferArgs { coin_type, transfers }),
@@ -84,10 +82,8 @@ pub fn stateless_tx_data(
     sender: SomaAddress,
     kind: TransactionKind,
 ) -> TransactionData {
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
     let current_epoch = test_cluster
         .fullnode_handle
         .soma_node

@@ -12,7 +12,6 @@
 
 pub mod accumulators;
 pub mod authority;
-pub mod settlement_scheduler;
 pub mod authority_aggregator;
 pub mod authority_client;
 pub mod authority_per_epoch_store;
@@ -43,6 +42,7 @@ pub mod reconfiguration;
 pub mod rpc_index;
 pub mod safe_client;
 pub mod server;
+pub mod settlement_scheduler;
 pub mod shared_obj_version_manager;
 pub mod signature_verifier;
 pub mod stake_aggregator;

@@ -56,10 +56,7 @@ impl IndexerClient {
     /// Fetch reputation for one provider. Returns `None` if the
     /// indexer hasn't seen any channels for this provider yet (the
     /// `reputation` field comes back null).
-    pub async fn fetch(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<ProviderReputation>> {
+    pub async fn fetch(&self, address: SomaAddress) -> anyhow::Result<Option<ProviderReputation>> {
         let query = r#"
             query Rep($addr: String!) {
                 provider(address: $addr) {

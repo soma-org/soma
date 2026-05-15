@@ -19,8 +19,8 @@ use types::base::SomaAddress;
 use types::crypto::Signature;
 use types::transaction::{
     BridgeAttachWithdrawalSignaturesArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
-    BridgeEmergencyUnpauseArgs, BridgeUpdateCommitteeBlocklistArgs, Transaction,
-    TransactionData, TransactionKind,
+    BridgeEmergencyUnpauseArgs, BridgeUpdateCommitteeBlocklistArgs, Transaction, TransactionData,
+    TransactionKind,
 };
 
 use crate::aggregator::CertifiedBridgeAction;
@@ -52,9 +52,7 @@ pub fn build_bridge_transaction(
 /// The cert's `signatures` envelope is moved into the args struct of the
 /// chosen variant; the on-chain executor re-verifies it against the
 /// canonical message bytes derived from the args.
-fn action_to_transaction_kind(
-    cert: &CertifiedBridgeAction,
-) -> BridgeResult<TransactionKind> {
+fn action_to_transaction_kind(cert: &CertifiedBridgeAction) -> BridgeResult<TransactionKind> {
     let signatures = cert.signatures.clone();
     let kind = match &cert.action {
         BridgeAction::Deposit {
@@ -108,12 +106,7 @@ fn action_to_transaction_kind(
             })
         }
 
-        BridgeAction::UpdateCommitteeBlocklist {
-            nonce,
-            blocklist_type,
-            members,
-            ..
-        } => {
+        BridgeAction::UpdateCommitteeBlocklist { nonce, blocklist_type, members, .. } => {
             // The on-chain `BridgeUpdateCommitteeBlocklist` executor
             // operates on derived 20-byte Eth addresses, not raw pubkeys
             // (mirrors Sui's blocklist payload encoding). Convert here so
@@ -121,16 +114,13 @@ fn action_to_transaction_kind(
             // `derive_eth_address(member.pubkey)`.
             let eth_addresses: Vec<[u8; 20]> =
                 members.iter().map(types::bridge::derive_eth_address).collect();
-            let is_blocklist =
-                matches!(blocklist_type, types::bridge::BlocklistType::Blocklist);
-            TransactionKind::BridgeUpdateCommitteeBlocklist(
-                BridgeUpdateCommitteeBlocklistArgs {
-                    nonce: *nonce,
-                    is_blocklist,
-                    eth_addresses,
-                    signatures,
-                },
-            )
+            let is_blocklist = matches!(blocklist_type, types::bridge::BlocklistType::Blocklist);
+            TransactionKind::BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklistArgs {
+                nonce: *nonce,
+                is_blocklist,
+                eth_addresses,
+                signatures,
+            })
         }
 
         // The remaining action variants target the Eth side (the off-chain
@@ -138,8 +128,7 @@ fn action_to_transaction_kind(
         // Soma). They have no Soma-side `TransactionKind`, so building a
         // Soma tx for them is a programmer error and we surface it as
         // such instead of silently constructing nothing.
-        BridgeAction::LimitUpdate { .. }
-        | BridgeAction::EvmContractUpgrade { .. } => {
+        BridgeAction::LimitUpdate { .. } | BridgeAction::EvmContractUpgrade { .. } => {
             return Err(BridgeError::Internal(format!(
                 "BridgeAction targets Eth side, no Soma TransactionKind: {:?}",
                 cert.action.message_type()
@@ -154,13 +143,13 @@ mod tests {
     use super::*;
     use crate::aggregator::CertifiedBridgeAction;
     use std::collections::BTreeMap;
+    use types::base::SomaAddress;
     use types::bridge::{
         BlocklistType, BridgeChainId, BridgePubkey, BridgeSignature, SOMA_BRIDGE_CHAIN_ID,
         generate_test_bridge_committee,
     };
-    use types::crypto::{SomaKeyPair, get_key_pair};
-    use types::base::SomaAddress;
     use types::crypto::Ed25519SomaSignature;
+    use types::crypto::{SomaKeyPair, get_key_pair};
 
     /// Build a relayer keypair + address using the same helper that
     /// produces the test cluster's accounts.
@@ -305,5 +294,7 @@ mod tests {
     /// `Ed25519SomaSignature` import is here only to make the test file
     /// compile if/when we extend coverage to alternate signer types.
     #[allow(dead_code)]
-    fn _ed25519_sig_marker() -> Option<Ed25519SomaSignature> { None }
+    fn _ed25519_sig_marker() -> Option<Ed25519SomaSignature> {
+        None
+    }
 }

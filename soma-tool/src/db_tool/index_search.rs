@@ -97,4 +97,3 @@ pub fn search_owner_index(db_path: PathBuf, opts: OwnerSearchOptions) -> anyhow:
 // coin_type) accumulator. To inspect a balance, query the gRPC
 // `LiveDataService.GetBalance` endpoint or read directly from
 // `perpetual_tables.accumulator_balances` via authority_store.
-

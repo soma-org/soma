@@ -34,8 +34,8 @@ use types::provider_inbox::ProviderInbox;
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
-    OpenChannelArgs, RateChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs,
-    TransactionKind, WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RateChannelArgs, RequestCloseArgs, SettleArgs, TopUpArgs, TransactionKind,
+    WithdrawAfterTimeoutArgs,
 };
 
 use super::{TransactionExecutor, checked_add, checked_sub};
@@ -55,13 +55,10 @@ impl ChannelExecutor {
         voucher: Voucher,
         signature: &types::crypto::GenericSignature,
     ) -> ExecutionResult<()> {
-        let intent_msg =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
-        signature
-            .verify_authenticator(&intent_msg, channel.authorized_signer)
-            .map_err(|e| {
-                ExecutionFailureStatus::ChannelInvalidVoucherSignature { reason: e.to_string() }
-            })?;
+        let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        signature.verify_authenticator(&intent_msg, channel.authorized_signer).map_err(|e| {
+            ExecutionFailureStatus::ChannelInvalidVoucherSignature { reason: e.to_string() }
+        })?;
         Ok(())
     }
 
@@ -155,9 +152,7 @@ impl ChannelExecutor {
     /// requires the caller's tx to have declared
     /// `SharedInputObject::CLOCK_OBJ_READ`.
     fn read_clock_ts(store: &TemporaryStore) -> ExecutionResult<TimestampMs> {
-        store
-            .read_clock_timestamp_ms()
-            .ok_or(ExecutionFailureStatus::ChannelClockMissing)
+        store.read_clock_timestamp_ms().ok_or(ExecutionFailureStatus::ChannelClockMissing)
     }
 
     /// Read the live `SystemParameters` from the declared SystemState
@@ -168,11 +163,9 @@ impl ChannelExecutor {
     ) -> ExecutionResult<protocol_config::SystemParameters> {
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
-            .ok_or(ExecutionFailureStatus::ObjectNotFound {
-                object_id: SYSTEM_STATE_OBJECT_ID,
-            })?;
-        let state = SystemState::deserialize(state_object.as_inner().data.contents())
-            .map_err(|e| {
+            .ok_or(ExecutionFailureStatus::ObjectNotFound { object_id: SYSTEM_STATE_OBJECT_ID })?;
+        let state =
+            SystemState::deserialize(state_object.as_inner().data.contents()).map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize SystemState: {}",
                     e
@@ -192,16 +185,10 @@ impl ChannelExecutor {
     ) -> ExecutionResult<OfferingSnapshot> {
         let offering_id = Offering::derive_id(payee, model_id);
         let offering_object = store.read_object(&offering_id).ok_or_else(|| {
-            ExecutionFailureStatus::ChannelOfferingMissing {
-                payee,
-                model_id: model_id.to_string(),
-            }
+            ExecutionFailureStatus::ChannelOfferingMissing { payee, model_id: model_id.to_string() }
         })?;
         let offering = offering_object.as_offering().ok_or_else(|| {
-            ExecutionFailureStatus::ChannelOfferingMissing {
-                payee,
-                model_id: model_id.to_string(),
-            }
+            ExecutionFailureStatus::ChannelOfferingMissing { payee, model_id: model_id.to_string() }
         })?;
         if !offering.active() {
             return Err(ExecutionFailureStatus::ChannelOfferingMissing {
@@ -280,8 +267,7 @@ impl ChannelExecutor {
         // (`max_channels_per_pair`) read from SystemState — declared
         // as a read-only shared input by `OpenChannel`.
         let max_per_pair = Self::read_system_parameters(store)?.max_channels_per_pair;
-        let (inbox_obj, mut inbox) =
-            Self::load_or_default_inbox(store, args.payee)?;
+        let (inbox_obj, mut inbox) = Self::load_or_default_inbox(store, args.payee)?;
         if let Err(current) = inbox.try_increment(signer, max_per_pair) {
             return Err(ExecutionFailureStatus::ChannelTooManyOpenForPair {
                 current,
@@ -515,9 +501,8 @@ impl ChannelExecutor {
             .into());
         }
 
-        let close_requested_at_ms = channel
-            .close_requested_at_ms
-            .ok_or(ExecutionFailureStatus::ChannelNoCloseRequest)?;
+        let close_requested_at_ms =
+            channel.close_requested_at_ms.ok_or(ExecutionFailureStatus::ChannelNoCloseRequest)?;
 
         // Read protocol grace period from SystemState (declared as
         // read-only shared input by this tx kind).
@@ -725,23 +710,14 @@ mod tests {
 
     /// Build a default `RateChannelArgs` with `Quality` reason_code.
     fn default_rate_args(channel_id: ObjectID, negative: bool) -> RateChannelArgs {
-        RateChannelArgs {
-            channel_id,
-            negative,
-            reason_code: RatingReasonCode::Quality,
-        }
+        RateChannelArgs { channel_id, negative, reason_code: RatingReasonCode::Quality }
     }
 
     /// Build a test `Offering` for `(payee, model_id)` with zero
     /// prices and SLA bounds — enough to pass the snapshot lookup in
     /// `execute_open` without distorting downstream settlement math.
     fn test_offering(payee: SomaAddress) -> Offering {
-        Offering::new(
-            payee,
-            TEST_MODEL_ID.to_string(),
-            0, 0, 0, 0, 0, 0, 0,
-            0,
-        )
+        Offering::new(payee, TEST_MODEL_ID.to_string(), 0, 0, 0, 0, 0, 0, 0, 0)
     }
 
     /// Common fixtures for channel-executor tests. Default: `payer`
@@ -957,7 +933,8 @@ mod tests {
     #[test]
     fn open_channel_happy_path() {
         let f = Fixture::new();
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
+        let mut store =
+            make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
 
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
@@ -1009,7 +986,8 @@ mod tests {
     #[test]
     fn open_channel_rejects_self_channel() {
         let f = Fixture::new();
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
+        let mut store =
+            make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -1031,7 +1009,8 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_authorized_signer() {
         let f = Fixture::new();
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
+        let mut store =
+            make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -1054,7 +1033,8 @@ mod tests {
     #[test]
     fn open_channel_rejects_zero_deposit() {
         let f = Fixture::new();
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
+        let mut store =
+            make_store_with_offering(0, GRACE_PERIOD_MS, None, None, Some(test_offering(f.payee)));
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -1086,8 +1066,7 @@ mod tests {
     fn settle_happy_path() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store =
-            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
 
         let voucher_sig = f.sign_voucher(300);
         let mut exec = ChannelExecutor::new();
@@ -1130,8 +1109,7 @@ mod tests {
     fn settle_sequential_pays_only_delta() {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(1_000);
-        let mut store =
-            make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
+        let mut store = make_store(0, GRACE_PERIOD_MS, Some((f.channel_id, channel.clone())), None);
         let mut exec = ChannelExecutor::new();
 
         // First settle at 100.
@@ -1310,8 +1288,7 @@ mod tests {
         // Sign with a wrong key.
         let (_, wrong_kp): (_, Ed25519KeyPair) = get_key_pair();
         let voucher = Voucher::new_amount_only(f.channel_id, 100);
-        let intent_msg =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let bad_sig: GenericSignature = Signature::new_secure(&intent_msg, &wrong_kp).into();
 
         let mut exec = ChannelExecutor::new();
@@ -1415,7 +1392,11 @@ mod tests {
         exec.execute_rate_channel(
             &mut store,
             f.payer,
-            RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
+            RateChannelArgs {
+                channel_id: f.channel_id,
+                negative: true,
+                reason_code: RatingReasonCode::Quality,
+            },
             TransactionDigest::default(),
         )
         .expect("RateChannel succeeds");
@@ -1431,7 +1412,11 @@ mod tests {
         exec.execute_rate_channel(
             &mut store,
             f.payer,
-            RateChannelArgs { channel_id: f.channel_id, negative: false , reason_code: RatingReasonCode::Quality},
+            RateChannelArgs {
+                channel_id: f.channel_id,
+                negative: false,
+                reason_code: RatingReasonCode::Quality,
+            },
             TransactionDigest::default(),
         )
         .expect("RateChannel succeeds for positive flag");
@@ -1451,7 +1436,11 @@ mod tests {
             .execute_rate_channel(
                 &mut store,
                 f.payee, // not payer
-                RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
+                RateChannelArgs {
+                    channel_id: f.channel_id,
+                    negative: true,
+                    reason_code: RatingReasonCode::Quality,
+                },
                 TransactionDigest::default(),
             )
             .expect_err("non-payer must be rejected");
@@ -1471,7 +1460,11 @@ mod tests {
             .execute_rate_channel(
                 &mut store,
                 f.payer,
-                RateChannelArgs { channel_id: f.channel_id, negative: true , reason_code: RatingReasonCode::Quality},
+                RateChannelArgs {
+                    channel_id: f.channel_id,
+                    negative: true,
+                    reason_code: RatingReasonCode::Quality,
+                },
                 TransactionDigest::default(),
             )
             .expect_err("zero-settled must be rejected");
@@ -1600,7 +1593,8 @@ mod tests {
         let f = Fixture::new();
         let channel = f.channel_with_deposit(700);
         // No close_requested_at_ms set.
-        let mut store = make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
+        let mut store =
+            make_store(GRACE_PERIOD_MS, GRACE_PERIOD_MS, Some((f.channel_id, channel)), None);
         let mut exec = ChannelExecutor::new();
         exec.execute_withdraw_after_timeout(
             &mut store,
@@ -1681,10 +1675,7 @@ mod tests {
 
         let updated = store.read_object(&f.channel_id).unwrap().as_channel().unwrap();
         assert_eq!(updated.deposit(), 1_100);
-        assert!(
-            updated.close_requested_at_ms().is_none(),
-            "TopUp must clear pending close timer"
-        );
+        assert!(updated.close_requested_at_ms().is_none(), "TopUp must clear pending close timer");
     }
 
     /// Zero-amount TopUp is rejected — pure state bloat.
@@ -1784,7 +1775,13 @@ mod tests {
         let f = Fixture::new();
         // Pre-seed an inbox with cap-1 entries; one more should land.
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP - 1);
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
+        let mut store = make_store_with_offering(
+            0,
+            GRACE_PERIOD_MS,
+            None,
+            Some(inbox),
+            Some(test_offering(f.payee)),
+        );
         let mut exec = ChannelExecutor::new();
         exec.execute_open(
             &mut store,
@@ -1816,7 +1813,13 @@ mod tests {
     fn open_channel_rejects_at_cap() {
         let f = Fixture::new();
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
+        let mut store = make_store_with_offering(
+            0,
+            GRACE_PERIOD_MS,
+            None,
+            Some(inbox),
+            Some(test_offering(f.payee)),
+        );
         let mut exec = ChannelExecutor::new();
         let status = exec
             .execute_open(
@@ -1827,7 +1830,7 @@ mod tests {
                     authorized_signer: f.signer_addr,
                     token: CoinType::Usdc,
                     deposit_amount: 1_000,
-                model_id: TEST_MODEL_ID.to_string(),
+                    model_id: TEST_MODEL_ID.to_string(),
                 },
                 TransactionDigest::default(),
             )
@@ -1851,7 +1854,13 @@ mod tests {
         let f = Fixture::new();
         // alice = f.payer, already at the cap.
         let inbox = inbox_with_count(f.payee, f.payer, PROTOCOL_DEFAULT_CAP);
-        let mut store = make_store_with_offering(0, GRACE_PERIOD_MS, None, Some(inbox), Some(test_offering(f.payee)));
+        let mut store = make_store_with_offering(
+            0,
+            GRACE_PERIOD_MS,
+            None,
+            Some(inbox),
+            Some(test_offering(f.payee)),
+        );
         let mut exec = ChannelExecutor::new();
 
         // Different payer: fresh signer + address.
@@ -1932,10 +1941,7 @@ mod tests {
 
         let inbox_id = types::provider_inbox::ProviderInbox::derive_id(f.payee);
         assert!(
-            store
-                .execution_results
-                .deleted_object_ids
-                .contains(&inbox_id),
+            store.execution_results.deleted_object_ids.contains(&inbox_id),
             "empty inbox must be deleted on the last withdraw"
         );
     }

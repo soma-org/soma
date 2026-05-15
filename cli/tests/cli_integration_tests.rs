@@ -56,9 +56,7 @@ fn test_transaction_response_display_success() {
         status: TransactionStatus::Success,
         executed_epoch: 1,
         checkpoint: Some(100),
-        fee: types::tx_fee::TransactionFee {
-            total_fee: 1500,
-        },
+        fee: types::tx_fee::TransactionFee { total_fee: 1500 },
         created: vec![],
         mutated: vec![],
         deleted: vec![],
@@ -85,9 +83,7 @@ fn test_transaction_response_display_failure() {
         status: TransactionStatus::Failure { error: "InsufficientGas".to_string() },
         executed_epoch: 1,
         checkpoint: None,
-        fee: types::tx_fee::TransactionFee {
-            total_fee: 0,
-        },
+        fee: types::tx_fee::TransactionFee { total_fee: 0 },
         created: vec![],
         mutated: vec![],
         deleted: vec![],

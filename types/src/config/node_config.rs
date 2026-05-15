@@ -1038,7 +1038,6 @@ impl ExecutionCacheConfig {
                 }
             })
     }
-
 }
 
 /// Configurations which determine how we dump state debug info.

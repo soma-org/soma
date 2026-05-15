@@ -17,7 +17,6 @@ pub mod objects;
 pub mod transactions;
 pub mod watermarks;
 
-
 /// Column family name used by all tables.
 pub const FAMILY: &str = "soma";
 

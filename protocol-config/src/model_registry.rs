@@ -187,13 +187,7 @@ fn anthropic(
     }
 }
 
-fn gpt(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
+fn gpt(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
         display_name: name.to_string(),
@@ -210,13 +204,7 @@ fn gpt(
     }
 }
 
-fn gemini(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
+fn gemini(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
         display_name: name.to_string(),
@@ -234,13 +222,7 @@ fn gemini(
     }
 }
 
-fn gemma(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
+fn gemma(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
         display_name: name.to_string(),
@@ -254,13 +236,7 @@ fn gemma(
     }
 }
 
-fn grok(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
+fn grok(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
         display_name: name.to_string(),
@@ -274,13 +250,7 @@ fn grok(
     }
 }
 
-fn llama(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
+fn llama(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
         display_name: name.to_string(),
@@ -392,11 +362,8 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
     let file = Modality::File;
     let audio = Modality::Audio;
 
-    let common_chat = features(&[
-        ModelFeature::Tools,
-        ModelFeature::JsonMode,
-        ModelFeature::StructuredOutputs,
-    ]);
+    let common_chat =
+        features(&[ModelFeature::Tools, ModelFeature::JsonMode, ModelFeature::StructuredOutputs]);
     let reasoning_chat = features(&[
         ModelFeature::Tools,
         ModelFeature::JsonMode,
@@ -453,34 +420,10 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             cached_reasoning,
         ),
         // === OpenAI (Mar 2025+) ===
-        gpt(
-            "openai/gpt-5.4-nano",
-            "GPT-5.4 Nano",
-            400_000,
-            128_000,
-            cached_reasoning,
-        ),
-        gpt(
-            "openai/gpt-5.4-mini",
-            "GPT-5.4 Mini",
-            400_000,
-            128_000,
-            cached_reasoning,
-        ),
-        gpt(
-            "openai/gpt-5.5",
-            "GPT-5.5",
-            1_050_000,
-            128_000,
-            cached_reasoning,
-        ),
-        gpt(
-            "openai/gpt-5.5-pro",
-            "GPT-5.5 Pro",
-            1_050_000,
-            128_000,
-            cached_reasoning,
-        ),
+        gpt("openai/gpt-5.4-nano", "GPT-5.4 Nano", 400_000, 128_000, cached_reasoning),
+        gpt("openai/gpt-5.4-mini", "GPT-5.4 Mini", 400_000, 128_000, cached_reasoning),
+        gpt("openai/gpt-5.5", "GPT-5.5", 1_050_000, 128_000, cached_reasoning),
+        gpt("openai/gpt-5.5-pro", "GPT-5.5 Pro", 1_050_000, 128_000, cached_reasoning),
         // === Google (Mar 2025+) ===
         gemini(
             "google/gemini-3.1-flash-lite",
@@ -496,28 +439,10 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             65_536,
             reasoning_chat,
         ),
-        gemma(
-            "google/gemma-4-26b-a4b-it",
-            "Gemma 4 26B A4B IT",
-            262_144,
-            16_384,
-            common_chat,
-        ),
-        gemma(
-            "google/gemma-4-31b-it",
-            "Gemma 4 31B IT",
-            262_144,
-            16_384,
-            common_chat,
-        ),
+        gemma("google/gemma-4-26b-a4b-it", "Gemma 4 26B A4B IT", 262_144, 16_384, common_chat),
+        gemma("google/gemma-4-31b-it", "Gemma 4 31B IT", 262_144, 16_384, common_chat),
         // === xAI (Mar 2025+) ===
-        grok(
-            "x-ai/grok-4.20",
-            "Grok 4.20",
-            2_000_000,
-            32_768,
-            reasoning_chat,
-        ),
+        grok("x-ai/grok-4.20", "Grok 4.20", 2_000_000, 32_768, reasoning_chat),
         grok(
             "x-ai/grok-4.20-multi-agent",
             "Grok 4.20 Multi-Agent",
@@ -525,28 +450,10 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             32_768,
             reasoning_chat,
         ),
-        grok(
-            "x-ai/grok-4.3",
-            "Grok 4.3",
-            1_000_000,
-            32_768,
-            reasoning_chat,
-        ),
+        grok("x-ai/grok-4.3", "Grok 4.3", 1_000_000, 32_768, reasoning_chat),
         // === Meta (Mar 2025+, open weights) ===
-        llama(
-            "meta-llama/llama-4-scout",
-            "Llama 4 Scout",
-            327_680,
-            16_384,
-            common_chat,
-        ),
-        llama(
-            "meta-llama/llama-4-maverick",
-            "Llama 4 Maverick",
-            1_048_576,
-            16_384,
-            common_chat,
-        ),
+        llama("meta-llama/llama-4-scout", "Llama 4 Scout", 327_680, 16_384, common_chat),
+        llama("meta-llama/llama-4-maverick", "Llama 4 Maverick", 1_048_576, 16_384, common_chat),
         // === DeepSeek (Mar 2025+) ===
         deepseek(
             "deepseek/deepseek-v4-flash",
@@ -555,36 +462,12 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             131_072,
             common_chat,
         ),
-        deepseek(
-            "deepseek/deepseek-v4-pro",
-            "DeepSeek V4 Pro",
-            1_048_576,
-            384_000,
-            reasoning_chat,
-        ),
+        deepseek("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", 1_048_576, 384_000, reasoning_chat),
         // === Moonshot (Mar 2025+) ===
-        qwen_tok(
-            "moonshotai/kimi-k2.6",
-            "Kimi K2.6",
-            262_142,
-            262_142,
-            reasoning_chat,
-        ),
+        qwen_tok("moonshotai/kimi-k2.6", "Kimi K2.6", 262_142, 262_142, reasoning_chat),
         // === Qwen (Mar 2025+) ===
-        qwen_tok(
-            "qwen/qwen3.6-flash",
-            "Qwen3.6 Flash",
-            1_000_000,
-            65_536,
-            common_chat,
-        ),
-        qwen_tok(
-            "qwen/qwen3.6-plus",
-            "Qwen3.6 Plus",
-            1_000_000,
-            65_536,
-            reasoning_chat,
-        ),
+        qwen_tok("qwen/qwen3.6-flash", "Qwen3.6 Flash", 1_000_000, 65_536, common_chat),
+        qwen_tok("qwen/qwen3.6-plus", "Qwen3.6 Plus", 1_000_000, 65_536, reasoning_chat),
         qwen_tok(
             "qwen/qwen3.6-max-preview",
             "Qwen3.6 Max Preview",
@@ -600,13 +483,7 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             32_768,
             common_chat,
         ),
-        mistral(
-            "mistralai/mistral-medium-3-5",
-            "Mistral Medium 3.5",
-            262_144,
-            32_768,
-            common_chat,
-        ),
+        mistral("mistralai/mistral-medium-3-5", "Mistral Medium 3.5", 262_144, 32_768, common_chat),
         mistral(
             "mistralai/mistral-large-2512",
             "Mistral Large 3 (2025-12)",
@@ -615,29 +492,11 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             common_chat,
         ),
         // === MiniMax (Mar 2025+) ===
-        unknown_tok(
-            "minimax/minimax-m2.7",
-            "MiniMax M2.7",
-            196_608,
-            32_768,
-            reasoning_chat,
-        ),
+        unknown_tok("minimax/minimax-m2.7", "MiniMax M2.7", 196_608, 32_768, reasoning_chat),
         // === Z.AI (user request) ===
-        unknown_tok(
-            "z-ai/glm-5.1",
-            "GLM 5.1",
-            128_000,
-            16_384,
-            reasoning_chat,
-        ),
+        unknown_tok("z-ai/glm-5.1", "GLM 5.1", 128_000, 16_384, reasoning_chat),
         // === Xiaomi (user request) ===
-        unknown_tok(
-            "xiaomi/mimo-v2.5-pro",
-            "MiMo V2.5 Pro",
-            200_000,
-            16_384,
-            reasoning_chat,
-        ),
+        unknown_tok("xiaomi/mimo-v2.5-pro", "MiMo V2.5 Pro", 200_000, 16_384, reasoning_chat),
         // === Tencent (Mar 2025+) ===
         unknown_tok(
             "tencent/hy3-preview",
@@ -655,28 +514,10 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
             common_chat,
         ),
         // === Amazon (Mar 2025+) ===
-        gpt(
-            "amazon/nova-2-lite-v1",
-            "Amazon Nova 2 Lite",
-            1_000_000,
-            65_535,
-            common_chat,
-        ),
-        gpt(
-            "amazon/nova-premier-v1",
-            "Amazon Nova Premier",
-            1_000_000,
-            32_000,
-            common_chat,
-        ),
+        gpt("amazon/nova-2-lite-v1", "Amazon Nova 2 Lite", 1_000_000, 65_535, common_chat),
+        gpt("amazon/nova-premier-v1", "Amazon Nova Premier", 1_000_000, 32_000, common_chat),
         // === Cohere (Mar 2025+) ===
-        unknown_tok(
-            "cohere/command-a",
-            "Cohere Command A",
-            256_000,
-            8_192,
-            common_chat,
-        ),
+        unknown_tok("cohere/command-a", "Cohere Command A", 256_000, 8_192, common_chat),
         // === IBM (Mar 2025+) ===
         unknown_tok(
             "ibm-granite/granite-4.1-8b",

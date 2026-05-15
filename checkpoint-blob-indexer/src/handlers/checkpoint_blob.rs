@@ -43,10 +43,7 @@ impl Processor for CheckpointBlobPipeline {
         let proto_checkpoint = ProtoCheckpoint::merge_from(checkpoint.as_ref(), &MASK);
         let proto_bytes = Bytes::from(proto_checkpoint.encode_to_vec());
 
-        Ok(vec![CheckpointBlob {
-            sequence_number,
-            proto_bytes,
-        }])
+        Ok(vec![CheckpointBlob { sequence_number, proto_bytes }])
     }
 }
 
@@ -89,9 +86,7 @@ impl Handler for CheckpointBlobPipeline {
             blob.proto_bytes.clone()
         };
 
-        conn.object_store()
-            .put(&ObjectPath::from(path), data.into())
-            .await?;
+        conn.object_store().put(&ObjectPath::from(path), data.into()).await?;
         Ok(1)
     }
 }

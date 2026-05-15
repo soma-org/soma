@@ -7,9 +7,7 @@ use fastcrypto::ed25519::Ed25519KeyPair;
 use crate::base::SomaAddress;
 use crate::consensus::ConsensusCommitPrologueV1;
 use crate::crypto::{default_hash, get_key_pair};
-use crate::digests::{
-    AdditionalConsensusStateDigest, ConsensusCommitDigest, ObjectDigest,
-};
+use crate::digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, ObjectDigest};
 use crate::envelope::Message;
 use crate::error::SomaError;
 use crate::intent::{Intent, IntentMessage};
@@ -200,18 +198,13 @@ fn test_transaction_kind_classification() {
     assert!(update_meta.is_validator_tx());
 
     // Staking transactions
-    let add_stake = TransactionKind::AddStake {
-        validator: SomaAddress::random(),
-        amount: 1000,
-    };
+    let add_stake = TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 };
     assert!(add_stake.is_staking_tx());
     assert!(!add_stake.is_validator_tx());
     assert!(!add_stake.is_system_tx());
 
-    let withdraw_stake = TransactionKind::WithdrawStake {
-        pool_id: ObjectID::random(),
-        amount: None,
-    };
+    let withdraw_stake =
+        TransactionKind::WithdrawStake { pool_id: ObjectID::random(), amount: None };
     assert!(withdraw_stake.is_staking_tx());
 
     // Coin/object transactions should not match any category
@@ -336,14 +329,8 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             recipient: SomaAddress::random(),
         },
         // Staking
-        TransactionKind::AddStake {
-            validator: SomaAddress::random(),
-            amount: 1000,
-        },
-        TransactionKind::WithdrawStake {
-            pool_id: ObjectID::random(),
-            amount: Some(500),
-        },
+        TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 },
+        TransactionKind::WithdrawStake { pool_id: ObjectID::random(), amount: Some(500) },
         // Bridge
         TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
             nonce: 1,
@@ -492,10 +479,7 @@ fn test_shared_input_objects() {
     assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
 
     // Staking tx -> SystemState only
-    let add_stake = TransactionKind::AddStake {
-        validator: SomaAddress::random(),
-        amount: 1000,
-    };
+    let add_stake = TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 };
     let shared: Vec<_> = add_stake.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);
     assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
@@ -549,10 +533,7 @@ fn test_contains_shared_object() {
     assert!(!transfer.contains_shared_object(), "TransferCoin should not contain shared objects");
 
     // AddStake touches SystemState
-    let add_stake = TransactionKind::AddStake {
-        validator: SomaAddress::random(),
-        amount: 1000,
-    };
+    let add_stake = TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 };
     assert!(
         add_stake.contains_shared_object(),
         "AddStake should contain shared objects (SystemState)"
@@ -725,10 +706,7 @@ fn test_requires_system_state() {
     assert!(add_val.requires_system_state());
 
     // Staking requires system state
-    let add_stake = TransactionKind::AddStake {
-        validator: SomaAddress::random(),
-        amount: 1000,
-    };
+    let add_stake = TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 };
     assert!(add_stake.requires_system_state());
 
     // ChangeEpoch requires system state (is_epoch_change)
@@ -804,10 +782,7 @@ fn test_input_objects_user_txs() {
 
     // AddStake (Stage 9d-C2: balance-mode): SystemState shared only,
     // no coin input.
-    let add_stake = TransactionKind::AddStake {
-        validator: SomaAddress::random(),
-        amount: 1000,
-    };
+    let add_stake = TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 };
     let inputs = add_stake.input_objects().expect("should succeed");
     assert_eq!(inputs.len(), 1);
     assert!(inputs[0].is_shared_object());
@@ -904,10 +879,8 @@ fn test_input_objects_withdraw_after_timeout() {
     let channel_id = ObjectID::random();
     let payee = SomaAddress::random();
     let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
-    let kind = TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
-        channel_id,
-        payee,
-    });
+    let kind =
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id, payee });
     let inputs = kind.input_objects().expect("WithdrawAfterTimeout inputs build");
     assert_eq!(inputs.len(), 4);
 
@@ -1036,10 +1009,7 @@ fn test_envelope_shared_object_methods() {
 
     // AddStake transaction -> touches shared SystemState
     let add_stake_data = TransactionData::new(
-        TransactionKind::AddStake {
-            validator: SomaAddress::random(),
-            amount: 1000,
-        },
+        TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 },
         sender,
         vec![gas_ref],
     );
@@ -1049,12 +1019,8 @@ fn test_envelope_shared_object_methods() {
     assert!(tx.is_consensus_tx());
 
     // BalanceTransfer -> no shared objects
-    let transfer_data = balance_transfer_data(
-        SomaAddress::random(),
-        sender,
-        100,
-        random_object_ref(),
-    );
+    let transfer_data =
+        balance_transfer_data(SomaAddress::random(), sender, 100, random_object_ref());
     let ssd2 = SenderSignedData::new(transfer_data, vec![]);
     let tx2 = Transaction::new(ssd2);
     assert!(!tx2.contains_shared_object());
@@ -1093,9 +1059,8 @@ fn test_reservations_with_coin_mode_gas_skips_gas_reservation() {
 
 #[test]
 fn test_reservations_genesis_is_empty() {
-    let data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
-        objects: vec![],
-    }));
+    let data =
+        make_system_tx_data(TransactionKind::Genesis(GenesisTransaction { objects: vec![] }));
     assert!(data.reservations(TEST_UNIT_FEE).is_empty());
 }
 
@@ -1144,10 +1109,8 @@ fn test_reservations_balance_mode_returns_gas_reservation() {
     // USDC gas reservation AND the SOMA transfer-amount
     // reservation.
     assert_eq!(reservations.len(), 2, "balance-mode BalanceTransfer declares gas + transfer");
-    let gas = reservations
-        .iter()
-        .find(|r| r.coin_type == CoinType::Usdc)
-        .expect("USDC gas reservation");
+    let gas =
+        reservations.iter().find(|r| r.coin_type == CoinType::Usdc).expect("USDC gas reservation");
     assert_eq!(*gas, WithdrawalReservation::new(sender, CoinType::Usdc, TEST_UNIT_FEE * 2));
     let transfer = reservations
         .iter()
@@ -1333,11 +1296,7 @@ fn test_expiration_oversized_window_rejected() {
 #[test]
 fn test_expiration_missing_min_or_max_rejected() {
     let chain = fresh_chain_id();
-    let cases = [
-        (None, Some(5)),
-        (Some(5), None),
-        (None, None),
-    ];
+    let cases = [(None, Some(5)), (Some(5), None), (None, None)];
     for (min_epoch, max_epoch) in cases {
         let data = TransactionData::new_with_expiration(
             TransactionKind::BalanceTransfer(BalanceTransferArgs {
@@ -1461,10 +1420,7 @@ fn test_e2e_wallet_signing_path_for_valid_during() {
 
     // Sign mimicking the e2e wallet path: build IntentMessage<&T>,
     // sign with the keypair, wrap in Transaction::from_data.
-    let sig = Signature::new_secure(
-        &IntentMessage::new(Intent::soma_transaction(), &data),
-        &kp,
-    );
+    let sig = Signature::new_secure(&IntentMessage::new(Intent::soma_transaction(), &data), &kp);
     let tx = Transaction::from_data(data.clone(), vec![sig]);
 
     // Verify via the validator's path. Same data, same intent → same bytes.

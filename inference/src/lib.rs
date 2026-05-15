@@ -25,26 +25,23 @@ pub mod channel;
 pub mod openai;
 pub mod persist;
 pub mod pricing;
-pub mod reputation;
-pub mod tokenizer;
 pub mod proxy;
+pub mod reputation;
 pub mod server;
+pub mod tokenizer;
 
 pub mod http_util;
 
 pub use chain::{
-    chain::ChainChannelSurface, ChainError, ChannelStatus, ChannelSurface, ProviderRecord,
-    ProviderRegistry,
+    ChainError, ChannelStatus, ChannelSurface, ProviderRecord, ProviderRegistry,
+    chain::ChainChannelSurface,
 };
 pub use channel::{ChannelError, PaymentChannel, RequestMeta, RunningTab};
 
 /// UNIX time in milliseconds.
 pub fn now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// Fresh request id for tracing the wire.

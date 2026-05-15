@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use sdk::wallet_context::{create_wallet_context, DEFAULT_WALLET_TIMEOUT_SEC, WalletContext};
+use sdk::wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, WalletContext, create_wallet_context};
 use types::base::SomaAddress;
 use types::channel::Voucher;
 use types::config::soma_config_dir;
@@ -206,9 +206,12 @@ impl ChannelCommand {
             Self::Show { channel_id, client } => {
                 let (ctx, _) = build_wallet(client, None)?;
                 let client = ctx.get_client().await?;
-                let obj = client.get_object(channel_id).await
+                let obj = client
+                    .get_object(channel_id)
+                    .await
                     .map_err(|e| anyhow::anyhow!("get_object: {e}"))?;
-                let chan = obj.as_channel()
+                let chan = obj
+                    .as_channel()
                     .ok_or_else(|| anyhow::anyhow!("{channel_id} is not a Channel"))?;
                 println!("{}", serde_json::to_string_pretty(&chan)?);
                 Ok(())
@@ -218,9 +221,7 @@ impl ChannelCommand {
                 let role_arg = match role.as_str() {
                     "payer" => "payer",
                     "payee" => "payee",
-                    other => anyhow::bail!(
-                        "unknown role {other}; expected 'payer' or 'payee'"
-                    ),
+                    other => anyhow::bail!("unknown role {other}; expected 'payer' or 'payee'"),
                 };
                 let status_filter = match status.as_deref() {
                     None => "",
@@ -287,12 +288,9 @@ fn mut_owned(ctx: &mut WalletContext) -> &WalletContext {
 }
 
 fn decode_sig(b64: &str) -> Result<GenericSignature> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use fastcrypto::traits::ToFromBytes as _;
-    let bytes = URL_SAFE_NO_PAD
-        .decode(b64.as_bytes())
-        .with_context(|| "decode signature_b64")?;
-    GenericSignature::from_bytes(&bytes)
-        .map_err(|e| anyhow::anyhow!("parse GenericSignature: {e}"))
+    let bytes = URL_SAFE_NO_PAD.decode(b64.as_bytes()).with_context(|| "decode signature_b64")?;
+    GenericSignature::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("parse GenericSignature: {e}"))
 }

@@ -76,10 +76,7 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// `Err(_)` — transient; the relayer logs + retries next scan
 #[async_trait::async_trait]
 pub trait WithdrawalSubmitter: Send + Sync {
-    async fn submit(
-        &self,
-        withdrawal: &OutboundWithdrawal,
-    ) -> BridgeResult<Option<TxHash>>;
+    async fn submit(&self, withdrawal: &OutboundWithdrawal) -> BridgeResult<Option<TxHash>>;
 }
 
 /// What the polling loop hands to the [`EthTxBuilder`]. Carries the
@@ -210,13 +207,7 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
         poll_interval: Duration,
         scan_window: u64,
     ) -> Self {
-        Self {
-            soma_client,
-            submitter,
-            tracker,
-            poll_interval,
-            scan_window,
-        }
+        Self { soma_client, submitter, tracker, poll_interval, scan_window }
     }
 
     pub fn start(self) -> JoinHandle<()> {
@@ -312,10 +303,7 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
 /// `WithdrawalSubmitter` impl on the real Eth submitter.
 #[async_trait::async_trait]
 impl WithdrawalSubmitter for crate::eth_submitter::EthSubmitter {
-    async fn submit(
-        &self,
-        withdrawal: &OutboundWithdrawal,
-    ) -> BridgeResult<Option<TxHash>> {
+    async fn submit(&self, withdrawal: &OutboundWithdrawal) -> BridgeResult<Option<TxHash>> {
         if withdrawal.certificate.signatures.is_empty() {
             return Err(BridgeError::Internal(
                 "outbound relayer received cert with no signatures".to_string(),
@@ -345,10 +333,9 @@ mod tests {
                             // Compressed secp256k1 pubkey for the
                             // generator point — a valid curve point so
                             // BridgePubkey::from_bytes doesn't error.
-                            0x02, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55,
-                            0xa0, 0x62, 0x95, 0xce, 0x87, 0x0b, 0x07, 0x02, 0x9b, 0xfc,
-                            0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16,
-                            0xf8, 0x17, 0x98,
+                            0x02, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62,
+                            0x95, 0xce, 0x87, 0x0b, 0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28,
+                            0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8, 0x17, 0x98,
                         ])
                         .expect("generator point is on the curve"),
                         types::bridge::BridgeSignature::from_bytes(&[0xAA; 65]).unwrap(),
@@ -377,10 +364,7 @@ mod tests {
     ) -> Arc<SomaBridgeClient<MockSomaClient>> {
         let mock = MockSomaClient::new();
         for w in &pws {
-            mock.pending_withdrawals
-                .lock()
-                .unwrap()
-                .insert(w.nonce, w.clone());
+            mock.pending_withdrawals.lock().unwrap().insert(w.nonce, w.clone());
         }
         Arc::new(SomaBridgeClient::new(mock, BridgeChainId::SomaCustom))
     }
@@ -489,16 +473,9 @@ mod tests {
                 }
             }
         }
-        let submitter = Arc::new(FlakySubmitter {
-            n: std::sync::atomic::AtomicUsize::new(0),
-        });
-        let relayer = OutboundRelayer::new(
-            client,
-            submitter,
-            tracker.clone(),
-            Duration::from_millis(10),
-            5,
-        );
+        let submitter = Arc::new(FlakySubmitter { n: std::sync::atomic::AtomicUsize::new(0) });
+        let relayer =
+            OutboundRelayer::new(client, submitter, tracker.clone(), Duration::from_millis(10), 5);
         relayer.scan_once().await.unwrap();
         assert!(!tracker.is_relayed(3));
         relayer.scan_once().await.unwrap();
@@ -546,8 +523,7 @@ mod tests {
 
         // Run 1: mark a nonce as relayed.
         {
-            let wal = crate::storage::BridgeOrchestratorTables::open(&path)
-                .expect("open WAL");
+            let wal = crate::storage::BridgeOrchestratorTables::open(&path).expect("open WAL");
             let tracker = WalRelayedTracker::new(wal);
             assert!(!tracker.is_relayed(7));
             tracker.mark_relayed(7);
@@ -557,17 +533,10 @@ mod tests {
 
         // Run 2: reopen the same path. The previously-marked nonce
         // must still be present.
-        let wal = crate::storage::BridgeOrchestratorTables::open(&path)
-            .expect("reopen WAL");
+        let wal = crate::storage::BridgeOrchestratorTables::open(&path).expect("reopen WAL");
         let tracker = WalRelayedTracker::new(wal);
-        assert!(
-            tracker.is_relayed(7),
-            "nonce marked relayed in run 1 must persist into run 2"
-        );
-        assert!(
-            !tracker.is_relayed(99),
-            "unrelated nonce must not be falsely marked"
-        );
+        assert!(tracker.is_relayed(7), "nonce marked relayed in run 1 must persist into run 2");
+        assert!(!tracker.is_relayed(99), "unrelated nonce must not be falsely marked");
     }
 
     /// A full scan-then-restart trip: scan once with a WAL tracker,
@@ -580,8 +549,7 @@ mod tests {
 
         // Run 1: scan, expect one submit, marked relayed.
         let submit_count_1 = {
-            let wal = crate::storage::BridgeOrchestratorTables::open(&path)
-                .expect("open WAL");
+            let wal = crate::storage::BridgeOrchestratorTables::open(&path).expect("open WAL");
             let client = build_client_with_withdrawals(pws.clone());
             let submitter = capturing();
             let relayer = OutboundRelayer::new(
@@ -598,8 +566,7 @@ mod tests {
 
         // Run 2: reopen WAL, fresh relayer, scan again. The submitter
         // must NOT be called because the WAL says nonce 11 is relayed.
-        let wal = crate::storage::BridgeOrchestratorTables::open(&path)
-            .expect("reopen WAL");
+        let wal = crate::storage::BridgeOrchestratorTables::open(&path).expect("reopen WAL");
         let client = build_client_with_withdrawals(pws);
         let submitter = capturing();
         let relayer = OutboundRelayer::new(

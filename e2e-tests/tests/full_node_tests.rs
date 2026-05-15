@@ -210,4 +210,3 @@ async fn test_execute_tx_with_serialized_signature() {
         response.effects.transaction_digest()
     );
 }
-

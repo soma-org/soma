@@ -6,12 +6,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use ::types::base::SomaAddress;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
-use ::types::base::SomaAddress;
 
-use crate::chain::types::*;
 use crate::chain::ProviderRegistry;
+use crate::chain::types::*;
 
 #[derive(Default)]
 struct State {
@@ -36,11 +36,7 @@ impl ProviderRegistry for MemoryDiscovery {
     }
 
     async fn register_provider(&self, record: ProviderRecord) -> Result<(), ChainError> {
-        self.inner
-            .write()
-            .await
-            .providers
-            .insert(record.address, record);
+        self.inner.write().await.providers.insert(record.address, record);
         Ok(())
     }
 }

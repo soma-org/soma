@@ -66,11 +66,8 @@ async fn test_batch_verify_caching() {
 
     seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(100),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(100));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
     let cert_inner = cert.into_inner();
@@ -100,11 +97,8 @@ async fn test_async_verify_single_cert() {
 
     seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(100),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(100));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
 
@@ -153,11 +147,8 @@ async fn test_verify_tx_sender_signature() {
 
     seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(100),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(100));
     let tx = to_sender_signed_transaction(data, &sender_key);
 
     // verify_tx checks the sender's signature

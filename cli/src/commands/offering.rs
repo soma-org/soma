@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use sdk::offering::OfferingPrices;
-use sdk::wallet_context::{create_wallet_context, DEFAULT_WALLET_TIMEOUT_SEC, WalletContext};
+use sdk::wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, WalletContext, create_wallet_context};
 use types::base::SomaAddress;
 use types::config::soma_config_dir;
 

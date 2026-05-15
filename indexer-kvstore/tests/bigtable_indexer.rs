@@ -22,9 +22,7 @@ use indexer_kvstore::{
 };
 use rpc::utils::checkpoint_blob;
 use types::base::SomaAddress;
-use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state,
-};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state};
 
 /// Write a checkpoint to disk as `{seq}.binpb.zst`.
 fn write_checkpoint_file(

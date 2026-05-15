@@ -12,7 +12,6 @@ use thiserror::Error;
 
 use crate::balance::BalanceEvent;
 use crate::base::{ExecutionDigests, SomaAddress};
-use crate::effects::object_change::AccumulatorWriteV1;
 use crate::committee::{Committee, EpochId};
 use crate::consensus::block::BlockRef;
 use crate::crypto::{
@@ -20,6 +19,7 @@ use crate::crypto::{
     default_hash,
 };
 use crate::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use crate::effects::object_change::AccumulatorWriteV1;
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentScope};
@@ -1098,9 +1098,7 @@ pub enum ExecutionFailureStatus {
     /// for its message type. Mirrors Sui's `bridge::EMessageNotFromSequence`
     /// abort in `execute_system_message` — replay defense for governance
     /// quorum certs.
-    #[error(
-        "Bridge system-message seq num mismatch: expected {expected}, got {actual}"
-    )]
+    #[error("Bridge system-message seq num mismatch: expected {expected}, got {actual}")]
     BridgeSystemMessageSeqMismatch { expected: u64, actual: u64 },
 
     /// Pause requested when the bridge is already paused. Sui parity:
@@ -1153,9 +1151,7 @@ pub enum ExecutionFailureStatus {
     ChannelCallerNotPayer { expected: SomaAddress, actual: SomaAddress },
 
     /// Voucher.cumulative_amount must strictly exceed channel.settled_amount.
-    #[error(
-        "Voucher cumulative_amount {cumulative} not greater than settled_amount {settled}"
-    )]
+    #[error("Voucher cumulative_amount {cumulative} not greater than settled_amount {settled}")]
     ChannelVoucherNotMonotonic { cumulative: u64, settled: u64 },
 
     /// Voucher.cumulative_amount exceeds the channel's total escrowed funds

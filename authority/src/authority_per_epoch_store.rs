@@ -306,8 +306,7 @@ pub struct AuthorityPerEpochStore {
     ///
     /// Mirrors `crates/sui-core/src/authority/authority_per_epoch_store.rs`
     /// `settlement_registrations` (Sui c23812a6).
-    settlement_registrations:
-        Mutex<HashMap<TransactionKey, SettlementRegistration>>,
+    settlement_registrations: Mutex<HashMap<TransactionKey, SettlementRegistration>>,
 
     /// This is used to notify all epoch specific tasks that epoch has ended.
     epoch_alive_notify: NotifyOnce,
@@ -1620,10 +1619,7 @@ impl AuthorityPerEpochStore {
                     // in the cp's `all_effects` so they show up here,
                     // but they have no user signature to look up.
                     // Return an empty sig list for them.
-                    if matches!(
-                        t.transaction_data().kind(),
-                        TransactionKind::Settlement(_)
-                    ) {
+                    if matches!(t.transaction_data().kind(), TransactionKind::Settlement(_)) {
                         return Vec::new();
                     }
                     // Expect is safe as long as consensus_message_processed_notify is called

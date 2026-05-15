@@ -65,10 +65,8 @@ async fn test_multiple_sequential_transfers() {
     }
 
     let store = authority_state.database_for_testing();
-    let final_soma =
-        store.get_balance(sender, types::object::CoinType::Soma).unwrap();
-    let final_usdc =
-        store.get_balance(sender, types::object::CoinType::Usdc).unwrap();
+    let final_soma = store.get_balance(sender, types::object::CoinType::Soma).unwrap();
+    let final_usdc = store.get_balance(sender, types::object::CoinType::Usdc).unwrap();
     assert_eq!(
         final_soma,
         starting_soma - 3 * per_transfer,
@@ -78,11 +76,8 @@ async fn test_multiple_sequential_transfers() {
     // BalanceTransfer with 1 recipient: fee_units = 1 + 1 = 2.
     // Three transfers × 2 fee_units × unit_fee = 6 × unit_fee.
     use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
-    let unit_fee = authority_state
-        .epoch_store_for_testing()
-        .epoch_start_state()
-        .fee_parameters()
-        .unit_fee;
+    let unit_fee =
+        authority_state.epoch_store_for_testing().epoch_start_state().fee_parameters().unit_fee;
     let expected_total_fee = 6 * unit_fee;
     assert_eq!(
         final_usdc,
@@ -111,19 +106,11 @@ async fn test_balance_transfer_saturates_on_empty_sender() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     // Sender has gas (USDC) but zero SOMA — the transfer Withdraw
     // saturates against an empty accumulator.
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let recipient = dbg_addr(1);
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        recipient,
-        sender,
-        Some(4500),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(4500));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
 
@@ -139,11 +126,8 @@ async fn test_balance_transfer_saturates_on_empty_sender() {
     assert!(effects.deleted().is_empty(), "BalanceTransfer deletes no objects");
 
     use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
-    let unit_fee = authority_state
-        .epoch_store_for_testing()
-        .epoch_start_state()
-        .fee_parameters()
-        .unit_fee;
+    let unit_fee =
+        authority_state.epoch_store_for_testing().epoch_start_state().fee_parameters().unit_fee;
     // BalanceTransfer with 1 recipient: fee_units = 1 + 1 = 2.
     let expected_fee = 2 * unit_fee;
     assert_eq!(

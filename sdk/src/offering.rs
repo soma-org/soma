@@ -101,10 +101,8 @@ pub async fn deactivate(
     model_id: String,
 ) -> anyhow::Result<()> {
     let offering_id = Offering::derive_id(sender, &model_id);
-    let kind = TransactionKind::DeactivateOffering(DeactivateOfferingArgs {
-        offering_id,
-        model_id,
-    });
+    let kind =
+        TransactionKind::DeactivateOffering(DeactivateOfferingArgs { offering_id, model_id });
     let tx = crate::transaction_builder::TransactionBuilder::new(ctx)
         .build_transaction_async(sender, kind)
         .await?;

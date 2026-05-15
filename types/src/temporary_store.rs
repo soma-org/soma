@@ -297,8 +297,7 @@ pub struct TemporaryStore {
     /// alongside regular object writes — they ride
     /// `EffectsObjectChange { input: NotExist, output:
     /// AccumulatorWriteV1(...), id_op: None }`.
-    accumulator_writes:
-        BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1>,
+    accumulator_writes: BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1>,
 }
 
 /// Event recorded during execution that describes the post-settle
@@ -403,11 +402,7 @@ impl TemporaryStore {
         staker: SomaAddress,
         new_state: Option<crate::system_state::staking::Delegation>,
     ) {
-        self.delegation_events.push(DelegationEvent {
-            pool_id,
-            staker,
-            new_state,
-        });
+        self.delegation_events.push(DelegationEvent { pool_id, staker, new_state });
     }
 
     /// Read-only view of delegation events emitted so far.
@@ -934,13 +929,7 @@ impl InnerTemporaryStore {
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
     ) -> Self {
-        Self {
-            input_objects,
-            written,
-            mutable_inputs,
-            lamport_version,
-            deleted_shared_objects,
-        }
+        Self { input_objects, written, mutable_inputs, lamport_version, deleted_shared_objects }
     }
 
     pub fn get_output_keys(&self, effects: &TransactionEffects) -> Vec<InputKey> {

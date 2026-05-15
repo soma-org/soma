@@ -111,10 +111,8 @@ async fn test_user_submitted_consensus_commit_prologue_rejected() {
     );
 
     // And the Clock must NOT have advanced.
-    let clock = authority_state
-        .get_object(&types::CLOCK_OBJECT_ID)
-        .await
-        .expect("Clock must still exist");
+    let clock =
+        authority_state.get_object(&types::CLOCK_OBJECT_ID).await.expect("Clock must still exist");
     assert_eq!(
         clock.clock_timestamp_ms(),
         0,
@@ -169,7 +167,10 @@ async fn test_nonexistent_gas_object_rejected() {
 
     let fake_gas_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
     let data = TransactionData::new(
-        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
         vec![fake_gas_ref], // non-existent gas
     );
@@ -190,7 +191,10 @@ async fn test_transaction_data_bcs_roundtrip() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
         vec![coin_ref],
     );
@@ -209,7 +213,10 @@ async fn test_transaction_digest_determinism() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
         vec![coin_ref],
     );
@@ -245,7 +252,10 @@ async fn test_duplicate_gas_coin_rejected() {
     authority_state.insert_genesis_object(coin2).await;
 
     let data = TransactionData::new(
-        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
         vec![gas_ref, gas_ref], // duplicate gas coin
     );

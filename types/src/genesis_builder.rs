@@ -16,7 +16,9 @@ use tracing::trace;
 
 use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::base::{ExecutionDigests, SomaAddress};
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary};
+use crate::committee::EpochId;
 use crate::config::genesis_config::{
     GenesisCeremonyParameters, TOTAL_SUPPLY_SHANNONS, TokenDistributionSchedule,
     ValidatorGenesisConfig,
@@ -30,12 +32,10 @@ use crate::effects::{ExecutionStatus, TransactionEffects};
 use crate::envelope::Message as _;
 use crate::genesis::{Genesis, UnsignedGenesis};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::committee::EpochId;
 use crate::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::staking::StakingPool;
 use crate::system_state::validator::{Validator, ValidatorMetadata};
-use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::system_state::{FeeParameters, SystemState, SystemStateTrait, get_system_state};
 use crate::temporary_store::TemporaryStore;
 use crate::transaction::{InputObjects, Transaction, VerifiedTransaction};
@@ -545,9 +545,8 @@ impl GenesisBuilder {
                     // the balance accumulator; no Coin object output.
                     // The accumulator is the sole source of truth
                     // for fungible balances post-Stage-13.
-                    let entry = balances
-                        .entry((allocation.recipient_address, CoinType::Soma))
-                        .or_insert(0);
+                    let entry =
+                        balances.entry((allocation.recipient_address, CoinType::Soma)).or_insert(0);
                     *entry = entry
                         .checked_add(allocation.amount_shannons)
                         .expect("genesis SOMA balance overflow");
@@ -557,8 +556,7 @@ impl GenesisBuilder {
             // Stage 13a: USDC allocations (test environments only)
             // also land balance-only.
             for usdc in &schedule.usdc_allocations {
-                let entry =
-                    balances.entry((usdc.recipient_address, CoinType::Usdc)).or_insert(0);
+                let entry = balances.entry((usdc.recipient_address, CoinType::Usdc)).or_insert(0);
                 *entry = entry
                     .checked_add(usdc.amount_microdollars)
                     .expect("genesis USDC balance overflow");
@@ -577,8 +575,7 @@ impl GenesisBuilder {
         // genesis schedule.
         const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
         for v in &self.validators {
-            let entry =
-                balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
+            let entry = balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
             *entry = entry
                 .checked_add(VALIDATOR_GENESIS_USDC)
                 .expect("genesis validator USDC balance overflow");

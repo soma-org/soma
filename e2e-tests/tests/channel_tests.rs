@@ -76,11 +76,7 @@ async fn sign_voucher(
         .wallet
         .config
         .keystore
-        .sign_secure::<Voucher>(
-            &signer,
-            &voucher,
-            Intent::soma_app(IntentScope::PaymentVoucher),
-        )
+        .sign_secure::<Voucher>(&signer, &voucher, Intent::soma_app(IntentScope::PaymentVoucher))
         .await
         .expect("voucher signing succeeds");
     sig.into()
@@ -227,16 +223,11 @@ async fn submit_withdraw(
 ) -> bool {
     // Look up the channel's payee — required to declare the
     // per-payee `ProviderInbox` shared input on the tx.
-    let payee = read_channel(test_cluster, channel_id)
-        .expect("channel exists")
-        .payee();
+    let payee = read_channel(test_cluster, channel_id).expect("channel exists").payee();
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
-            channel_id,
-            payee,
-        }),
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id, payee }),
     );
     test_cluster
         .wallet
@@ -537,11 +528,7 @@ async fn channel_state_agrees_across_validators() {
         std::collections::BTreeMap::new();
     for (ch, v) in &snapshots {
         if let Some(prev) = by_version.insert(*v, ch.clone()) {
-            assert_eq!(
-                prev, *ch,
-                "validators at Channel version {:?} disagree on data",
-                v
-            );
+            assert_eq!(prev, *ch, "validators at Channel version {:?} disagree on data", v);
         }
     }
     info!(snapshot_count = snapshots.len(), "all validators agree on channel state per version");

@@ -21,9 +21,7 @@ use crate::object::ObjectID;
 /// Bridge chain identifier. Encoded as a single byte on the wire for parity
 /// with Sui's `BridgeChainId`. Numbering is also Sui-compatible for the Eth
 /// variants so Solidity-side parsers can be shared.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum BridgeChainId {
     SomaMainnet = 0,
@@ -45,10 +43,7 @@ impl BridgeChainId {
     }
 
     pub const fn is_eth_chain(self) -> bool {
-        matches!(
-            self,
-            Self::EthMainnet | Self::EthSepolia | Self::EthCustom | Self::BaseSepolia
-        )
+        matches!(self, Self::EthMainnet | Self::EthSepolia | Self::EthCustom | Self::BaseSepolia)
     }
 
     pub const fn as_u8(self) -> u8 {
@@ -291,9 +286,7 @@ pub fn encode_bridge_message(
     chain_id: BridgeChainId,
     payload: &[u8],
 ) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(
-        BRIDGE_MESSAGE_PREFIX.len() + 1 + 1 + 8 + 1 + payload.len(),
-    );
+    let mut buf = Vec::with_capacity(BRIDGE_MESSAGE_PREFIX.len() + 1 + 1 + 8 + 1 + payload.len());
     buf.extend_from_slice(BRIDGE_MESSAGE_PREFIX);
     buf.push(msg_type as u8);
     buf.push(version);
@@ -399,10 +392,7 @@ pub fn encode_blocklist_payload(
 ///
 /// The receiving chain id is in the message header (i.e. the route is
 /// `sending_chain_id → header chainID`), so it's not repeated here.
-pub fn encode_limit_update_payload(
-    sending_chain_id: BridgeChainId,
-    new_usd_limit: u64,
-) -> Vec<u8> {
+pub fn encode_limit_update_payload(sending_chain_id: BridgeChainId, new_usd_limit: u64) -> Vec<u8> {
     let mut payload = Vec::with_capacity(9);
     payload.push(sending_chain_id.as_u8());
     payload.extend_from_slice(&new_usd_limit.to_be_bytes());
@@ -650,10 +640,8 @@ impl BridgeState {
         // Quorum-of-participation check: sum of registered active stake
         // must be ≥ min_stake_participation_bps of total active stake.
         // Using bps (10000 = 100%) avoids float arithmetic.
-        let participation_bps = participation
-            .saturating_mul(10_000)
-            .checked_div(total_active_stake)
-            .unwrap_or(0);
+        let participation_bps =
+            participation.saturating_mul(10_000).checked_div(total_active_stake).unwrap_or(0);
         if participation_bps < min_stake_participation_bps {
             // Silent no-op — prior committee stays, no event emitted.
             return false;
@@ -684,25 +672,17 @@ impl BridgeState {
     /// [`Self::consume_system_message_seq`] only after verification
     /// succeeds, so a failing tx doesn't burn a nonce.
     pub fn expected_system_message_seq(&self, msg_type: BridgeMessageType) -> u64 {
-        self.system_message_seq_nums
-            .get(&msg_type)
-            .copied()
-            .unwrap_or(0)
+        self.system_message_seq_nums.get(&msg_type).copied().unwrap_or(0)
     }
 
     /// Increment the sequence counter for `msg_type`. Called only after
     /// the executor has verified signatures and is committing the action,
     /// so a bad cert doesn't waste the nonce.
     pub fn consume_system_message_seq(&mut self, msg_type: BridgeMessageType) {
-        let next = self
-            .system_message_seq_nums
-            .get(&msg_type)
-            .copied()
-            .unwrap_or(0)
-            .saturating_add(1);
+        let next =
+            self.system_message_seq_nums.get(&msg_type).copied().unwrap_or(0).saturating_add(1);
         self.system_message_seq_nums.insert(msg_type, next);
     }
-
 }
 
 /// On-chain audit record for a successful Eth→Soma USDC deposit.
@@ -772,7 +752,6 @@ impl BridgeCommittee {
             threshold_evm_upgrade: 5001,
         }
     }
-
 }
 
 /// Committee member as stored in [`BridgeCommittee::members`]. The
@@ -862,10 +841,10 @@ pub struct MarketplaceParameters {
 impl Default for MarketplaceParameters {
     fn default() -> Self {
         Self {
-            rating_window_ms: 172_800_000,       // 48 hours
-            min_ask_timeout_ms: 10_000,          // 10 seconds
-            max_ask_timeout_ms: 604_800_000,     // 7 days
-            marketplace_fee_bps: 250,            // 2.5%
+            rating_window_ms: 172_800_000,   // 48 hours
+            min_ask_timeout_ms: 10_000,      // 10 seconds
+            max_ask_timeout_ms: 604_800_000, // 7 days
+            marketplace_fee_bps: 250,        // 2.5%
         }
     }
 }
@@ -990,10 +969,7 @@ mod tests {
     }
 
     fn hex_decode(s: &str) -> Vec<u8> {
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-            .collect()
+        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
     }
 
     fn hex_encode(bytes: &[u8]) -> String {
@@ -1005,13 +981,11 @@ mod tests {
     /// to Eth address `68b43fd9…7c65`.
     #[test]
     fn test_derive_eth_address_known_vector() {
-        let compressed = hex_decode("02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4");
+        let compressed =
+            hex_decode("02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4");
         let pk = BridgePubkey::from_bytes(&compressed).expect("valid compressed pubkey");
         let addr = derive_eth_address(&pk);
-        assert_eq!(
-            hex_encode(&addr),
-            "68b43fd906c0b8f024a18c56e06744f7c6157c65"
-        );
+        assert_eq!(hex_encode(&addr), "68b43fd906c0b8f024a18c56e06744f7c6157c65");
     }
 
     #[test]
@@ -1025,8 +999,14 @@ mod tests {
     /// to be deliberate.
     #[test]
     fn test_encode_blocklist_payload_regression() {
-        let pubkey1 = BridgePubkey::from_bytes(&hex_decode("02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4")).unwrap();
-        let pubkey2 = BridgePubkey::from_bytes(&hex_decode("027f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d4279")).unwrap();
+        let pubkey1 = BridgePubkey::from_bytes(&hex_decode(
+            "02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4",
+        ))
+        .unwrap();
+        let pubkey2 = BridgePubkey::from_bytes(&hex_decode(
+            "027f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d4279",
+        ))
+        .unwrap();
         let addr1 = derive_eth_address(&pubkey1);
         let addr2 = derive_eth_address(&pubkey2);
 
@@ -1060,10 +1040,8 @@ mod tests {
     #[test]
     fn test_encode_limit_update_payload_regression() {
         // Mirrors sui-bridge's $1M limit test ($1M × USD_MULTIPLIER = 10_000_000_000 = 0x2540be400)
-        let payload = encode_limit_update_payload(
-            BridgeChainId::EthCustom,
-            1_000_000 * USD_MULTIPLIER,
-        );
+        let payload =
+            encode_limit_update_payload(BridgeChainId::EthCustom, 1_000_000 * USD_MULTIPLIER);
         // sending_chain_id(1) || new_usd_limit(8 BE)
         // EthCustom = 0x0c, $1M*USD_MULTIPLIER big-endian = 00000002540be400
         assert_eq!(hex_encode(&payload), "0c00000002540be400");
@@ -1206,10 +1184,9 @@ mod tests {
         let pk1 = BridgePubkey::from_keypair(&kp1);
         let pk2 = BridgePubkey::from_keypair(&kp2);
         for (addr, pk) in [(v1, pk1.clone()), (v2, pk2.clone())] {
-            state.bridge_registrations.insert(
-                addr,
-                BridgeRegistration { bridge_pubkey: pk, http_url: "u".into() },
-            );
+            state
+                .bridge_registrations
+                .insert(addr, BridgeRegistration { bridge_pubkey: pk, http_url: "u".into() });
         }
 
         // Active set: v1=4000, v2=4000, v3=2000. v1+v2 = 8000/10000 = 80% > 50%.
@@ -1279,10 +1256,9 @@ mod tests {
         let v1_pk = BridgePubkey::from_keypair(&v1_kp);
         let kicked_pk = BridgePubkey::from_keypair(&kicked_kp);
 
-        state.bridge_registrations.insert(
-            v1,
-            BridgeRegistration { bridge_pubkey: v1_pk.clone(), http_url: "u".into() },
-        );
+        state
+            .bridge_registrations
+            .insert(v1, BridgeRegistration { bridge_pubkey: v1_pk.clone(), http_url: "u".into() });
         state.bridge_registrations.insert(
             v_kicked,
             BridgeRegistration { bridge_pubkey: kicked_pk.clone(), http_url: "u".into() },

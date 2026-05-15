@@ -692,10 +692,7 @@ mod tests {
         let mut bytes = obj.data.contents().to_vec();
         bytes[0] = 0xFF;
         obj.data.update_contents(bytes);
-        assert!(
-            obj.as_channel().is_none(),
-            "as_channel must reject unknown variant"
-        );
+        assert!(obj.as_channel().is_none(), "as_channel must reject unknown variant");
     }
 
     /// Voucher BCS round-trip — the on-the-wire representation must
@@ -794,8 +791,7 @@ mod tests {
     fn voucher_signs_and_verifies() {
         let (signer_addr, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
         let voucher = Voucher::new_amount_only(ObjectID::random(), 42);
-        let intent_msg =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
 
         let sig = Signature::new_secure(&intent_msg, &kp);
         sig.verify_secure(&intent_msg, signer_addr, sig.scheme())
@@ -809,8 +805,7 @@ mod tests {
         let (_, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
         let other = SomaAddress::random();
         let voucher = Voucher::new_amount_only(ObjectID::random(), 1);
-        let intent_msg =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let sig = Signature::new_secure(&intent_msg, &kp);
         sig.verify_secure(&intent_msg, other, sig.scheme())
             .expect_err("verification must fail when claimed signer != actual signer");
@@ -866,12 +861,10 @@ mod tests {
     #[test]
     fn voucher_domain_separated_from_other_scopes() {
         let voucher = Voucher::new_amount_only(ObjectID::ZERO, 0);
-        let im_voucher =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        let im_voucher = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         // ProofOfPossession over the same struct shape (BCS bytes are
         // the same content but the intent prefix differs).
-        let im_pop =
-            IntentMessage::new(Intent::soma_app(IntentScope::ProofOfPossession), voucher);
+        let im_pop = IntentMessage::new(Intent::soma_app(IntentScope::ProofOfPossession), voucher);
         assert_ne!(
             bcs::to_bytes(&im_voucher).unwrap(),
             bcs::to_bytes(&im_pop).unwrap(),

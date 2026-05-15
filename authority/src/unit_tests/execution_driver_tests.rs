@@ -43,11 +43,8 @@ async fn test_execution_scheduler_basic_enqueue() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        recipient,
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
 
@@ -146,10 +143,7 @@ async fn test_execute_sequenced_shared_object_transaction() {
     };
 
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         vec![],
     );
@@ -203,11 +197,8 @@ async fn test_dependent_transactions_execute_in_order() {
     // must reflect tx1's effects exactly: SOMA dropped by transfer
     // amount, USDC dropped by gas fee. tx2 must see this state.
     use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
-    let unit_fee = authority_state
-        .epoch_store_for_testing()
-        .epoch_start_state()
-        .fee_parameters()
-        .unit_fee;
+    let unit_fee =
+        authority_state.epoch_store_for_testing().epoch_start_state().fee_parameters().unit_fee;
     let per_tx_gas = 2 * unit_fee; // BalanceTransfer 1 recipient: fee_units=2.
     let store = authority_state.database_for_testing();
     assert_eq!(
@@ -256,11 +247,8 @@ async fn test_effects_idempotent_reexecution() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
 

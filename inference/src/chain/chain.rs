@@ -56,11 +56,8 @@ impl ChannelSurface for ChainChannelSurface {
     }
 
     async fn get(&self, id: ObjectID) -> Result<Channel, ChainError> {
-        let client = self
-            .ctx
-            .get_client()
-            .await
-            .map_err(|e| ChainError::Rpc(format!("get_client: {e}")))?;
+        let client =
+            self.ctx.get_client().await.map_err(|e| ChainError::Rpc(format!("get_client: {e}")))?;
         let obj = client.get_object(id).await.map_err(|e| {
             // Status::Display formats as "status: <Code>, message: ...".
             // Match on the code via a string contains rather than the
@@ -72,15 +69,10 @@ impl ChannelSurface for ChainChannelSurface {
                 ChainError::Rpc(format!("get_object {id}: {e}"))
             }
         })?;
-        obj.as_channel()
-            .ok_or_else(|| ChainError::Invalid(format!("{id} is not a Channel object")))
+        obj.as_channel().ok_or_else(|| ChainError::Invalid(format!("{id} is not a Channel object")))
     }
 
-    async fn settle(
-        &self,
-        voucher: Voucher,
-        sig: GenericSignature,
-    ) -> Result<(), ChainError> {
+    async fn settle(&self, voucher: Voucher, sig: GenericSignature) -> Result<(), ChainError> {
         sdk::channel::settle(&self.ctx, self.signer, voucher, sig)
             .await
             .map_err(|e| ChainError::Tx(format!("settle: {e}")))

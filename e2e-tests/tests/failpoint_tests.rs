@@ -725,8 +725,7 @@ async fn test_crash_after_user_effects_before_settlement_publish() {
                 let db = node.state().database_for_testing();
                 (
                     db.is_tx_already_executed(&user_tx_digest).unwrap_or(false),
-                    db.get_balance(recipient, types::object::CoinType::Usdc)
-                        .unwrap_or(u64::MAX),
+                    db.get_balance(recipient, types::object::CoinType::Usdc).unwrap_or(u64::MAX),
                     db.get_balance_via_object(recipient, types::object::CoinType::Usdc)
                         .unwrap_or(u64::MAX),
                 )

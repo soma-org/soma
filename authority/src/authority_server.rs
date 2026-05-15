@@ -921,10 +921,12 @@ impl ValidatorService {
                     fast_path: false,
                 })
             }
-            NotifyReadConsensusTxStatusResult::Expired(round) => Ok(WaitForEffectsResponse::Expired {
-                epoch: epoch_store.epoch(),
-                round: Some(round),
-            }),
+            NotifyReadConsensusTxStatusResult::Expired(round) => {
+                Ok(WaitForEffectsResponse::Expired {
+                    epoch: epoch_store.epoch(),
+                    round: Some(round),
+                })
+            }
         }
     }
 

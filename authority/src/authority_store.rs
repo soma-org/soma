@@ -16,6 +16,10 @@ use store::rocks::{DBBatch, DBMap};
 use store::{Map as _, TypedStoreError};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
+use types::balance::{
+    BalanceEvent, BalanceUpdate, ReservationDecision, WithdrawalReservation,
+    apply_delta_to_balance, check_reservations,
+};
 use types::base::{FullObjectID, SomaAddress, VerifiedExecutionData};
 use types::checkpoints::{CheckpointSequenceNumber, GlobalStateHash};
 use types::committee::{Committee, EpochId};
@@ -25,16 +29,12 @@ use types::effects::{TransactionEffects, TransactionEffectsAPI};
 use types::envelope::Message;
 use types::error::{SomaError, SomaResult};
 use types::genesis::Genesis;
-use types::temporary_store::DelegationEvent;
 use types::mutex_table::{Lock, MutexGuard, MutexTable, RwLockGuard, RwLockTable};
-use types::balance::{
-    BalanceEvent, BalanceUpdate, ReservationDecision, WithdrawalReservation,
-    apply_delta_to_balance, check_reservations,
-};
 use types::object::{self, CoinType, LiveObject, Object, ObjectID, ObjectRef, Version};
 use types::storage::object_store::ObjectStore;
 use types::storage::{FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone};
 use types::system_state::{SystemState, SystemStateTrait, get_system_state};
+use types::temporary_store::DelegationEvent;
 use types::transaction::{
     VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction,
 };
@@ -867,10 +867,7 @@ impl AuthorityStore {
 
         // Aggregate per (pool_id, staker): later events override
         // earlier ones for the same key.
-        let mut aggregated: BTreeMap<
-            (ObjectID, SomaAddress),
-            Option<Delegation>,
-        > = BTreeMap::new();
+        let mut aggregated: BTreeMap<(ObjectID, SomaAddress), Option<Delegation>> = BTreeMap::new();
         for ev in events {
             aggregated.insert((ev.pool_id, ev.staker), ev.new_state);
         }
@@ -1339,11 +1336,7 @@ impl AuthorityStore {
     /// drives CF updates directly. Stage 14c.7 brings the
     /// accumulator objects back in sync via settlement effects.
     pub fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> SomaResult<u64> {
-        Ok(self
-            .perpetual_tables
-            .accumulator_balances
-            .get(&(owner, coin_type))?
-            .unwrap_or(0))
+        Ok(self.perpetual_tables.accumulator_balances.get(&(owner, coin_type))?.unwrap_or(0))
     }
 
     /// Stage 14b: read the balance via the accumulator object path.
@@ -1476,12 +1469,7 @@ impl AuthorityStore {
                     // Stage 14b: dual-write through the shared
                     // bottleneck so the CF and the accumulator object
                     // land in the same batch.
-                    self.write_balance_cf_to_batch(
-                        &mut batch,
-                        *owner,
-                        *coin_type,
-                        new_balance,
-                    )?;
+                    self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, new_balance)?;
                     new_balances.push(((*owner, *coin_type), new_balance));
                 }
                 BalanceUpdate::Underflow { current, delta } => {
@@ -1507,9 +1495,7 @@ impl AuthorityStore {
     /// Intended for debug, snapshot, and full-state inspection paths,
     /// not the hot path. RPC `GetBalance` for a specific owner should
     /// use [`Self::get_balance`] or [`Self::iter_balances_for_owner`].
-    pub fn iter_all_balances(
-        &self,
-    ) -> SomaResult<Vec<((SomaAddress, CoinType), u64)>> {
+    pub fn iter_all_balances(&self) -> SomaResult<Vec<((SomaAddress, CoinType), u64)>> {
         let mut out = Vec::new();
         for entry in self.perpetual_tables.accumulator_balances.safe_iter() {
             let (k, v) = entry?;
@@ -1522,10 +1508,7 @@ impl AuthorityStore {
     /// Implemented as a prefix scan: `(SomaAddress, CoinType)` is
     /// BCS-encoded with the address first, so all entries for one
     /// owner sort contiguously.
-    pub fn iter_balances_for_owner(
-        &self,
-        owner: SomaAddress,
-    ) -> SomaResult<Vec<(CoinType, u64)>> {
+    pub fn iter_balances_for_owner(&self, owner: SomaAddress) -> SomaResult<Vec<(CoinType, u64)>> {
         // We use the cheapest possible bound expression: address inclusive
         // lower bound at (owner, CoinType::Soma=first variant), exclusive
         // upper bound at the next address.
@@ -1564,11 +1547,7 @@ impl AuthorityStore {
         pool_id: ObjectID,
         staker: SomaAddress,
     ) -> SomaResult<types::system_state::staking::Delegation> {
-        Ok(self
-            .perpetual_tables
-            .delegations
-            .get(&(pool_id, staker))?
-            .unwrap_or_default())
+        Ok(self.perpetual_tables.delegations.get(&(pool_id, staker))?.unwrap_or_default())
     }
 
     /// Stage 14b: read the delegation row via the accumulator-object
@@ -1678,8 +1657,7 @@ impl AuthorityStore {
         let current = self.get_delegation(pool_id, staker)?;
         match apply_delta_to_balance(current.principal, delta) {
             BalanceUpdate::Ok(new_principal) => {
-                let index_at_last_collect =
-                    set_index.unwrap_or(current.index_at_last_collect);
+                let index_at_last_collect = set_index.unwrap_or(current.index_at_last_collect);
                 self.set_delegation(
                     pool_id,
                     staker,
@@ -1744,19 +1722,13 @@ impl AuthorityStore {
     /// intentionally: total supply is far below `u64::MAX`, so
     /// saturation indicates a corruption upstream and we surface it
     /// as `Err`.
-    pub fn total_delegated_principal_for_staker(
-        &self,
-        staker: SomaAddress,
-    ) -> SomaResult<u64> {
+    pub fn total_delegated_principal_for_staker(&self, staker: SomaAddress) -> SomaResult<u64> {
         let mut total: u64 = 0;
         for entry in self.perpetual_tables.delegations.safe_iter() {
             let ((_, entry_staker), delegation) = entry?;
             if entry_staker == staker {
                 total = total.checked_add(delegation.principal).ok_or_else(|| {
-                    SomaError::from(format!(
-                        "Delegation total overflowed for staker {}",
-                        staker
-                    ))
+                    SomaError::from(format!("Delegation total overflowed for staker {}", staker))
                 })?;
             }
         }

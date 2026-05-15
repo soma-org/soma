@@ -167,24 +167,24 @@ fn apply_settlement_to_object_inputs(
             })?;
 
             let new_balance = match change {
-                BalanceEvent::Deposit { .. } => acc.balance.checked_add(magnitude).ok_or_else(
-                    || {
+                BalanceEvent::Deposit { .. } => {
+                    acc.balance.checked_add(magnitude).ok_or_else(|| {
                         ExecutionFailureStatus::SomaError(SomaError::from(format!(
                             "Settlement deposit overflow on ({owner:?}, {coin_type:?}): \
                              current={} + delta={} overflows u64",
                             acc.balance, magnitude
                         )))
-                    },
-                )?,
-                BalanceEvent::Withdraw { .. } => acc.balance.checked_sub(magnitude).ok_or_else(
-                    || {
+                    })?
+                }
+                BalanceEvent::Withdraw { .. } => {
+                    acc.balance.checked_sub(magnitude).ok_or_else(|| {
                         ExecutionFailureStatus::SomaError(SomaError::from(format!(
                             "Settlement withdraw underflow on ({owner:?}, {coin_type:?}): \
                              current={} - delta={} underflows u64",
                             acc.balance, magnitude
                         )))
-                    },
-                )?,
+                    })?
+                }
             };
             acc.balance = new_balance;
 
@@ -500,12 +500,8 @@ mod tests {
         let alice = SomaAddress::random();
         let deposit = BalanceEvent::deposit(alice, CoinType::Usdc, 500);
 
-        apply_settlement_to_object_inputs(
-            &mut store,
-            vec![deposit],
-            TransactionDigest::default(),
-        )
-        .expect("first-touch deposit must succeed");
+        apply_settlement_to_object_inputs(&mut store, vec![deposit], TransactionDigest::default())
+            .expect("first-touch deposit must succeed");
 
         // CF event still gets emitted so the perpetual store's
         // `apply_settlement_events` lands the row.
@@ -517,9 +513,7 @@ mod tests {
             .written_objects
             .get(&acc_id)
             .expect("new accumulator object must be in written set");
-        let acc = created
-            .as_balance_accumulator()
-            .expect("created object is a BalanceAccumulator");
+        let acc = created.as_balance_accumulator().expect("created object is a BalanceAccumulator");
         assert_eq!(acc.balance, 500);
     }
 
@@ -535,12 +529,9 @@ mod tests {
         let alice = SomaAddress::random();
         let bad = BalanceEvent::withdraw(alice, CoinType::Usdc, 1);
 
-        let err = apply_settlement_to_object_inputs(
-            &mut store,
-            vec![bad],
-            TransactionDigest::default(),
-        )
-        .expect_err("withdraw on non-existent acc must fail");
+        let err =
+            apply_settlement_to_object_inputs(&mut store, vec![bad], TransactionDigest::default())
+                .expect_err("withdraw on non-existent acc must fail");
         let msg = format!("{:?}", err);
         assert!(
             msg.contains("withdraw on non-existent accumulator"),
@@ -588,9 +579,8 @@ mod tests {
             .written_objects
             .get(&acc_id)
             .expect("new delegation accumulator must be in written set");
-        let acc = created
-            .as_delegation_accumulator()
-            .expect("created object is a DelegationAccumulator");
+        let acc =
+            created.as_delegation_accumulator().expect("created object is a DelegationAccumulator");
         assert_eq!(acc.principal, 1_000);
         assert_eq!(acc.index_at_last_collect, 42);
         assert_eq!(acc.pending_principal, 250);

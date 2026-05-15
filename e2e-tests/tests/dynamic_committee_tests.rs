@@ -256,11 +256,8 @@ mod add_stake {
                             // position (active + pending) covers our contribution.
                             let mappings =
                                 &node.state().get_system_state_object_for_testing().unwrap();
-                            let mapping_addr = mappings
-                                .validators()
-                                .staking_pool_mappings
-                                .get(pool)
-                                .copied();
+                            let mapping_addr =
+                                mappings.validators().staking_pool_mappings.get(pool).copied();
                             mapping_addr == Some(self.staked_with)
                                 && delegation.total() >= self.stake_amount
                         })
@@ -330,10 +327,7 @@ mod remove_stake {
         async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
             // Stage 9d-C3: WithdrawStake is balance-mode. `amount: None`
             // drains the entire row.
-            let kind = TransactionKind::WithdrawStake {
-                pool_id: self.pool_id,
-                amount: None,
-            };
+            let kind = TransactionKind::WithdrawStake { pool_id: self.pool_id, amount: None };
 
             let effects = runner.run(self.sender, kind).await;
 

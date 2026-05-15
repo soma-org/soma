@@ -166,8 +166,12 @@ impl From<crate::types::ObjectType> for String {
     fn from(value: crate::types::ObjectType) -> Self {
         match value {
             crate::types::ObjectType::SystemState => "SystemState".to_string(),
-            crate::types::ObjectType::Coin(types::object::CoinType::Soma) => "Coin(SOMA)".to_string(),
-            crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => "Coin(USDC)".to_string(),
+            crate::types::ObjectType::Coin(types::object::CoinType::Soma) => {
+                "Coin(SOMA)".to_string()
+            }
+            crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => {
+                "Coin(USDC)".to_string()
+            }
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
             crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
             crate::types::ObjectType::BridgeRecord => "BridgeRecord".to_string(),

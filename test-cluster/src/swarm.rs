@@ -307,7 +307,6 @@ impl<R> SwarmBuilder<R> {
         self.fullnode_run_with_range = Some(run_with_range);
         self
     }
-
 }
 
 // TODO: modify this build to make use of fullnode configs and data ingestion urls

@@ -296,10 +296,7 @@ impl SharedObjVerManager {
                 .into_iter()
                 .map(|input| {
                     let (id, initial_version) = input.into_id_and_version();
-                    let version = effect_version_by_id
-                        .get(&id)
-                        .copied()
-                        .unwrap_or(initial_version);
+                    let version = effect_version_by_id.get(&id).copied().unwrap_or(initial_version);
                     ((id, initial_version), version)
                 })
                 .collect();
@@ -434,21 +431,13 @@ mod tests {
         let mut next = HashMap::new();
         next.insert(key, Version::from_u64(5));
 
-        let assigned1 = assign_versions_for_shared_inputs_inner(
-            &[clock_read()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let assigned1 =
+            assign_versions_for_shared_inputs_inner(&[clock_read()], &[], &[], &mut next);
         assert_eq!(assigned1.as_slice(), &[(key, Version::from_u64(5))]);
         assert_eq!(next[&key], Version::from_u64(5), "first read must not bump");
 
-        let assigned2 = assign_versions_for_shared_inputs_inner(
-            &[clock_read()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let assigned2 =
+            assign_versions_for_shared_inputs_inner(&[clock_read()], &[], &[], &mut next);
         assert_eq!(
             assigned2.as_slice(),
             &[(key, Version::from_u64(5))],
@@ -465,12 +454,7 @@ mod tests {
         let mut next = HashMap::new();
         next.insert(key, Version::from_u64(5));
 
-        let assigned = assign_versions_for_shared_inputs_inner(
-            &[clock_mut()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let assigned = assign_versions_for_shared_inputs_inner(&[clock_mut()], &[], &[], &mut next);
         assert_eq!(assigned.as_slice(), &[(key, Version::from_u64(5))]);
         // lamport_increment over the single shared input version 5 → 6
         assert_eq!(next[&key], Version::from_u64(6), "mutable ref must bump");
@@ -485,23 +469,13 @@ mod tests {
         next.insert(key, Version::from_u64(10));
 
         // Prologue: mutates Clock at v=10 → bumps to 11
-        let prologue = assign_versions_for_shared_inputs_inner(
-            &[clock_mut()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let prologue = assign_versions_for_shared_inputs_inner(&[clock_mut()], &[], &[], &mut next);
         assert_eq!(prologue.as_slice(), &[(key, Version::from_u64(10))]);
         assert_eq!(next[&key], Version::from_u64(11));
 
         // Now N readers all see v=11 without bumping
         for _ in 0..1000 {
-            let r = assign_versions_for_shared_inputs_inner(
-                &[clock_read()],
-                &[],
-                &[],
-                &mut next,
-            );
+            let r = assign_versions_for_shared_inputs_inner(&[clock_read()], &[], &[], &mut next);
             assert_eq!(r.as_slice(), &[(key, Version::from_u64(11))]);
         }
         assert_eq!(
@@ -511,12 +485,8 @@ mod tests {
         );
 
         // Next prologue mutates v=11 → bumps to 12
-        let prologue2 = assign_versions_for_shared_inputs_inner(
-            &[clock_mut()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let prologue2 =
+            assign_versions_for_shared_inputs_inner(&[clock_mut()], &[], &[], &mut next);
         assert_eq!(prologue2.as_slice(), &[(key, Version::from_u64(11))]);
         assert_eq!(next[&key], Version::from_u64(12));
     }
@@ -551,8 +521,7 @@ mod tests {
     #[test]
     fn no_shared_inputs_returns_empty_assignment() {
         let mut next = HashMap::new();
-        let assigned =
-            assign_versions_for_shared_inputs_inner(&[], &[], &[], &mut next);
+        let assigned = assign_versions_for_shared_inputs_inner(&[], &[], &[], &mut next);
         assert!(assigned.as_slice().is_empty());
     }
 
@@ -564,21 +533,11 @@ mod tests {
         let mut next = HashMap::new();
         next.insert(key, Version::from_u64(1));
 
-        let a = assign_versions_for_shared_inputs_inner(
-            &[clock_mut()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let a = assign_versions_for_shared_inputs_inner(&[clock_mut()], &[], &[], &mut next);
         assert_eq!(a.as_slice()[0].1, Version::from_u64(1));
         assert_eq!(next[&key], Version::from_u64(2));
 
-        let b = assign_versions_for_shared_inputs_inner(
-            &[clock_mut()],
-            &[],
-            &[],
-            &mut next,
-        );
+        let b = assign_versions_for_shared_inputs_inner(&[clock_mut()], &[], &[], &mut next);
         assert_eq!(b.as_slice()[0].1, Version::from_u64(2));
         assert_eq!(next[&key], Version::from_u64(3));
     }

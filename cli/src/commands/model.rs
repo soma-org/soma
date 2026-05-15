@@ -7,8 +7,8 @@
 
 use anyhow::Result;
 use clap::Parser;
-use protocol_config::model_registry::ModelRegistry;
 use protocol_config::ProtocolVersion;
+use protocol_config::model_registry::ModelRegistry;
 
 #[derive(Parser, Debug)]
 #[clap(rename_all = "kebab-case")]

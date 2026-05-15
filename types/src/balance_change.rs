@@ -171,9 +171,6 @@ mod tests {
             BalanceEvent::deposit(bob, CoinType::Usdc, 20),
             BalanceEvent::deposit(alice, CoinType::Soma, 10),
         ]);
-        assert_eq!(
-            derive_balance_changes(&a, &[], &[]),
-            derive_balance_changes(&b, &[], &[]),
-        );
+        assert_eq!(derive_balance_changes(&a, &[], &[]), derive_balance_changes(&b, &[], &[]),);
     }
 }

@@ -79,10 +79,8 @@ async fn test_get_object_with_version() {
             .metadata
             .soma_address
     });
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
     let current_epoch = test_cluster
         .fullnode_handle
         .soma_node
@@ -104,10 +102,8 @@ async fn test_get_object_with_version() {
     assert!(response.effects.status().is_ok());
 
     let changed = response.effects.all_changed_objects();
-    let (obj_ref, _, _) = changed
-        .iter()
-        .next()
-        .expect("AddStake must mutate SystemState (a shared object)");
+    let (obj_ref, _, _) =
+        changed.iter().next().expect("AddStake must mutate SystemState (a shared object)");
     let obj = client.get_object_with_version(obj_ref.0, obj_ref.1).await.unwrap();
     assert_eq!(obj.version(), obj_ref.1, "Version should match");
 
@@ -312,11 +308,7 @@ async fn test_list_delegations() {
     // Server-computed total_principal must equal the client-side sum.
     // Catches a class of bugs where the server forgets to populate the
     // total or computes it wrong.
-    let client_total: u64 = response
-        .delegations
-        .iter()
-        .map(|d| d.principal.unwrap_or(0))
-        .sum();
+    let client_total: u64 = response.delegations.iter().map(|d| d.principal.unwrap_or(0)).sum();
     assert_eq!(
         response.total_principal.unwrap_or(0),
         client_total,

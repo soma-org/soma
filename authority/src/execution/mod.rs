@@ -217,30 +217,29 @@ pub fn execute_transaction(
             // active+pending+inactive validator's
             // `DelegationAccumulator` from the canonical store here —
             // mirroring the Settlement pre-load above.
-            use types::accumulator::DelegationAccumulator;
             use types::SYSTEM_STATE_OBJECT_ID;
+            use types::accumulator::DelegationAccumulator;
             let mut out: Vec<types::object::Object> = Vec::new();
             let mut seen: std::collections::HashSet<types::object::ObjectID> =
                 std::collections::HashSet::new();
             // SystemState lives in input_objects (declared as mutable
             // shared input by every ChangeEpoch tx). Find + deserialize
             // it to enumerate validators.
-            if let Some(state_obj) = input_objects
-                .iter_objects()
-                .find(|o| o.id() == SYSTEM_STATE_OBJECT_ID)
+            if let Some(state_obj) =
+                input_objects.iter_objects().find(|o| o.id() == SYSTEM_STATE_OBJECT_ID)
             {
                 if let Ok(state) = bcs::from_bytes::<types::system_state::SystemState>(
                     state_obj.as_inner().data.contents(),
                 ) {
-                    let mut visit = |pool_id: types::object::ObjectID,
-                                     validator: types::base::SomaAddress| {
-                        let id = DelegationAccumulator::derive_id(pool_id, validator);
-                        if seen.insert(id) {
-                            if let Some(obj) = store.get_object(&id) {
-                                out.push(obj);
+                    let mut visit =
+                        |pool_id: types::object::ObjectID, validator: types::base::SomaAddress| {
+                            let id = DelegationAccumulator::derive_id(pool_id, validator);
+                            if seen.insert(id) {
+                                if let Some(obj) = store.get_object(&id) {
+                                    out.push(obj);
+                                }
                             }
-                        }
-                    };
+                        };
                     for v in &state.validators().validators {
                         visit(v.staking_pool.id, v.metadata.soma_address);
                     }
@@ -269,50 +268,49 @@ pub fn execute_transaction(
     let mut executor = create_executor(&kind);
 
     // Phase 1: Gas preparation (validation, smashing, base fee deduction)
-    let gas_result =
-        match prepare_gas(
-            &mut temporary_store,
-            &kind,
-            &signer,
-            gas_payment,
-            &*executor,
-            sender_usdc_balance,
-        ) {
-            Ok(result) => result,
-            Err((error_status, transaction_fee)) => {
-                // Gas preparation failed.
-                // If gas was actually deducted (fee > 0), the gas coin was modified
-                // in the temporary store. Use into_effects() to preserve those mutations
-                // so the object version advances and locks are released.
-                // If fee is 0 (e.g., coin had 0 balance), no mutations occurred.
-                let gas_object_id = temporary_store.gas_object_id;
-                if gas_object_id.is_some() && transaction_fee.total_fee > 0 {
-                    if temporary_store.execution_version >= 1 {
-                        temporary_store.ensure_active_inputs_mutated();
-                    }
-                    let (inner, effects) = temporary_store.into_effects(
-                        shared_object_refs,
-                        &tx_digest,
-                        transaction_dependencies,
-                        ExecutionStatus::Failure { error: error_status.clone() },
-                        epoch_id,
-                        transaction_fee,
-                        gas_object_id,
-                    );
-                    return (inner, effects, Some(ExecutionError::new(error_status, None)));
+    let gas_result = match prepare_gas(
+        &mut temporary_store,
+        &kind,
+        &signer,
+        gas_payment,
+        &*executor,
+        sender_usdc_balance,
+    ) {
+        Ok(result) => result,
+        Err((error_status, transaction_fee)) => {
+            // Gas preparation failed.
+            // If gas was actually deducted (fee > 0), the gas coin was modified
+            // in the temporary store. Use into_effects() to preserve those mutations
+            // so the object version advances and locks are released.
+            // If fee is 0 (e.g., coin had 0 balance), no mutations occurred.
+            let gas_object_id = temporary_store.gas_object_id;
+            if gas_object_id.is_some() && transaction_fee.total_fee > 0 {
+                if temporary_store.execution_version >= 1 {
+                    temporary_store.ensure_active_inputs_mutated();
                 }
-                // smash_gas_coins itself failed — no objects modified, use error_result
-                return error_result(
-                    tx_digest,
+                let (inner, effects) = temporary_store.into_effects(
                     shared_object_refs,
+                    &tx_digest,
                     transaction_dependencies,
+                    ExecutionStatus::Failure { error: error_status.clone() },
                     epoch_id,
                     transaction_fee,
-                    None,
-                    error_status,
+                    gas_object_id,
                 );
+                return (inner, effects, Some(ExecutionError::new(error_status, None)));
             }
-        };
+            // smash_gas_coins itself failed — no objects modified, use error_result
+            return error_result(
+                tx_digest,
+                shared_object_refs,
+                transaction_dependencies,
+                epoch_id,
+                transaction_fee,
+                None,
+                error_status,
+            );
+        }
+    };
 
     // Phase 2: Check for early validation errors AFTER gas is prepared
     if let Err(early_error) = execution_params {

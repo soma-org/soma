@@ -32,10 +32,7 @@ pub struct MetricsService {
 
 impl MetricsService {
     pub fn new(args: MetricsArgs, registry: Registry) -> Self {
-        Self {
-            addr: args.metrics_address,
-            registry,
-        }
+        Self { addr: args.metrics_address, registry }
     }
 
     pub fn registry(&self) -> &Registry {
@@ -49,9 +46,7 @@ impl MetricsService {
             .await
             .with_context(|| format!("Failed to bind metrics at {addr}"))?;
 
-        let app = Router::new()
-            .route("/metrics", get(metrics))
-            .layer(Extension(registry));
+        let app = Router::new().route("/metrics", get(metrics)).layer(Extension(registry));
 
         let (stx, srx) = oneshot::channel::<()>();
         Ok(Service::new()
@@ -72,18 +67,13 @@ impl MetricsService {
 
 impl Default for MetricsArgs {
     fn default() -> Self {
-        Self {
-            metrics_address: "0.0.0.0:9184".parse().unwrap(),
-        }
+        Self { metrics_address: "0.0.0.0:9184".parse().unwrap() }
     }
 }
 
 async fn metrics(Extension(registry): Extension<Registry>) -> (StatusCode, String) {
     match TextEncoder.encode_to_string(&registry.gather()) {
         Ok(s) => (StatusCode::OK, s),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("unable to encode metrics: {e}"),
-        ),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("unable to encode metrics: {e}")),
     }
 }

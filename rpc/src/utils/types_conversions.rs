@@ -404,17 +404,15 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             // Stage 13b: domain TransactionKind no longer has
             // Transfer / MergeCoins variants — match arms gone.
-
             TK::TransferObjects { objects, recipient } => TransactionKind::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),
                 recipient: recipient.into(),
             },
 
             // Staking operations
-            TK::AddStake { validator, amount } => TransactionKind::AddStake {
-                validator: validator.into(),
-                amount,
-            },
+            TK::AddStake { validator, amount } => {
+                TransactionKind::AddStake { validator: validator.into(), amount }
+            }
 
             TK::WithdrawStake { pool_id, amount } => {
                 TransactionKind::WithdrawStake { pool_id: pool_id.into(), amount }
@@ -441,7 +439,11 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 })
             }
 
-            _ => return Err(SdkTypeConversionError("Marketplace/bridge tx type conversion not yet implemented".to_string())),
+            _ => {
+                return Err(SdkTypeConversionError(
+                    "Marketplace/bridge tx type conversion not yet implemented".to_string(),
+                ));
+            }
         })
     }
 }
@@ -526,7 +528,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
 
             // Stage 13b: Transfer / MergeCoins deleted.
-
             TransactionKind::TransferObjects { objects, recipient } => TK::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),
                 recipient: recipient.into(),
@@ -556,10 +557,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     recipient: args.recipient.into(),
                     amount: args.amount,
                     timestamp_ms: args.timestamp_ms,
-                    sender_eth_address: args
-                        .sender_eth_address
-                        .try_into()
-                        .unwrap_or([0u8; 20]),
+                    sender_eth_address: args.sender_eth_address.try_into().unwrap_or([0u8; 20]),
                     target_chain,
                     token_type: args.token_type as u8,
                     signatures: rpc_sigs_to_envelope(args.signatures)?,
@@ -575,7 +573,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     })?;
                 TK::BridgeWithdraw(types::transaction::BridgeWithdrawArgs {
                     amount: args.amount,
-                    recipient_eth_address: args.recipient_eth_address.try_into().unwrap_or([0u8; 20]),
+                    recipient_eth_address: args
+                        .recipient_eth_address
+                        .try_into()
+                        .unwrap_or([0u8; 20]),
                     target_chain,
                 })
             }
@@ -616,9 +617,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
             TransactionKind::BridgeRegisterBridgeKey(args) => {
                 let bridge_pubkey = types::bridge::BridgePubkey::from_bytes(&args.bridge_pubkey)
-                    .map_err(|e| {
-                        SdkTypeConversionError(format!("invalid bridge_pubkey: {e}"))
-                    })?;
+                    .map_err(|e| SdkTypeConversionError(format!("invalid bridge_pubkey: {e}")))?;
                 TK::BridgeRegisterBridgeKey(types::transaction::BridgeRegisterBridgeKeyArgs {
                     bridge_pubkey,
                     http_url: args.http_url,
@@ -637,11 +636,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
             TransactionKind::Settle(args) => {
                 use fastcrypto::traits::ToFromBytes;
-                let voucher_signature =
-                    types::crypto::GenericSignature::from_bytes(&args.voucher_signature)
-                        .map_err(|e| {
-                            SdkTypeConversionError(format!("invalid voucher_signature: {}", e))
-                        })?;
+                let voucher_signature = types::crypto::GenericSignature::from_bytes(
+                    &args.voucher_signature,
+                )
+                .map_err(|e| SdkTypeConversionError(format!("invalid voucher_signature: {}", e)))?;
                 TK::Settle(types::transaction::SettleArgs {
                     channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
                         args.channel_id,
@@ -670,15 +668,13 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     payee: types::base::SomaAddress::from(args.payee),
                 })
             }
-            TransactionKind::TopUp(args) => {
-                TK::TopUp(types::transaction::TopUpArgs {
-                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
-                        args.channel_id,
-                    )),
-                    coin_type: args.coin_type,
-                    amount: args.amount,
-                })
-            }
+            TransactionKind::TopUp(args) => TK::TopUp(types::transaction::TopUpArgs {
+                channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                    args.channel_id,
+                )),
+                coin_type: args.coin_type,
+                amount: args.amount,
+            }),
             TransactionKind::RateChannel(args) => {
                 let reason_code = match args.reason_code {
                     0 => types::transaction::RatingReasonCode::Quality,
@@ -1646,7 +1642,7 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::InvalidObjectType { object_id } => Self::InvalidObjectType {
                 object_id: object_id.into(),
                 expected_type: types::object::ObjectType::Coin(types::object::CoinType::Soma), // TODO: change this
-                actual_type: types::object::ObjectType::Coin(types::object::CoinType::Soma),   // TODO: change this
+                actual_type: types::object::ObjectType::Coin(types::object::CoinType::Soma), // TODO: change this
             },
             ExecutionError::InvalidTransactionType => Self::InvalidTransactionType,
             ExecutionError::InvalidArguments { reason } => Self::InvalidArguments { reason },
@@ -1744,16 +1740,10 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
 
             // Payment-channel errors — typed both directions.
             ExecutionError::ChannelCallerNotPayee { expected, actual } => {
-                Self::ChannelCallerNotPayee {
-                    expected: expected.into(),
-                    actual: actual.into(),
-                }
+                Self::ChannelCallerNotPayee { expected: expected.into(), actual: actual.into() }
             }
             ExecutionError::ChannelCallerNotPayer { expected, actual } => {
-                Self::ChannelCallerNotPayer {
-                    expected: expected.into(),
-                    actual: actual.into(),
-                }
+                Self::ChannelCallerNotPayer { expected: expected.into(), actual: actual.into() }
             }
             ExecutionError::ChannelVoucherNotMonotonic { cumulative, settled } => {
                 Self::ChannelVoucherNotMonotonic { cumulative, settled }
@@ -1770,9 +1760,7 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 Self::ChannelInvalidVoucherSignature { reason }
             }
             ExecutionError::ChannelAmountZero => Self::ChannelAmountZero,
-            ExecutionError::ChannelInvalidInput { reason } => {
-                Self::ChannelInvalidInput { reason }
-            }
+            ExecutionError::ChannelInvalidInput { reason } => Self::ChannelInvalidInput { reason },
             ExecutionError::ChannelCoinTypeMismatch => Self::ChannelCoinTypeMismatch,
             ExecutionError::NotAChannel { object_id } => {
                 Self::NotAChannel { object_id: object_id.into() }
@@ -1793,10 +1781,7 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 Self::ChannelTooManyOpenForPair { current, max }
             }
             ExecutionError::ChannelInboxPayeeMismatch { declared, actual } => {
-                Self::ChannelInboxPayeeMismatch {
-                    declared: declared.into(),
-                    actual: actual.into(),
-                }
+                Self::ChannelInboxPayeeMismatch { declared: declared.into(), actual: actual.into() }
             }
             ExecutionError::NotAProviderInbox { object_id } => {
                 Self::NotAProviderInbox { object_id: object_id.into() }

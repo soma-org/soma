@@ -88,20 +88,12 @@ impl StakingExecutor {
                         .find(|v| v.metadata.soma_address == validator)
                 })
                 .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
-            (
-                v.staking_pool.id,
-                v.staking_pool.is_preactive(),
-                v.staking_pool.cumulative_index,
-            )
+            (v.staking_pool.id, v.staking_pool.is_preactive(), v.staking_pool.cumulative_index)
         };
 
         // Auto-compound any prior accrual into the row's principal,
         // then bump the appropriate bucket by `amount`.
-        let mut row = store
-            .prefetched_delegations
-            .get(&pool_id)
-            .copied()
-            .unwrap_or_default();
+        let mut row = store.prefetched_delegations.get(&pool_id).copied().unwrap_or_default();
         {
             let pool_view = state
                 .validators()
@@ -197,16 +189,12 @@ impl StakingExecutor {
 
         let current_epoch = state.epoch();
 
-        let mut row = store
-            .prefetched_delegations
-            .get(&pool_id)
-            .copied()
-            .ok_or_else(|| {
-                ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                    "No active stake by {} in pool {}",
-                    signer, pool_id
-                )))
-            })?;
+        let mut row = store.prefetched_delegations.get(&pool_id).copied().ok_or_else(|| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "No active stake by {} in pool {}",
+                signer, pool_id
+            )))
+        })?;
         if row.is_empty() {
             return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "No active stake by {} in pool {}",
@@ -218,12 +206,8 @@ impl StakingExecutor {
         // Locate the validator owning this pool (any of the three
         // collections). We need a pool view for auto_settle and the
         // current_index snapshot for the post-settle row.
-        let validator_addr = state
-            .validators()
-            .staking_pool_mappings
-            .get(&pool_id)
-            .copied()
-            .ok_or_else(|| {
+        let validator_addr =
+            state.validators().staking_pool_mappings.get(&pool_id).copied().ok_or_else(|| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "StakingPool not found: {}",
                     pool_id

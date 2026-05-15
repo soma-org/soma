@@ -37,13 +37,8 @@ async fn test_add_stake_balance_mode_succeeds() {
     let stake_amount = 10_000_000u64;
     let starting_balance = 50_000_000u64;
 
-    let res = execute_add_stake(
-        starting_balance,
-        stake_amount,
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res =
+        execute_add_stake(starting_balance, stake_amount, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -81,13 +76,7 @@ async fn test_add_stake_balance_mode_succeeds() {
 async fn test_add_stake_zero_amount_rejected() {
     // Stage 9d-C2: zero is now an explicit error in the executor.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let res = execute_add_stake(
-        50_000_000,
-        0,
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(50_000_000, 0, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert!(!effects.status().is_ok(), "zero stake amount must fail");
@@ -96,13 +85,7 @@ async fn test_add_stake_zero_amount_rejected() {
 #[tokio::test]
 async fn test_add_stake_charges_fixed_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let res = execute_add_stake(
-        50_000_000,
-        10_000_000,
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(50_000_000, 10_000_000, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -141,13 +124,7 @@ async fn test_add_stake_writes_pending_bucket() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 7_500_000u64;
 
-    let res = execute_add_stake(
-        50_000_000,
-        stake_amount,
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(50_000_000, stake_amount, sender, SomaKeyPair::Ed25519(key)).await;
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
@@ -239,11 +216,7 @@ async fn test_withdraw_stake_drains_delegation_row() {
     let add_tx_digest = add_effects.transaction_digest();
     let epoch = authority_state.epoch_store_for_testing().epoch();
     let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*add_tx_digest]);
-    authority_state.get_cache_commit().commit_transaction_outputs(
-        epoch,
-        batch,
-        &[*add_tx_digest],
-    );
+    authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*add_tx_digest]);
 
     let store = authority_state.database_for_testing();
     let listed = store.iter_delegations_for_staker(sender).unwrap();
@@ -264,20 +237,12 @@ async fn test_withdraw_stake_drains_delegation_row() {
     );
     let withdraw_tx = to_sender_signed_transaction(withdraw_data, &sender_key);
     let (_, withdraw_effects) =
-        send_and_confirm_transaction_(&authority_state, None, withdraw_tx, true)
-            .await
-            .unwrap();
+        send_and_confirm_transaction_(&authority_state, None, withdraw_tx, true).await.unwrap();
     let withdraw_effects = withdraw_effects.into_data();
-    assert_eq!(
-        *withdraw_effects.status(),
-        ExecutionStatus::Success,
-        "WithdrawStake must succeed",
-    );
+    assert_eq!(*withdraw_effects.status(), ExecutionStatus::Success, "WithdrawStake must succeed",);
 
     let withdraw_tx_digest = withdraw_effects.transaction_digest();
-    let batch = authority_state
-        .get_cache_commit()
-        .build_db_batch(epoch, &[*withdraw_tx_digest]);
+    let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*withdraw_tx_digest]);
     authority_state.get_cache_commit().commit_transaction_outputs(
         epoch,
         batch,
@@ -305,19 +270,13 @@ async fn test_withdraw_stake_nonexistent_object() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state
-        .database_for_testing()
-        .set_balance(sender, CoinType::Usdc, 10_000_000)
-        .unwrap();
+    authority_state.database_for_testing().set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
 
     // Stage 13c: WithdrawStake against a pool the sender has no
     // stake in. Executor reads the prefetched (pool, sender) row,
     // finds none, errors out.
     let data = TransactionData::new(
-        TransactionKind::WithdrawStake {
-            pool_id: ObjectID::random(),
-            amount: None,
-        },
+        TransactionKind::WithdrawStake { pool_id: ObjectID::random(), amount: None },
         sender,
         vec![],
     );

@@ -24,9 +24,7 @@ use crate::utils::types_conversions::SdkTypeConversionError;
 //
 
 impl From<types::tx_fee::TransactionFee> for TransactionFee {
-    fn from(
-        types::tx_fee::TransactionFee { total_fee }: types::tx_fee::TransactionFee,
-    ) -> Self {
+    fn from(types::tx_fee::TransactionFee { total_fee }: types::tx_fee::TransactionFee) -> Self {
         Self { total_fee: Some(total_fee) }
     }
 }
@@ -182,16 +180,31 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             }
             // Bridge errors
             E::BridgePaused => (ExecutionErrorKind::OtherError, Some("Bridge is paused".into())),
-            E::BridgeNonceAlreadyProcessed => (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into())),
-            E::BridgeInsufficientSignatureStake => (ExecutionErrorKind::OtherError, Some("Bridge: insufficient signature stake".into())),
+            E::BridgeNonceAlreadyProcessed => {
+                (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into()))
+            }
+            E::BridgeInsufficientSignatureStake => (
+                ExecutionErrorKind::OtherError,
+                Some("Bridge: insufficient signature stake".into()),
+            ),
             E::BridgeSystemMessageSeqMismatch { expected, actual } => (
                 ExecutionErrorKind::OtherError,
-                Some(format!("Bridge: system-message seq mismatch (expected {expected}, got {actual})")),
+                Some(format!(
+                    "Bridge: system-message seq mismatch (expected {expected}, got {actual})"
+                )),
             ),
-            E::BridgeAlreadyPaused => (ExecutionErrorKind::OtherError, Some("Bridge already paused".into())),
-            E::BridgeNotPaused => (ExecutionErrorKind::OtherError, Some("Bridge not paused".into())),
-            E::BridgeAmountZero => (ExecutionErrorKind::OtherError, Some("Bridge amount must be non-zero".into())),
-            E::BridgeSupplyUnderflow => (ExecutionErrorKind::OtherError, Some("Bridge USDC supply underflow".into())),
+            E::BridgeAlreadyPaused => {
+                (ExecutionErrorKind::OtherError, Some("Bridge already paused".into()))
+            }
+            E::BridgeNotPaused => {
+                (ExecutionErrorKind::OtherError, Some("Bridge not paused".into()))
+            }
+            E::BridgeAmountZero => {
+                (ExecutionErrorKind::OtherError, Some("Bridge amount must be non-zero".into()))
+            }
+            E::BridgeSupplyUnderflow => {
+                (ExecutionErrorKind::OtherError, Some("Bridge USDC supply underflow".into()))
+            }
             E::BridgeBlocklistPayloadTooLarge { got, max } => (
                 ExecutionErrorKind::OtherError,
                 Some(format!("Bridge blocklist payload too large ({got}/{max})")),
@@ -222,41 +235,28 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 ExecutionErrorKind::ChannelGraceNotElapsed,
                 Some(format!("now_ms={now_ms}, earliest_ms={earliest_ms}")),
             ),
-            E::ChannelCloseAlreadyPending => (
-                ExecutionErrorKind::ChannelCloseAlreadyPending,
-                None,
-            ),
-            E::ChannelNoCloseRequest => (
-                ExecutionErrorKind::ChannelNoCloseRequest,
-                None,
-            ),
-            E::ChannelInvalidVoucherSignature { reason } => (
-                ExecutionErrorKind::ChannelInvalidVoucherSignature,
-                Some(reason),
-            ),
+            E::ChannelCloseAlreadyPending => (ExecutionErrorKind::ChannelCloseAlreadyPending, None),
+            E::ChannelNoCloseRequest => (ExecutionErrorKind::ChannelNoCloseRequest, None),
+            E::ChannelInvalidVoucherSignature { reason } => {
+                (ExecutionErrorKind::ChannelInvalidVoucherSignature, Some(reason))
+            }
             E::ChannelAmountZero => (ExecutionErrorKind::ChannelAmountZero, None),
-            E::ChannelInvalidInput { reason } => (
-                ExecutionErrorKind::ChannelInvalidInput,
-                Some(reason),
-            ),
-            E::ChannelCoinTypeMismatch => (
-                ExecutionErrorKind::ChannelCoinTypeMismatch,
-                None,
-            ),
-            E::NotAChannel { object_id } => (
-                ExecutionErrorKind::NotAChannel,
-                Some(object_id.to_hex()),
-            ),
+            E::ChannelInvalidInput { reason } => {
+                (ExecutionErrorKind::ChannelInvalidInput, Some(reason))
+            }
+            E::ChannelCoinTypeMismatch => (ExecutionErrorKind::ChannelCoinTypeMismatch, None),
+            E::NotAChannel { object_id } => {
+                (ExecutionErrorKind::NotAChannel, Some(object_id.to_hex()))
+            }
             E::ChannelClockMissing => (ExecutionErrorKind::ChannelClockMissing, None),
 
             // Provider registry errors
             E::ProviderAlreadyExists => (ExecutionErrorKind::ProviderAlreadyExists, None),
             E::ProviderNotFound => (ExecutionErrorKind::ProviderNotFound, None),
             E::ProviderCallerMismatch => (ExecutionErrorKind::ProviderCallerMismatch, None),
-            E::ProviderInvalidEndpoint { reason } => (
-                ExecutionErrorKind::ProviderInvalidEndpoint,
-                Some(reason),
-            ),
+            E::ProviderInvalidEndpoint { reason } => {
+                (ExecutionErrorKind::ProviderInvalidEndpoint, Some(reason))
+            }
             E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
             E::ChannelTooManyOpenForPair { current, max } => (
                 ExecutionErrorKind::ChannelTooManyOpenForPair,
@@ -266,20 +266,18 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 ExecutionErrorKind::ChannelInboxPayeeMismatch,
                 Some(format!("declared={}, actual={}", declared, actual)),
             ),
-            E::NotAProviderInbox { object_id } => (
-                ExecutionErrorKind::NotAProviderInbox,
-                Some(object_id.to_hex()),
-            ),
+            E::NotAProviderInbox { object_id } => {
+                (ExecutionErrorKind::NotAProviderInbox, Some(object_id.to_hex()))
+            }
 
             // Offering errors: dedicated kinds. Detail strings preserve
             // any inline fields so the client can surface useful messages.
             E::OfferingAlreadyExists => (ExecutionErrorKind::OfferingAlreadyExists, None),
             E::OfferingNotFound => (ExecutionErrorKind::OfferingNotFound, None),
             E::OfferingCallerMismatch => (ExecutionErrorKind::OfferingCallerMismatch, None),
-            E::OfferingUnknownModel { model_id } => (
-                ExecutionErrorKind::OfferingUnknownModel,
-                Some(format!("model_id={}", model_id)),
-            ),
+            E::OfferingUnknownModel { model_id } => {
+                (ExecutionErrorKind::OfferingUnknownModel, Some(format!("model_id={}", model_id)))
+            }
             E::ChannelOfferingMissing { payee, model_id } => (
                 ExecutionErrorKind::ChannelOfferingMissing,
                 Some(format!("payee={}, model_id={}", payee, model_id)),
@@ -746,10 +744,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 amount: Some(amount),
             }),
 
-            K::WithdrawStake { pool_id, amount } => Kind::WithdrawStake(WithdrawStake {
-                pool_id: Some(pool_id.to_string()),
-                amount,
-            }),
+            K::WithdrawStake { pool_id, amount } => {
+                Kind::WithdrawStake(WithdrawStake { pool_id: Some(pool_id.to_string()), amount })
+            }
 
             // Bridge transactions
             K::BridgeDeposit(args) => Kind::BridgeDeposit(BridgeDeposit {
@@ -772,10 +769,12 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 nonce: Some(args.nonce),
                 signatures: envelope_to_proto(args.signatures),
             }),
-            K::BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(BridgeEmergencyUnpause {
-                nonce: Some(args.nonce),
-                signatures: envelope_to_proto(args.signatures),
-            }),
+            K::BridgeEmergencyUnpause(args) => {
+                Kind::BridgeEmergencyUnpause(BridgeEmergencyUnpause {
+                    nonce: Some(args.nonce),
+                    signatures: envelope_to_proto(args.signatures),
+                })
+            }
             K::BridgeAttachWithdrawalSignatures(args) => {
                 Kind::BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignatures {
                     nonce: Some(args.nonce),
@@ -819,9 +818,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 cumulative_requests: Some(args.cumulative_requests),
                 voucher_signature: Some(args.voucher_signature.as_ref().to_vec().into()),
             }),
-            K::RequestClose(args) => Kind::RequestClose(RequestClose {
-                channel_id: Some(args.channel_id.to_string()),
-            }),
+            K::RequestClose(args) => {
+                Kind::RequestClose(RequestClose { channel_id: Some(args.channel_id.to_string()) })
+            }
             K::WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
                 payee: Some(args.payee.to_string()),
@@ -838,9 +837,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
 
             // Provider registry tx kinds.
-            K::RegisterProvider(args) => Kind::RegisterProvider(RegisterProvider {
-                endpoint: Some(args.endpoint),
-            }),
+            K::RegisterProvider(args) => {
+                Kind::RegisterProvider(RegisterProvider { endpoint: Some(args.endpoint) })
+            }
             K::UpdateProvider(args) => Kind::UpdateProvider(UpdateProvider {
                 provider_id: Some(args.provider_id.to_string()),
                 endpoint: Some(args.endpoint),
@@ -894,16 +893,12 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                     .into_iter()
                     .map(|ev| {
                         let (owner, coin_type, amount, is_credit) = match ev {
-                            types::balance::BalanceEvent::Deposit {
-                                owner,
-                                coin_type,
-                                amount,
-                            } => (owner, coin_type, amount, true),
-                            types::balance::BalanceEvent::Withdraw {
-                                owner,
-                                coin_type,
-                                amount,
-                            } => (owner, coin_type, amount, false),
+                            types::balance::BalanceEvent::Deposit { owner, coin_type, amount } => {
+                                (owner, coin_type, amount, true)
+                            }
+                            types::balance::BalanceEvent::Withdraw { owner, coin_type, amount } => {
+                                (owner, coin_type, amount, false)
+                            }
                         };
                         SettlementChange {
                             owner: Some(owner.to_string()),
@@ -1217,7 +1212,9 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
                 marketplace_params: types::bridge::MarketplaceParameters::default(),
                 protocol_fund_balance: 0,
-                bridge_state: types::bridge::BridgeState::new(types::bridge::BridgeCommittee::empty()),
+                bridge_state: types::bridge::BridgeState::new(
+                    types::bridge::BridgeCommittee::empty(),
+                ),
 
                 safe_mode: proto_state.safe_mode.unwrap_or(false),
             });
@@ -1236,9 +1233,7 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             // Default to mainnet's 10-minute grace when missing — keeps
             // older RPC clients compatible. Real on-chain SystemParameters
             // always carry a value (set in `build_system_parameters`).
-            channel_grace_period_ms: proto_params
-                .channel_grace_period_ms
-                .unwrap_or(10 * 60 * 1000),
+            channel_grace_period_ms: proto_params.channel_grace_period_ms.unwrap_or(10 * 60 * 1000),
             // Per-(payer, payee) channel cap: not yet wired through
             // the SystemParameters proto schema; older RPC clients
             // default to the genesis value (8). Real on-chain
@@ -1517,7 +1512,6 @@ fn convert_report_records(
         .collect()
 }
 
-
 impl TryFrom<types::system_state::SystemState> for SystemState {
     type Error = String;
 
@@ -1545,7 +1539,6 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
         })
     }
 }
-
 
 impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     type Error = String;
@@ -1669,8 +1662,7 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             // current active + same-epoch additions waiting to
             // promote at the next boundary.
             next_epoch_stake: Some(
-                domain_val.staking_pool.active_stake
-                    + domain_val.staking_pool.pending_active_stake,
+                domain_val.staking_pool.active_stake + domain_val.staking_pool.pending_active_stake,
             ),
             next_epoch_commission_rate: Some(domain_val.next_epoch_commission_rate),
             staking_pool: Some(domain_val.staking_pool.try_into()?),
@@ -1728,7 +1720,6 @@ fn convert_report_records_to_proto(
         })
         .collect()
 }
-
 
 //
 // TransactionChecks

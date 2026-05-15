@@ -75,11 +75,7 @@ impl BridgeOrchestratorTables {
             ))
         })?;
         // None+None: default opening options + default per-table tuning.
-        Ok(Arc::new(Self::open_tables_read_write(
-            path.to_path_buf(),
-            None,
-            None,
-        )))
+        Ok(Arc::new(Self::open_tables_read_write(path.to_path_buf(), None, None)))
     }
 
     /// Insert an action into the WAL. Idempotent: re-inserting the same
@@ -104,12 +100,9 @@ impl BridgeOrchestratorTables {
     /// them. Mirrors Sui's `get_all_pending_actions`.
     pub fn get_all_pending_actions(&self) -> BridgeResult<Vec<BridgeAction>> {
         let mut actions = Vec::new();
-        for entry in self
-            .pending_actions
-            .safe_iter()
-        {
-            let (_digest, action) = entry
-                .map_err(|e| BridgeError::Internal(format!("WAL iter: {e}")))?;
+        for entry in self.pending_actions.safe_iter() {
+            let (_digest, action) =
+                entry.map_err(|e| BridgeError::Internal(format!("WAL iter: {e}")))?;
             actions.push(action);
         }
         Ok(actions)
@@ -132,10 +125,7 @@ impl BridgeOrchestratorTables {
     /// Read the persisted cursor for `contract`. Returns None if the
     /// contract has never been processed (first run). The orchestrator
     /// translates None → `start_block_fallback`.
-    pub fn get_eth_cursor(
-        &self,
-        contract: &EthContractAddress,
-    ) -> BridgeResult<Option<u64>> {
+    pub fn get_eth_cursor(&self, contract: &EthContractAddress) -> BridgeResult<Option<u64>> {
         self.eth_cursor
             .get(contract)
             .map_err(|e| BridgeError::Internal(format!("WAL get_eth_cursor: {e}")))

@@ -12,12 +12,10 @@ use protocol_config::ProtocolVersion;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use crate::{CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION, SYSTEM_STATE_OBJECT_ID};
 use crate::base::SomaAddress;
 use crate::config::genesis_config::{
-    GenesisCeremonyParameters, SHANNONS_PER_SOMA, TokenAllocation,
-    TokenDistributionSchedule, TokenDistributionScheduleBuilder, UsdcAllocation,
-    ValidatorGenesisConfigBuilder,
+    GenesisCeremonyParameters, SHANNONS_PER_SOMA, TokenAllocation, TokenDistributionSchedule,
+    TokenDistributionScheduleBuilder, UsdcAllocation, ValidatorGenesisConfigBuilder,
 };
 use crate::effects::{ExecutionStatus, TransactionEffectsAPI};
 use crate::envelope::Message;
@@ -26,6 +24,7 @@ use crate::object::{CoinType, ObjectType, Owner};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait;
 use crate::system_state::{SystemStateTrait, get_system_state};
 use crate::transaction::TransactionKind;
+use crate::{CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION, SYSTEM_STATE_OBJECT_ID};
 
 // ---------------------------------------------------------------------------
 // Helper: build N validator configs with a deterministic RNG
@@ -172,22 +171,17 @@ fn test_genesis_creates_initial_coins() {
     let coin_objects: Vec<_> = unsigned
         .objects()
         .iter()
-        .filter(|o| matches!(o.type_(), ObjectType::Coin(_)) && o.owner == Owner::AddressOwner(coin_addr))
+        .filter(|o| {
+            matches!(o.type_(), ObjectType::Coin(_)) && o.owner == Owner::AddressOwner(coin_addr)
+        })
         .collect();
     assert!(
         coin_objects.is_empty(),
         "Stage 13a: genesis must not produce Coin objects for SOMA allocations",
     );
 
-    let balance = unsigned
-        .balances()
-        .get(&(coin_addr, CoinType::Soma))
-        .copied()
-        .unwrap_or(0);
-    assert_eq!(
-        balance, coin_amount,
-        "balance accumulator must hold the allocation amount",
-    );
+    let balance = unsigned.balances().get(&(coin_addr, CoinType::Soma)).copied().unwrap_or(0);
+    assert_eq!(balance, coin_amount, "balance accumulator must hold the allocation amount",);
 }
 
 // ===========================================================================
@@ -650,9 +644,8 @@ fn test_genesis_staked_allocations_populate_delegations() {
 fn test_genesis_creates_clock_at_reserved_id() {
     let (unsigned, _configs) = build_unsigned_genesis_with_validators(4);
 
-    let clock_obj = unsigned
-        .object(CLOCK_OBJECT_ID)
-        .expect("Clock object must exist at the reserved ID");
+    let clock_obj =
+        unsigned.object(CLOCK_OBJECT_ID).expect("Clock object must exist at the reserved ID");
 
     assert_eq!(*clock_obj.type_(), ObjectType::Clock, "Object at 0x6 must be ObjectType::Clock");
     assert!(clock_obj.is_shared(), "Clock must be a shared object");
@@ -742,11 +735,8 @@ fn test_genesis_balances_unstaked_soma_allocation() {
     let coin_addr = SomaAddress::random();
     let coin_amount = 500 * SHANNONS_PER_SOMA;
 
-    let schedule = make_schedule_with_coins(
-        &configs,
-        1_000 * SHANNONS_PER_SOMA,
-        &[(coin_addr, coin_amount)],
-    );
+    let schedule =
+        make_schedule_with_coins(&configs, 1_000 * SHANNONS_PER_SOMA, &[(coin_addr, coin_amount)]);
 
     let unsigned = GenesisBuilder::new()
         .with_validator_configs(configs)
@@ -904,9 +894,8 @@ fn test_genesis_balances_zero_when_no_schedule() {
     // No token distribution schedule = no allocations to process. Validators
     // still get their starter USDC, so the table is not strictly empty.
     let configs = make_validator_configs(2);
-    let unsigned = GenesisBuilder::new()
-        .with_validator_configs(configs.clone())
-        .build_unsigned_genesis();
+    let unsigned =
+        GenesisBuilder::new().with_validator_configs(configs.clone()).build_unsigned_genesis();
 
     assert_eq!(
         unsigned.balances().len(),
@@ -961,25 +950,16 @@ fn test_genesis_allocations_land_in_accumulator_only() {
         .build_unsigned_genesis();
 
     // No Coin objects in the genesis object set.
-    let coin_count = unsigned
-        .objects()
-        .iter()
-        .filter(|o| matches!(o.type_(), ObjectType::Coin(_)))
-        .count();
-    assert_eq!(
-        coin_count, 0,
-        "Stage 13a: genesis must not produce Coin objects",
-    );
+    let coin_count =
+        unsigned.objects().iter().filter(|o| matches!(o.type_(), ObjectType::Coin(_))).count();
+    assert_eq!(coin_count, 0, "Stage 13a: genesis must not produce Coin objects",);
 
     // r1 has both a SOMA and USDC entry.
     assert_eq!(
         unsigned.balances().get(&(r1, CoinType::Soma)).copied(),
         Some(17 * SHANNONS_PER_SOMA),
     );
-    assert_eq!(
-        unsigned.balances().get(&(r1, CoinType::Usdc)).copied(),
-        Some(999_999),
-    );
+    assert_eq!(unsigned.balances().get(&(r1, CoinType::Usdc)).copied(), Some(999_999),);
     // r2 has only a SOMA entry.
     assert_eq!(
         unsigned.balances().get(&(r2, CoinType::Soma)).copied(),
@@ -1032,11 +1012,8 @@ fn test_genesis_creates_balance_accumulator_objects() {
             continue;
         }
         let expected_id = BalanceAccumulator::derive_id(owner, coin_type);
-        let acc_obj = unsigned
-            .objects()
-            .iter()
-            .find(|o| o.id() == expected_id)
-            .unwrap_or_else(|| {
+        let acc_obj =
+            unsigned.objects().iter().find(|o| o.id() == expected_id).unwrap_or_else(|| {
                 panic!(
                     "Genesis must create a BalanceAccumulator for ({owner:?}, {coin_type:?}); \
                      expected ID {expected_id:?}",
@@ -1044,9 +1021,8 @@ fn test_genesis_creates_balance_accumulator_objects() {
             });
         assert_eq!(*acc_obj.type_(), ObjectType::BalanceAccumulator);
         assert!(acc_obj.owner().is_accumulator());
-        let payload = acc_obj
-            .as_balance_accumulator()
-            .expect("genesis BalanceAccumulator must deserialize");
+        let payload =
+            acc_obj.as_balance_accumulator().expect("genesis BalanceAccumulator must deserialize");
         assert_eq!(payload.owner, owner);
         assert_eq!(payload.coin_type, coin_type);
         assert_eq!(
@@ -1086,11 +1062,8 @@ fn test_genesis_creates_delegation_accumulator_objects() {
             continue;
         }
         let expected_id = DelegationAccumulator::derive_id(pool_id, staker);
-        let acc_obj = unsigned
-            .objects()
-            .iter()
-            .find(|o| o.id() == expected_id)
-            .unwrap_or_else(|| {
+        let acc_obj =
+            unsigned.objects().iter().find(|o| o.id() == expected_id).unwrap_or_else(|| {
                 panic!(
                     "Genesis must create a DelegationAccumulator for ({pool_id:?}, {staker:?}); \
                      expected ID {expected_id:?}",

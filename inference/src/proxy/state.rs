@@ -18,9 +18,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use ::types::base::SomaAddress;
 use ::types::object::ObjectID;
+use tokio::sync::Mutex;
 
 use crate::channel::running_tab::TabClientState;
 
@@ -68,12 +68,8 @@ impl ClientStore {
         deposit_micros: u64,
         cumulative_authorized_micros: u64,
     ) -> Arc<Mutex<ChannelSlot>> {
-        let mut state = TabClientState::new(
-            channel_id,
-            provider_address,
-            provider_endpoint,
-            deposit_micros,
-        );
+        let mut state =
+            TabClientState::new(channel_id, provider_address, provider_endpoint, deposit_micros);
         state.cumulative_authorized_micros = cumulative_authorized_micros;
         let slot = Arc::new(Mutex::new(ChannelSlot { state }));
         self.slots.write().await.insert(channel_id, slot.clone());

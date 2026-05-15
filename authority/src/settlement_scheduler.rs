@@ -219,12 +219,7 @@ impl SettlementScheduler {
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) {
         let SettlementWorkItem { batch_info, env } = item;
-        let SettlementBatchInfo {
-            settlement_key,
-            tx_digests,
-            checkpoint_seq,
-            ..
-        } = batch_info;
+        let SettlementBatchInfo { settlement_key, tx_digests, checkpoint_seq, .. } = batch_info;
 
         debug!(
             ?settlement_key,
@@ -237,10 +232,7 @@ impl SettlementScheduler {
         // against the cp's sorted user-tx effects, wrapped the result
         // as a system tx, and called notify_settlement_transactions_ready
         // (or None if the cp had no balance/delegation events).
-        let executable = match epoch_store
-            .wait_for_settlement_transactions(settlement_key)
-            .await
-        {
+        let executable = match epoch_store.wait_for_settlement_transactions(settlement_key).await {
             Some(tx) => tx,
             None => {
                 debug!(
@@ -262,10 +254,7 @@ impl SettlementScheduler {
             "SettlementScheduler: dispatching settlement TX"
         );
 
-        self.execution_scheduler.enqueue_transactions(
-            vec![(executable, env)],
-            epoch_store,
-        );
+        self.execution_scheduler.enqueue_transactions(vec![(executable, env)], epoch_store);
     }
 }
 
@@ -309,4 +298,3 @@ mod tests {
         }
     }
 }
-

@@ -115,22 +115,16 @@ where
             .await
             .expect("bridge HTTP server bind failed");
         info!(addr = %socket_address, "bridge HTTP server listening");
-        axum::serve(
-            listener,
-            make_router(Arc::new(handler), metadata).into_make_service(),
-        )
-        .await
-        .expect("bridge HTTP server crashed");
+        axum::serve(listener, make_router(Arc::new(handler), metadata).into_make_service())
+            .await
+            .expect("bridge HTTP server crashed");
     })
 }
 
 /// Build the axum router with all sig-exchange routes wired to
 /// `handler`. Exposed (rather than only `run_server`) so tests can
 /// drive routes in-process via `tower::ServiceExt::oneshot`.
-pub fn make_router<H>(
-    handler: Arc<H>,
-    metadata: Arc<BridgeNodePublicMetadata>,
-) -> Router
+pub fn make_router<H>(handler: Arc<H>, metadata: Arc<BridgeNodePublicMetadata>) -> Router
 where
     H: BridgeRequestHandlerTrait + 'static,
 {
@@ -138,20 +132,11 @@ where
         .route("/", get(health_check))
         .route(PING_PATH, get(ping::<H>))
         .route(ETH_TO_SOMA_TX_PATH, get(handle_eth_tx_hash::<H>))
-        .route(
-            SOMA_TO_ETH_WITHDRAWAL_PATH,
-            get(handle_soma_withdrawal::<H>),
-        )
+        .route(SOMA_TO_ETH_WITHDRAWAL_PATH, get(handle_soma_withdrawal::<H>))
         .route(EMERGENCY_BUTTON_PATH, get(handle_emergency::<H>))
-        .route(
-            COMMITTEE_BLOCKLIST_UPDATE_PATH,
-            get(handle_update_committee_blocklist::<H>),
-        )
+        .route(COMMITTEE_BLOCKLIST_UPDATE_PATH, get(handle_update_committee_blocklist::<H>))
         .route(LIMIT_UPDATE_PATH, get(handle_limit_update::<H>))
-        .route(
-            EVM_CONTRACT_UPGRADE_PATH,
-            get(handle_evm_contract_upgrade::<H>),
-        )
+        .route(EVM_CONTRACT_UPGRADE_PATH, get(handle_evm_contract_upgrade::<H>))
         .route(
             EVM_CONTRACT_UPGRADE_PATH_WITH_CALLDATA,
             get(handle_evm_contract_upgrade_with_calldata::<H>),
@@ -165,11 +150,7 @@ where
 /// Sui's `reject_oversized_uri`; without this, the comma-separated-list
 /// governance endpoints could be a DoS surface.
 async fn reject_oversized_uri(req: Request, next: Next) -> Response {
-    let uri_len = req
-        .uri()
-        .path_and_query()
-        .map(|v| v.as_str().len())
-        .unwrap_or(0);
+    let uri_len = req.uri().path_and_query().map(|v| v.as_str().len()).unwrap_or(0);
     if uri_len > MAX_REQUEST_URI_SIZE {
         return StatusCode::URI_TOO_LONG.into_response();
     }
@@ -228,9 +209,7 @@ async fn health_check() -> StatusCode {
     StatusCode::OK
 }
 
-async fn ping<H>(
-    State((_, metadata)): State<AppState<H>>,
-) -> Json<Arc<BridgeNodePublicMetadata>>
+async fn ping<H>(State((_, metadata)): State<AppState<H>>) -> Json<Arc<BridgeNodePublicMetadata>>
 where
     H: BridgeRequestHandlerTrait,
 {
@@ -305,21 +284,13 @@ where
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let action = BridgeAction::UpdateCommitteeBlocklist {
-        nonce,
-        chain_id,
-        blocklist_type,
-        members,
-    };
+    let action =
+        BridgeAction::UpdateCommitteeBlocklist { nonce, chain_id, blocklist_type, members };
     let signed = handler.handle_governance_action(action).await?;
     Ok(Json(signed))
 }
 
-#[instrument(
-    level = "info",
-    skip_all,
-    fields(chain_id, nonce, sending_chain_id, new_usd_limit)
-)]
+#[instrument(level = "info", skip_all, fields(chain_id, nonce, sending_chain_id, new_usd_limit))]
 async fn handle_limit_update<H>(
     Path((chain_id, nonce, sending_chain_id, new_usd_limit)): Path<(u8, u64, u8, u64)>,
     State((handler, _)): State<AppState<H>>,
@@ -329,12 +300,7 @@ where
 {
     let chain_id = parse_chain_id(chain_id)?;
     let sending_chain_id = parse_chain_id(sending_chain_id)?;
-    let action = BridgeAction::LimitUpdate {
-        nonce,
-        chain_id,
-        sending_chain_id,
-        new_usd_limit,
-    };
+    let action = BridgeAction::LimitUpdate { nonce, chain_id, sending_chain_id, new_usd_limit };
     let signed = handler.handle_governance_action(action).await?;
     Ok(Json(signed))
 }
@@ -385,13 +351,7 @@ fn upgrade_action(
             BridgeError::InvalidBridgeClientRequest(format!("Invalid calldata hex: {e}"))
         })?
     };
-    Ok(BridgeAction::EvmContractUpgrade {
-        nonce,
-        chain_id,
-        proxy,
-        new_impl,
-        call_data,
-    })
+    Ok(BridgeAction::EvmContractUpgrade { nonce, chain_id, proxy, new_impl, call_data })
 }
 
 // ---------------------------------------------------------------------------
@@ -463,11 +423,7 @@ mod tests {
 
     impl StubHandler {
         fn stub_signed(action: BridgeAction) -> SignedBridgeAction {
-            SignedBridgeAction {
-                action,
-                signer_pubkey: vec![0; 33],
-                signature: vec![0; 65],
-            }
+            SignedBridgeAction { action, signer_pubkey: vec![0; 33], signature: vec![0; 65] }
         }
     }
 
@@ -492,10 +448,7 @@ mod tests {
             }))
         }
 
-        async fn handle_soma_withdrawal(
-            &self,
-            nonce: u64,
-        ) -> BridgeResult<SignedBridgeAction> {
+        async fn handle_soma_withdrawal(&self, nonce: u64) -> BridgeResult<SignedBridgeAction> {
             *self.last_withdrawal.lock().unwrap() = Some(nonce);
             Ok(Self::stub_signed(BridgeAction::Withdrawal {
                 nonce,
@@ -532,10 +485,8 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_returns_200() {
         let (router, _) = test_router();
-        let resp = router
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+        let resp =
+            router.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -543,12 +494,7 @@ mod tests {
     async fn test_ping_returns_metadata() {
         let (router, _) = test_router();
         let resp = router
-            .oneshot(
-                Request::builder()
-                    .uri("/ping")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/ping").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -596,10 +542,7 @@ mod tests {
         let (router, h) = test_router();
         let resp = router
             .oneshot(
-                Request::builder()
-                    .uri("/sign/emergency_button/5/0")
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri("/sign/emergency_button/5/0").body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -615,10 +558,7 @@ mod tests {
         let (router, h) = test_router();
         let resp = router
             .oneshot(
-                Request::builder()
-                    .uri("/sign/emergency_button/9/1")
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri("/sign/emergency_button/9/1").body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -634,10 +574,7 @@ mod tests {
         let (router, _) = test_router();
         let resp = router
             .oneshot(
-                Request::builder()
-                    .uri("/sign/emergency_button/1/99")
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri("/sign/emergency_button/1/99").body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -659,12 +596,7 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         match h.last_governance.lock().unwrap().clone().unwrap() {
-            BridgeAction::LimitUpdate {
-                nonce,
-                chain_id,
-                sending_chain_id,
-                new_usd_limit,
-            } => {
+            BridgeAction::LimitUpdate { nonce, chain_id, sending_chain_id, new_usd_limit } => {
                 assert_eq!(nonce, 3);
                 assert_eq!(chain_id, BridgeChainId::EthCustom);
                 assert_eq!(sending_chain_id, BridgeChainId::SomaCustom);
@@ -690,9 +622,7 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         match h.last_governance.lock().unwrap().clone().unwrap() {
-            BridgeAction::EvmContractUpgrade {
-                nonce, call_data, ..
-            } => {
+            BridgeAction::EvmContractUpgrade { nonce, call_data, .. } => {
                 assert_eq!(nonce, 5);
                 assert!(call_data.is_empty());
             }
@@ -709,9 +639,7 @@ mod tests {
         let resp = router
             .oneshot(
                 Request::builder()
-                    .uri(format!(
-                        "/sign/upgrade_evm_contract/12/5/{proxy}/{new_impl}/{calldata}"
-                    ))
+                    .uri(format!("/sign/upgrade_evm_contract/12/5/{proxy}/{new_impl}/{calldata}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -746,12 +674,7 @@ mod tests {
         let (router, _) = test_router();
         let big = "a".repeat(MAX_REQUEST_URI_SIZE + 1);
         let resp = router
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/ping?{big}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(format!("/ping?{big}")).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::URI_TOO_LONG);

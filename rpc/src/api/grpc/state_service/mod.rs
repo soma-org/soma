@@ -5,13 +5,10 @@
 use crate::api::RpcService;
 use crate::proto::soma::state_service_server::StateService;
 use crate::proto::soma::{
-    GetBalanceRequest, GetBalanceResponse,
-    GetChallengeRequest, GetChallengeResponse,
-    GetTargetRequest, GetTargetResponse,
-    ListChallengesRequest, ListChallengesResponse,
-    ListDelegationsRequest, ListDelegationsResponse,
-    ListOwnedObjectsRequest, ListOwnedObjectsResponse,
-    ListTargetsRequest, ListTargetsResponse,
+    GetBalanceRequest, GetBalanceResponse, GetChallengeRequest, GetChallengeResponse,
+    GetTargetRequest, GetTargetResponse, ListChallengesRequest, ListChallengesResponse,
+    ListDelegationsRequest, ListDelegationsResponse, ListOwnedObjectsRequest,
+    ListOwnedObjectsResponse, ListTargetsRequest, ListTargetsResponse,
 };
 mod get_balance;
 mod list_delegations;

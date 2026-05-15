@@ -52,11 +52,7 @@ pub trait Harness {
 
     async fn init_watermark_fresh_with_checkpoint(&self) {
         let mut conn = self.connect().await;
-        let init = conn
-            .init_watermark(PIPELINE, Some(CHECKPOINT_HI))
-            .await
-            .unwrap()
-            .unwrap();
+        let init = conn.init_watermark(PIPELINE, Some(CHECKPOINT_HI)).await.unwrap().unwrap();
         assert_eq!(init.checkpoint_hi_inclusive, Some(CHECKPOINT_HI));
     }
 
@@ -64,22 +60,11 @@ pub trait Harness {
         let mut conn = self.connect().await;
         let fixture = committer_watermark_fixture();
 
-        conn.init_watermark(PIPELINE, Some(fixture.checkpoint_hi_inclusive))
-            .await
-            .unwrap();
-        conn.set_committer_watermark(PIPELINE, fixture)
-            .await
-            .unwrap();
+        conn.init_watermark(PIPELINE, Some(fixture.checkpoint_hi_inclusive)).await.unwrap();
+        conn.set_committer_watermark(PIPELINE, fixture).await.unwrap();
 
-        let second = conn
-            .init_watermark(PIPELINE, Some(0))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            second.checkpoint_hi_inclusive,
-            Some(fixture.checkpoint_hi_inclusive)
-        );
+        let second = conn.init_watermark(PIPELINE, Some(0)).await.unwrap().unwrap();
+        assert_eq!(second.checkpoint_hi_inclusive, Some(fixture.checkpoint_hi_inclusive));
     }
 
     async fn committer_watermark_initial_is_none(&self) {
@@ -94,11 +79,7 @@ pub trait Harness {
         let fixture = committer_watermark_fixture();
 
         conn.init_watermark(PIPELINE, None).await.unwrap();
-        assert!(
-            conn.set_committer_watermark(PIPELINE, fixture)
-                .await
-                .unwrap()
-        );
+        assert!(conn.set_committer_watermark(PIPELINE, fixture).await.unwrap());
 
         let stored = conn.committer_watermark(PIPELINE).await.unwrap().unwrap();
         assert_eq!(stored, fixture);
@@ -115,11 +96,7 @@ pub trait Harness {
             ..fixture
         };
         assert!(conn.set_committer_watermark(PIPELINE, lower).await.unwrap());
-        assert!(
-            conn.set_committer_watermark(PIPELINE, fixture)
-                .await
-                .unwrap()
-        );
+        assert!(conn.set_committer_watermark(PIPELINE, fixture).await.unwrap());
 
         let stored = conn.committer_watermark(PIPELINE).await.unwrap().unwrap();
         assert_eq!(stored, fixture);
@@ -130,11 +107,7 @@ pub trait Harness {
         let fixture = committer_watermark_fixture();
 
         conn.init_watermark(PIPELINE, None).await.unwrap();
-        assert!(
-            conn.set_committer_watermark(PIPELINE, fixture)
-                .await
-                .unwrap()
-        );
+        assert!(conn.set_committer_watermark(PIPELINE, fixture).await.unwrap());
 
         let regressed = CommitterWatermark {
             epoch_hi_inclusive: fixture.epoch_hi_inclusive + 1,
@@ -142,12 +115,7 @@ pub trait Harness {
             tx_hi: fixture.tx_hi + 1,
             timestamp_ms_hi_inclusive: fixture.timestamp_ms_hi_inclusive + 1,
         };
-        assert!(
-            !conn
-                .set_committer_watermark(PIPELINE, regressed)
-                .await
-                .unwrap()
-        );
+        assert!(!conn.set_committer_watermark(PIPELINE, regressed).await.unwrap());
 
         let stored = conn.committer_watermark(PIPELINE).await.unwrap().unwrap();
         assert_eq!(stored, fixture);
@@ -201,19 +169,9 @@ where
         concurrent_bootstrap(&mut conn, CHECKPOINT_HI).await;
 
         let watermark = conn.reader_watermark(PIPELINE).await.unwrap().unwrap();
-        assert_eq!(
-            watermark,
-            ReaderWatermark {
-                reader_lo: 0,
-                ..reader_watermark_fixture()
-            }
-        );
+        assert_eq!(watermark, ReaderWatermark { reader_lo: 0, ..reader_watermark_fixture() });
 
-        assert!(
-            conn.set_reader_watermark(PIPELINE, READER_LO)
-                .await
-                .unwrap()
-        );
+        assert!(conn.set_reader_watermark(PIPELINE, READER_LO).await.unwrap());
         let watermark = conn.reader_watermark(PIPELINE).await.unwrap().unwrap();
         assert_eq!(watermark, reader_watermark_fixture());
     }
@@ -222,16 +180,8 @@ where
         let mut conn = self.connect().await;
         concurrent_bootstrap(&mut conn, CHECKPOINT_HI).await;
 
-        assert!(
-            conn.set_pruner_watermark(PIPELINE, PRUNER_HI)
-                .await
-                .unwrap()
-        );
-        let watermark = conn
-            .pruner_watermark(PIPELINE, Duration::ZERO)
-            .await
-            .unwrap()
-            .unwrap();
+        assert!(conn.set_pruner_watermark(PIPELINE, PRUNER_HI).await.unwrap());
+        let watermark = conn.pruner_watermark(PIPELINE, Duration::ZERO).await.unwrap().unwrap();
         assert_eq!(watermark.pruner_hi, PRUNER_HI);
     }
 
@@ -239,23 +189,13 @@ where
         let mut conn = self.connect().await;
         concurrent_bootstrap(&mut conn, CHECKPOINT_HI).await;
 
+        assert!(conn.set_reader_watermark(PIPELINE, READER_LO).await.unwrap());
         assert!(
-            conn.set_reader_watermark(PIPELINE, READER_LO)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !conn
-                .set_reader_watermark(PIPELINE, READER_LO)
-                .await
-                .unwrap(),
+            !conn.set_reader_watermark(PIPELINE, READER_LO).await.unwrap(),
             "equal reader_lo must be rejected"
         );
         assert!(
-            !conn
-                .set_reader_watermark(PIPELINE, READER_LO - 1)
-                .await
-                .unwrap(),
+            !conn.set_reader_watermark(PIPELINE, READER_LO - 1).await.unwrap(),
             "lower reader_lo must be rejected"
         );
         let watermark = conn.reader_watermark(PIPELINE).await.unwrap().unwrap();
@@ -266,30 +206,16 @@ where
         let mut conn = self.connect().await;
         concurrent_bootstrap(&mut conn, CHECKPOINT_HI).await;
 
+        assert!(conn.set_pruner_watermark(PIPELINE, PRUNER_HI).await.unwrap());
         assert!(
-            conn.set_pruner_watermark(PIPELINE, PRUNER_HI)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !conn
-                .set_pruner_watermark(PIPELINE, PRUNER_HI)
-                .await
-                .unwrap(),
+            !conn.set_pruner_watermark(PIPELINE, PRUNER_HI).await.unwrap(),
             "equal pruner_hi must be rejected"
         );
         assert!(
-            !conn
-                .set_pruner_watermark(PIPELINE, PRUNER_HI - 1)
-                .await
-                .unwrap(),
+            !conn.set_pruner_watermark(PIPELINE, PRUNER_HI - 1).await.unwrap(),
             "lower pruner_hi must be rejected"
         );
-        let watermark = conn
-            .pruner_watermark(PIPELINE, Duration::ZERO)
-            .await
-            .unwrap()
-            .unwrap();
+        let watermark = conn.pruner_watermark(PIPELINE, Duration::ZERO).await.unwrap().unwrap();
         assert_eq!(watermark.pruner_hi, PRUNER_HI);
     }
 }
@@ -312,11 +238,7 @@ where
         {
             let mut conn = self.connect().await;
             conn.init_watermark(PIPELINE, None).await.unwrap();
-            assert!(
-                conn.set_committer_watermark(PIPELINE, fixture)
-                    .await
-                    .unwrap()
-            );
+            assert!(conn.set_committer_watermark(PIPELINE, fixture).await.unwrap());
         }
 
         let result: anyhow::Result<()> = self
@@ -358,10 +280,7 @@ fn committer_watermark_fixture() -> CommitterWatermark {
 }
 
 fn reader_watermark_fixture() -> ReaderWatermark {
-    ReaderWatermark {
-        checkpoint_hi_inclusive: CHECKPOINT_HI,
-        reader_lo: READER_LO,
-    }
+    ReaderWatermark { checkpoint_hi_inclusive: CHECKPOINT_HI, reader_lo: READER_LO }
 }
 
 async fn concurrent_bootstrap<C: ConcurrentConnection>(conn: &mut C, checkpoint_hi_inclusive: u64) {
@@ -399,21 +318,12 @@ macro_rules! connection_tests {
 
             $crate::__test_case!($Harness, Harness::init_watermark_fresh_without_checkpoint);
             $crate::__test_case!($Harness, Harness::init_watermark_fresh_with_checkpoint);
-            $crate::__test_case!(
-                $Harness,
-                Harness::init_watermark_returns_existing_on_conflict
-            );
+            $crate::__test_case!($Harness, Harness::init_watermark_returns_existing_on_conflict);
             $crate::__test_case!($Harness, Harness::committer_watermark_initial_is_none);
             $crate::__test_case!($Harness, Harness::committer_watermark_roundtrip);
             $crate::__test_case!($Harness, Harness::set_committer_watermark_advances);
-            $crate::__test_case!(
-                $Harness,
-                Harness::set_committer_watermark_rejects_regression
-            );
-            $crate::__test_case!(
-                $Harness,
-                Harness::accepts_chain_id_first_call_writes_and_accepts
-            );
+            $crate::__test_case!($Harness, Harness::set_committer_watermark_rejects_regression);
+            $crate::__test_case!($Harness, Harness::accepts_chain_id_first_call_writes_and_accepts);
             $crate::__test_case!($Harness, Harness::accepts_chain_id_matching_accepts);
             $crate::__test_case!($Harness, Harness::accepts_chain_id_mismatching_rejects);
             $crate::__test_case!($Harness, Harness::accepts_chain_id_distinct_pipelines);
@@ -429,14 +339,8 @@ macro_rules! concurrent_connection_tests {
 
             $crate::__test_case!($Harness, ConcurrentHarness::reader_watermark_roundtrip);
             $crate::__test_case!($Harness, ConcurrentHarness::set_pruner_watermark_roundtrip);
-            $crate::__test_case!(
-                $Harness,
-                ConcurrentHarness::set_reader_watermark_rejects_stale
-            );
-            $crate::__test_case!(
-                $Harness,
-                ConcurrentHarness::set_pruner_watermark_rejects_stale
-            );
+            $crate::__test_case!($Harness, ConcurrentHarness::set_reader_watermark_rejects_stale);
+            $crate::__test_case!($Harness, ConcurrentHarness::set_pruner_watermark_rejects_stale);
         }
     };
 }
@@ -466,9 +370,7 @@ mod tests {
         type Store = MockStore;
 
         async fn new() -> Self {
-            Self {
-                store: MockStore::default(),
-            }
+            Self { store: MockStore::default() }
         }
 
         fn store(&self) -> &Self::Store {

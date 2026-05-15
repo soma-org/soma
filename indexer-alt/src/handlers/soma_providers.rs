@@ -65,12 +65,10 @@ impl Handler for SomaProviders {
             .on_conflict(soma_providers::address)
             .do_update()
             .set((
-                soma_providers::endpoint.eq(diesel::dsl::sql::<diesel::sql_types::Text>(
-                    "EXCLUDED.endpoint",
-                )),
-                soma_providers::last_update_cp.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.last_update_cp",
-                )),
+                soma_providers::endpoint
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Text>("EXCLUDED.endpoint")),
+                soma_providers::last_update_cp
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.last_update_cp")),
             ))
             .execute(conn)
             .await?)

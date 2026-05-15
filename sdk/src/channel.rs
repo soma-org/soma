@@ -150,10 +150,8 @@ pub fn verify_http_voucher(
     http_voucher: &HttpVoucher,
     signature: &GenericSignature,
 ) -> anyhow::Result<()> {
-    let intent_msg = IntentMessage::new(
-        Intent::soma_app(IntentScope::PaymentVoucherHttp),
-        *http_voucher,
-    );
+    let intent_msg =
+        IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucherHttp), *http_voucher);
     signature
         .verify_authenticator(&intent_msg, channel.authorized_signer())
         .map_err(|e| anyhow::anyhow!("HTTP voucher signature verification failed: {}", e))
@@ -251,11 +249,7 @@ pub async fn rate(
     negative: bool,
     reason_code: RatingReasonCode,
 ) -> anyhow::Result<()> {
-    let kind = TransactionKind::RateChannel(RateChannelArgs {
-        channel_id,
-        negative,
-        reason_code,
-    });
+    let kind = TransactionKind::RateChannel(RateChannelArgs { channel_id, negative, reason_code });
     let tx = build_signed(ctx, sender, kind).await?;
     let _ = ctx.execute_transaction_must_succeed(tx).await;
     Ok(())
@@ -274,17 +268,12 @@ pub async fn withdraw_after_timeout(
     sender: SomaAddress,
     channel_id: ObjectID,
 ) -> anyhow::Result<()> {
-    let client = ctx
-        .get_client()
-        .await
-        .map_err(|e| anyhow::anyhow!("get_client: {e}"))?;
+    let client = ctx.get_client().await.map_err(|e| anyhow::anyhow!("get_client: {e}"))?;
     let obj = client
         .get_object(channel_id)
         .await
         .map_err(|e| anyhow::anyhow!("get_object {channel_id}: {e}"))?;
-    let chan = obj
-        .as_channel()
-        .ok_or_else(|| anyhow::anyhow!("{channel_id} is not a Channel"))?;
+    let chan = obj.as_channel().ok_or_else(|| anyhow::anyhow!("{channel_id} is not a Channel"))?;
     withdraw_after_timeout_with_payee(ctx, sender, channel_id, chan.payee()).await
 }
 
@@ -297,10 +286,8 @@ pub async fn withdraw_after_timeout_with_payee(
     channel_id: ObjectID,
     payee: SomaAddress,
 ) -> anyhow::Result<()> {
-    let kind = TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
-        channel_id,
-        payee,
-    });
+    let kind =
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id, payee });
     let tx = build_signed(ctx, sender, kind).await?;
     let _ = ctx.execute_transaction_must_succeed(tx).await;
     Ok(())
@@ -311,9 +298,7 @@ async fn build_signed(
     sender: SomaAddress,
     kind: TransactionKind,
 ) -> anyhow::Result<Transaction> {
-    TransactionBuilder::new(ctx)
-        .build_transaction_async(sender, kind)
-        .await
+    TransactionBuilder::new(ctx).build_transaction_async(sender, kind).await
 }
 
 /// Compute the next voucher's cumulative amount given the previous
@@ -356,8 +341,7 @@ mod tests {
 
         let channel_id = ObjectID::random();
         let voucher = Voucher::new_amount_only(channel_id, 250);
-        let intent_msg =
-            IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
+        let intent_msg = IntentMessage::new(Intent::soma_app(IntentScope::PaymentVoucher), voucher);
         let sig: GenericSignature = Signature::new_secure(&intent_msg, &kp).into();
 
         verify_voucher(&channel, voucher, &sig).expect("verifies");

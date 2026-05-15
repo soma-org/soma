@@ -481,8 +481,8 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
 
     // Stage 13c: validator-management txs are balance-mode — gas
     // comes from the validator's USDC accumulator.
-    let signer_address: SomaAddress = handle
-        .with(|node| (&node.get_config().account_key_pair.keypair().public()).into());
+    let signer_address: SomaAddress =
+        handle.with(|node| (&node.get_config().account_key_pair.keypair().public()).into());
     let kind = handle.with(|node| {
         TransactionKind::RemoveValidator(RemoveValidatorArgs {
             pubkey_bytes: bcs::to_bytes(&node.get_config().account_key_pair.keypair().public())
@@ -521,10 +521,8 @@ async fn execute_add_validator_transactions(
     // Stage 13c: AddValidator is balance-mode — no per-tx gas coin.
     let sender_address = SomaAddress::from(&new_validator.account_key_pair.public());
     let kind = TransactionKind::AddValidator({
-        let pop = types::crypto::generate_proof_of_possession(
-            &new_validator.key_pair,
-            sender_address,
-        );
+        let pop =
+            types::crypto::generate_proof_of_possession(&new_validator.key_pair, sender_address);
         AddValidatorArgs {
             pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
             network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public()).unwrap(),
@@ -579,10 +577,7 @@ async fn execute_add_stake_transaction(
         signer_address,
         TransactionKind::AddStake { validator: address, amount: stake },
     );
-    let tx = Transaction::from_data_and_signer(
-        tx_data,
-        vec![&signer],
-    );
+    let tx = Transaction::from_data_and_signer(tx_data, vec![&signer]);
 
     info!(?tx, "Executing stake validator tx {}", address.to_string());
 
@@ -875,20 +870,14 @@ async fn test_create_advance_epoch_tx_race() {
         let tx_data = e2e_tests::stateless_tx_data(
             &test_cluster,
             sender,
-            TransactionKind::AddStake {
-                validator: validator_address,
-                amount: 1_000_000,
-            },
+            TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         );
 
         let tx = test_cluster.wallet.sign_transaction(&tx_data).await;
         submitted += 1;
 
-        match tokio::time::timeout(
-            Duration::from_secs(30),
-            test_cluster.execute_transaction(tx),
-        )
-        .await
+        match tokio::time::timeout(Duration::from_secs(30), test_cluster.execute_transaction(tx))
+            .await
         {
             Ok(response) => {
                 if response.effects.status().is_ok() {
@@ -969,10 +958,7 @@ async fn test_passive_reconfig_with_tx_load() {
         let tx_data = e2e_tests::stateless_tx_data(
             &test_cluster,
             sender,
-            TransactionKind::AddStake {
-                validator: validator_address,
-                amount: 1_000_000,
-            },
+            TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         );
 
         match tokio::time::timeout(
@@ -1090,10 +1076,7 @@ async fn test_replay_rejected_across_epoch_boundary() {
             .was_transaction_executed_in_last_epoch(&tx_digest, current_epoch)
             .unwrap()
     });
-    assert!(
-        cache_hit,
-        "executed_transaction_digests must contain the digest at (epoch=0, digest)"
-    );
+    assert!(cache_hit, "executed_transaction_digests must contain the digest at (epoch=0, digest)");
 
     // Re-submit the *identical* signed transaction. The replay-
     // protection path must reject it.

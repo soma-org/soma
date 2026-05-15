@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use ::types::object::ObjectID;
 use axum::body::Body;
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
@@ -14,7 +15,6 @@ use futures::StreamExt;
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use ::types::object::ObjectID;
 
 use crate::catalog::ModelCard;
 use crate::chain::ChannelSurface;
@@ -22,7 +22,7 @@ use crate::channel::{PaymentChannel, RunningTab};
 use crate::now_ms;
 use crate::openai::stream::{extract_usage_from_chunk, find_double_newline};
 use crate::pricing;
-use crate::server::auth::{auth_middleware, PreparedRequest, SlotGuard};
+use crate::server::auth::{PreparedRequest, SlotGuard, auth_middleware};
 use crate::server::backend::Backend;
 use crate::server::ledger::Ledger;
 
@@ -56,10 +56,7 @@ pub fn build_router(state: Arc<ProviderState>) -> Router {
 /// who lost their local proxy state recover the highest cumulative
 /// they've already authorized — the floor for their next voucher.
 /// Returns 404 if the provider has never seen this channel.
-async fn soma_channel(
-    State(state): State<Arc<ProviderState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn soma_channel(State(state): State<Arc<ProviderState>>, Path(id): Path<String>) -> Response {
     let Ok(channel_id) = id.parse::<ObjectID>() else {
         return error(StatusCode::BAD_REQUEST, "invalid_channel_id", "expected hex");
     };
@@ -123,11 +120,7 @@ async fn run_non_streaming(
     let card = state.catalog.iter().find(|c| c.id == prep.model_id).cloned();
     let card = match card {
         Some(c) => c,
-        None => return error(
-            StatusCode::BAD_REQUEST,
-            "unknown_model",
-            "model not in catalog",
-        ),
+        None => return error(StatusCode::BAD_REQUEST, "unknown_model", "model not in catalog"),
     };
     match state.backend.chat_completions(chat, headers).await {
         Ok(v) => {
@@ -135,10 +128,8 @@ async fn run_non_streaming(
             let parsed_usage = usage_val
                 .as_ref()
                 .and_then(|u| serde_json::from_value::<crate::openai::Usage>(u.clone()).ok());
-            let actual = parsed_usage
-                .as_ref()
-                .map(|u| pricing::realized_for_usage(&card, u))
-                .unwrap_or(0);
+            let actual =
+                parsed_usage.as_ref().map(|u| pricing::realized_for_usage(&card, u)).unwrap_or(0);
             let usage_breakdown = parsed_usage
                 .as_ref()
                 .map(crate::channel::RequestUsage::from_openai)
@@ -180,11 +171,7 @@ async fn run_streaming(
     let card = state.catalog.iter().find(|c| c.id == prep.model_id).cloned();
     let card = match card {
         Some(c) => c,
-        None => return error(
-            StatusCode::BAD_REQUEST,
-            "unknown_model",
-            "model not in catalog",
-        ),
+        None => return error(StatusCode::BAD_REQUEST, "unknown_model", "model not in catalog"),
     };
 
     let upstream = match state.backend.chat_completions_stream(chat, headers).await {

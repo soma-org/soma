@@ -181,9 +181,9 @@ async fn multi_apply_atomic_success() {
 
     let mut deltas: BTreeMap<(SomaAddress, CoinType), i128> = BTreeMap::new();
     deltas.insert((alice, CoinType::Usdc), -300); // alice 1000 → 700
-    deltas.insert((bob, CoinType::Usdc), 200);    // bob   500 → 700
+    deltas.insert((bob, CoinType::Usdc), 200); // bob   500 → 700
     deltas.insert((charlie, CoinType::Usdc), 100); // charlie 0 → 100
-    deltas.insert((alice, CoinType::Soma), 50);   // alice's SOMA: 200 → 250
+    deltas.insert((alice, CoinType::Soma), 50); // alice's SOMA: 200 → 250
 
     let new_balances = store.multi_apply_balance_deltas(&deltas).unwrap();
 
@@ -219,7 +219,7 @@ async fn multi_apply_atomic_failure_aborts_batch() {
     // The batch contains a valid delta for alice and an underflow for bob.
     let mut deltas: BTreeMap<(SomaAddress, CoinType), i128> = BTreeMap::new();
     deltas.insert((alice, CoinType::Usdc), -100); // valid
-    deltas.insert((bob, CoinType::Usdc), -200);   // bob has 50, would underflow
+    deltas.insert((bob, CoinType::Usdc), -200); // bob has 50, would underflow
 
     let result = store.multi_apply_balance_deltas(&deltas);
     assert!(result.is_err(), "underflow in any entry must abort the batch");
@@ -455,11 +455,8 @@ async fn settlement_underflow_aborts_with_error() {
     let alice = addr(1);
     store.set_balance(alice, CoinType::Usdc, 100).unwrap();
 
-    let err = apply_settlement(
-        &store,
-        &[BalanceEvent::withdraw(alice, CoinType::Usdc, 200)],
-    )
-    .expect_err("underflow must surface an error");
+    let err = apply_settlement(&store, &[BalanceEvent::withdraw(alice, CoinType::Usdc, 200)])
+        .expect_err("underflow must surface an error");
     assert!(format!("{}", err).contains("settlement underflow"));
 
     // Balance unchanged because the batch never wrote.
@@ -472,11 +469,8 @@ async fn settlement_overflow_aborts_with_error() {
     let alice = addr(1);
     store.set_balance(alice, CoinType::Usdc, u64::MAX).unwrap();
 
-    let err = apply_settlement(
-        &store,
-        &[BalanceEvent::deposit(alice, CoinType::Usdc, 1)],
-    )
-    .expect_err("overflow must surface an error");
+    let err = apply_settlement(&store, &[BalanceEvent::deposit(alice, CoinType::Usdc, 1)])
+        .expect_err("overflow must surface an error");
     assert!(format!("{}", err).contains("settlement overflow"));
 
     assert_eq!(store.get_balance(alice, CoinType::Usdc).unwrap(), u64::MAX);
@@ -497,8 +491,7 @@ async fn settlement_creates_balance_row_for_first_time_recipient() {
     // must succeed (current = 0 by convention).
     let store = fresh_store();
     let alice = addr(1);
-    apply_settlement(&store, &[BalanceEvent::deposit(alice, CoinType::Soma, 42)])
-        .unwrap();
+    apply_settlement(&store, &[BalanceEvent::deposit(alice, CoinType::Soma, 42)]).unwrap();
     assert_eq!(store.get_balance(alice, CoinType::Soma).unwrap(), 42);
 }
 
@@ -662,9 +655,8 @@ async fn write_one_transaction_outputs_is_atomic_across_state_families() {
         Version::from_u64(1),
         BTreeMap::new(),
     );
-    let outputs = std::sync::Arc::new(
-        TransactionOutputs::build_transaction_outputs(tx, effects, inner),
-    );
+    let outputs =
+        std::sync::Arc::new(TransactionOutputs::build_transaction_outputs(tx, effects, inner));
 
     let batch = store.build_db_batch(0, &[outputs]).unwrap();
     batch.write().unwrap();
@@ -760,9 +752,8 @@ async fn write_one_transaction_outputs_no_events_is_noop_for_balance_cf() {
         Version::from_u64(1),
         BTreeMap::new(),
     );
-    let outputs = std::sync::Arc::new(
-        TransactionOutputs::build_transaction_outputs(tx, effects, inner),
-    );
+    let outputs =
+        std::sync::Arc::new(TransactionOutputs::build_transaction_outputs(tx, effects, inner));
 
     let batch = store.build_db_batch(0, &[outputs]).unwrap();
     batch.write().unwrap();

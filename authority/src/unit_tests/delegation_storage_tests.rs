@@ -181,9 +181,8 @@ async fn apply_delegation_delta_underflow_errors() {
     let alice = addr(2);
 
     store.set_delegation(p, alice, delegation(500, 0)).unwrap();
-    let err = store
-        .apply_delegation_delta(p, alice, -1_000, None)
-        .expect_err("underflow must error");
+    let err =
+        store.apply_delegation_delta(p, alice, -1_000, None).expect_err("underflow must error");
     assert!(format!("{:?}", err).contains("underflow"), "got: {:?}", err);
     // Row unchanged after the failed apply.
     assert_eq!(store.get_delegation(p, alice).unwrap().principal, 500);
@@ -245,9 +244,8 @@ async fn total_delegated_principal_for_staker_overflow_errors() {
     store.set_delegation(pool(1), alice, delegation(u64::MAX, 0)).unwrap();
     store.set_delegation(pool(2), alice, delegation(1, 0)).unwrap();
 
-    let err = store
-        .total_delegated_principal_for_staker(alice)
-        .expect_err("total overflow must error");
+    let err =
+        store.total_delegated_principal_for_staker(alice).expect_err("total overflow must error");
     assert!(format!("{:?}", err).contains("overflow"), "got: {:?}", err);
 }
 

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tap::Pipe;
 use tracing::trace;
 
+use crate::balance::WithdrawalReservation;
 use crate::base::{AuthorityName, FullObjectID, SizeOneVec, SomaAddress};
 use crate::checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp};
 use crate::committee::{Committee, EpochId};
@@ -30,7 +31,6 @@ use crate::digests::{
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::balance::WithdrawalReservation;
 use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
 use crate::temporary_store::SharedInput;
 use crate::{
@@ -287,7 +287,8 @@ pub struct BridgeDepositArgs {
     /// committee. Order doesn't matter — verifier ecrecovers each and
     /// looks up the recovered pubkey in `BridgeState.bridge_committee.members`.
     /// Mirrors Sui's `vector<vector<u8>> signatures`.
-    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+    pub signatures:
+        std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Args for `BridgeWithdraw`. Stage 12: the withdrawn USDC is debited
@@ -311,7 +312,8 @@ pub struct BridgeEmergencyPauseArgs {
     /// otherwise. Mirrors Sui's `execute_system_message` per-type seq check.
     /// Pause and unpause SHARE this counter (both have message_type byte 2).
     pub nonce: u64,
-    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+    pub signatures:
+        std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 // --- Payment-channel arg structs ---
@@ -554,7 +556,8 @@ pub struct BridgeEmergencyUnpauseArgs {
     /// Per-message-type sequence number. Shares the same counter as pause
     /// (both have `BridgeMessageType::EmergencyOp` = byte 2).
     pub nonce: u64,
-    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+    pub signatures:
+        std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Args for `BridgeRegisterBridgeKey`. The signer (msg.sender) is the
@@ -581,7 +584,8 @@ pub struct BridgeUpdateCommitteeBlocklistArgs {
     pub nonce: u64,
     pub is_blocklist: bool,
     pub eth_addresses: Vec<[u8; 20]>,
-    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+    pub signatures:
+        std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Args for `BridgeAttachWithdrawalSignatures`.
@@ -595,7 +599,8 @@ pub struct BridgeUpdateCommitteeBlocklistArgs {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeAttachWithdrawalSignaturesArgs {
     pub nonce: u64,
-    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+    pub signatures:
+        std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
 /// Stage 7: balance-mode value transfer.
@@ -685,10 +690,7 @@ impl TransactionKind {
 
     /// True for any provider-registry tx kind.
     pub fn is_provider_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_)
-        )
+        matches!(self, TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_))
     }
 
     /// True for any per-(provider, model) offering tx kind.
@@ -737,10 +739,9 @@ impl TransactionKind {
     /// the Provider object).
     fn offering_id_input(&self) -> Option<(ObjectID, bool)> {
         match self {
-            TransactionKind::OpenChannel(args) => Some((
-                crate::offering::Offering::derive_id(args.payee, &args.model_id),
-                false,
-            )),
+            TransactionKind::OpenChannel(args) => {
+                Some((crate::offering::Offering::derive_id(args.payee, &args.model_id), false))
+            }
             TransactionKind::UpdateOffering(args) => Some((args.offering_id, true)),
             TransactionKind::DeactivateOffering(args) => Some((args.offering_id, true)),
             _ => None,
@@ -1724,11 +1725,8 @@ impl TransactionData {
         // reservation above and is checked together against the
         // sender's balance.
         if let TransactionKind::BalanceTransfer(args) = self.kind() {
-            let total: u64 = args
-                .transfers
-                .iter()
-                .map(|(_, amt)| *amt)
-                .fold(0u64, |a, b| a.saturating_add(b));
+            let total: u64 =
+                args.transfers.iter().map(|(_, amt)| *amt).fold(0u64, |a, b| a.saturating_add(b));
             if total > 0 {
                 out.push(WithdrawalReservation::new(self.sender(), args.coin_type, total));
             }
@@ -1754,11 +1752,7 @@ impl TransactionData {
         // the coin_type matches the channel and rejects otherwise.
         if let TransactionKind::TopUp(args) = self.kind() {
             if args.amount > 0 {
-                out.push(WithdrawalReservation::new(
-                    self.sender(),
-                    args.coin_type,
-                    args.amount,
-                ));
+                out.push(WithdrawalReservation::new(self.sender(), args.coin_type, args.amount));
             }
         }
         // Stage 12: BridgeWithdraw debits USDC from the sender's
@@ -1793,7 +1787,6 @@ impl TransactionData {
         }
         out
     }
-
 }
 
 /// # SenderSignedData
@@ -2426,10 +2419,8 @@ impl ObjectReadResult {
             panic!("only shared objects can be CancelledTransactionSharedObject");
         }
 
-        if let (
-            InputObjectKind::ImmOrOwnedObject(_),
-            ObjectReadResultKind::NotYetCreated(_),
-        ) = (&input_object_kind, &object)
+        if let (InputObjectKind::ImmOrOwnedObject(_), ObjectReadResultKind::NotYetCreated(_)) =
+            (&input_object_kind, &object)
         {
             panic!("only shared objects can be NotYetCreated");
         }
@@ -2463,10 +2454,9 @@ impl ObjectReadResult {
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
             ) => unreachable!(),
-            (
-                InputObjectKind::ImmOrOwnedObject(_),
-                ObjectReadResultKind::NotYetCreated(_),
-            ) => unreachable!(),
+            (InputObjectKind::ImmOrOwnedObject(_), ObjectReadResultKind::NotYetCreated(_)) => {
+                unreachable!()
+            }
             (InputObjectKind::SharedObject { mutable, .. }, _) => *mutable,
         }
     }
@@ -2504,10 +2494,9 @@ impl ObjectReadResult {
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
             ) => unreachable!(),
-            (
-                InputObjectKind::ImmOrOwnedObject(_),
-                ObjectReadResultKind::NotYetCreated(_),
-            ) => unreachable!(),
+            (InputObjectKind::ImmOrOwnedObject(_), ObjectReadResultKind::NotYetCreated(_)) => {
+                unreachable!()
+            }
             (InputObjectKind::SharedObject { .. }, _) => None,
         }
     }

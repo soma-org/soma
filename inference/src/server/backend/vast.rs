@@ -21,8 +21,8 @@ use reqwest::Client;
 use crate::catalog::{ModelCard, ModelsResponse};
 use crate::http_util::{ensure_stream_options_include_usage, pass_outbound};
 use crate::openai::ChatRequest;
-use crate::server::backend::{catalog_from_offerings, Backend};
 use crate::server::Config;
+use crate::server::backend::{Backend, catalog_from_offerings};
 
 pub struct VastBackend {
     client: Client,
@@ -33,35 +33,27 @@ pub struct VastBackend {
 
 impl VastBackend {
     pub fn new(cfg: &Config) -> anyhow::Result<Arc<Self>> {
-        let env_key = cfg
-            .backend
-            .api_key_env
-            .clone()
-            .unwrap_or_else(|| "VAST_API_KEY".to_string());
+        let env_key = cfg.backend.api_key_env.clone().unwrap_or_else(|| "VAST_API_KEY".to_string());
         let api_key = std::env::var(&env_key)
             .with_context(|| format!("env var {env_key} must be set for Vast backend"))?;
 
-        let upstream_url = match (
-            cfg.backend.upstream_url.as_ref(),
-            cfg.backend.endpoint_name.as_ref(),
-        ) {
-            (Some(u), _) => u.trim_end_matches('/').to_string(),
-            (None, Some(name)) => {
-                let name = name.trim().trim_matches('/');
-                if name.is_empty() {
-                    anyhow::bail!("vast backend: endpoint_name must not be empty");
+        let upstream_url =
+            match (cfg.backend.upstream_url.as_ref(), cfg.backend.endpoint_name.as_ref()) {
+                (Some(u), _) => u.trim_end_matches('/').to_string(),
+                (None, Some(name)) => {
+                    let name = name.trim().trim_matches('/');
+                    if name.is_empty() {
+                        anyhow::bail!("vast backend: endpoint_name must not be empty");
+                    }
+                    format!("https://openai.vast.ai/{name}")
                 }
-                format!("https://openai.vast.ai/{name}")
-            }
-            (None, None) => anyhow::bail!(
-                "vast backend: set either [backend].upstream_url or [backend].endpoint_name"
-            ),
-        };
+                (None, None) => anyhow::bail!(
+                    "vast backend: set either [backend].upstream_url or [backend].endpoint_name"
+                ),
+            };
 
         let catalog = catalog_from_offerings(&cfg.offerings, &cfg.server.public_endpoint);
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()?;
+        let client = Client::builder().timeout(std::time::Duration::from_secs(300)).build()?;
         Ok(Arc::new(Self { client, api_key, upstream_url, catalog }))
     }
 

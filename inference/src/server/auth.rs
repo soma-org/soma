@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use axum::body::{to_bytes, Body};
+use ::types::object::ObjectID;
+use axum::body::{Body, to_bytes};
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::Next;
@@ -11,7 +12,6 @@ use axum::response::{IntoResponse, Response};
 use http::HeaderValue;
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use ::types::object::ObjectID;
 
 use crate::channel::header::SomaPayHeader;
 use crate::channel::running_tab::split_combined_header;
@@ -47,9 +47,7 @@ pub async fn auth_middleware(
     let (parts, body) = req.into_parts();
     let bytes = match to_bytes(body, MAX_BODY).await {
         Ok(b) => b,
-        Err(_) => {
-            return err_response(StatusCode::BAD_REQUEST, "body_too_large", "body too large")
-        }
+        Err(_) => return err_response(StatusCode::BAD_REQUEST, "body_too_large", "body too large"),
     };
 
     let mut h = Sha256::new();
@@ -58,11 +56,13 @@ pub async fn auth_middleware(
 
     let chat: ChatRequest = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
-        Err(e) => return err_response(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            &format!("invalid chat body: {e}"),
-        ),
+        Err(e) => {
+            return err_response(
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                &format!("invalid chat body: {e}"),
+            );
+        }
     };
 
     let request_id = parts
@@ -74,11 +74,13 @@ pub async fn auth_middleware(
 
     let card = match state.catalog.iter().find(|c| c.id == chat.model) {
         Some(c) => c.clone(),
-        None => return err_response(
-            StatusCode::BAD_REQUEST,
-            "unknown_model",
-            &format!("model not in catalog: {}", chat.model),
-        ),
+        None => {
+            return err_response(
+                StatusCode::BAD_REQUEST,
+                "unknown_model",
+                &format!("model not in catalog: {}", chat.model),
+            );
+        }
     };
 
     let worst_case = pricing::worst_case_for_request(&card, &chat);
@@ -93,34 +95,37 @@ pub async fn auth_middleware(
         request_id: &request_id,
     };
 
-    let auth_header = match parts
-        .headers
-        .get(http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-    {
-        Some(s) => s,
-        None => return err_response(
-            StatusCode::UNAUTHORIZED,
-            "auth_missing",
-            "Authorization header missing",
-        ),
-    };
+    let auth_header =
+        match parts.headers.get(http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+            Some(s) => s,
+            None => {
+                return err_response(
+                    StatusCode::UNAUTHORIZED,
+                    "auth_missing",
+                    "Authorization header missing",
+                );
+            }
+        };
 
     let (somapay_str, onchain_sig) = match split_combined_header(auth_header) {
         Ok(p) => p,
-        Err(_) => return err_response(
-            StatusCode::UNAUTHORIZED,
-            "auth_malformed",
-            "SomaPay header malformed",
-        ),
+        Err(_) => {
+            return err_response(
+                StatusCode::UNAUTHORIZED,
+                "auth_malformed",
+                "SomaPay header malformed",
+            );
+        }
     };
     let parsed = match SomaPayHeader::parse(&somapay_str) {
         Ok(p) => p,
-        Err(_) => return err_response(
-            StatusCode::UNAUTHORIZED,
-            "auth_malformed",
-            "SomaPay header malformed",
-        ),
+        Err(_) => {
+            return err_response(
+                StatusCode::UNAUTHORIZED,
+                "auth_malformed",
+                "SomaPay header malformed",
+            );
+        }
     };
 
     let channel_id: ObjectID = parsed.channel_id;
@@ -132,11 +137,13 @@ pub async fn auth_middleware(
         None => {
             let chan = match state.chain.get(channel_id).await {
                 Ok(c) => c,
-                Err(_) => return err_response(
-                    StatusCode::NOT_FOUND,
-                    "channel_unknown",
-                    "channel id not found on chain",
-                ),
+                Err(_) => {
+                    return err_response(
+                        StatusCode::NOT_FOUND,
+                        "channel_unknown",
+                        "channel id not found on chain",
+                    );
+                }
             };
             // Reject channels addressed to a different payee.
             let our_addr = state.chain.signer_address();
@@ -149,21 +156,21 @@ pub async fn auth_middleware(
             }
             match state.ledger.init_slot(channel_id, &chan).await {
                 Ok(s) => s,
-                Err(e) => return err_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "ledger_init_failed",
-                    &format!("{e}"),
-                ),
+                Err(e) => {
+                    return err_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "ledger_init_failed",
+                        &format!("{e}"),
+                    );
+                }
             }
         }
     };
 
     let guard = slot.lock_owned().await;
     let mut slot_inner = guard;
-    let result = state
-        .channel
-        .pre_flight(&mut slot_inner.state, &somapay_str, &meta, worst_case)
-        .await;
+    let result =
+        state.channel.pre_flight(&mut slot_inner.state, &somapay_str, &meta, worst_case).await;
     match result {
         Ok(()) => {
             // Stash the latest on-chain sig — used at settle time.
@@ -177,7 +184,7 @@ pub async fn auth_middleware(
             }
         }
         Err(ChannelError::Expired) => {
-            return err_response(StatusCode::REQUEST_TIMEOUT, "expired", "header expired")
+            return err_response(StatusCode::REQUEST_TIMEOUT, "expired", "header expired");
         }
         Err(ChannelError::PaymentRequired { need_micros }) => {
             let mut resp = err_response(
@@ -196,20 +203,20 @@ pub async fn auth_middleware(
                 StatusCode::NOT_FOUND,
                 "channel_unknown",
                 "channel handle unknown",
-            )
+            );
         }
         Err(ChannelError::BadSignature)
         | Err(ChannelError::Malformed)
         | Err(ChannelError::NonMonotonic)
         | Err(ChannelError::OverDeposit) => {
-            return err_response(StatusCode::UNAUTHORIZED, "auth_invalid", "auth invalid")
+            return err_response(StatusCode::UNAUTHORIZED, "auth_invalid", "auth invalid");
         }
         Err(other) => {
             return err_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
                 &format!("{other}"),
-            )
+            );
         }
     }
 
@@ -239,7 +246,9 @@ pub async fn auth_middleware(
 /// post_flight, persist, then drop.
 #[derive(Clone)]
 pub struct SlotGuard(
-    pub std::sync::Arc<std::sync::Mutex<Option<tokio::sync::OwnedMutexGuard<crate::server::ledger::Slot>>>>,
+    pub  std::sync::Arc<
+        std::sync::Mutex<Option<tokio::sync::OwnedMutexGuard<crate::server::ledger::Slot>>>,
+    >,
 );
 
 impl SlotGuard {

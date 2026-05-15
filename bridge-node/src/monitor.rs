@@ -104,10 +104,7 @@ impl<C: SomaBridgeClientInner + 'static> BridgeMonitor<C> {
     /// readers will see a closed channel).
     pub fn run(self) -> JoinHandle<()> {
         tokio::spawn(async move {
-            info!(
-                poll_ms = self.poll_interval.as_millis() as u64,
-                "BridgeMonitor started",
-            );
+            info!(poll_ms = self.poll_interval.as_millis() as u64, "BridgeMonitor started",);
             let mut timer = tokio::time::interval(self.poll_interval);
             // First tick fires immediately; that's the desired warm-up
             // (we want the first observation to be fresh, not
@@ -156,23 +153,13 @@ impl<C: SomaBridgeClientInner + 'static> BridgeMonitor<C> {
                 let prev = self.committee.load();
                 let prev_len = prev.members.len();
                 let new_len = new_committee.members.len();
-                let prev_blocklisted = prev
-                    .members
-                    .values()
-                    .filter(|m| m.is_blocklisted)
-                    .count();
-                let new_blocklisted = new_committee
-                    .members
-                    .values()
-                    .filter(|m| m.is_blocklisted)
-                    .count();
+                let prev_blocklisted = prev.members.values().filter(|m| m.is_blocklisted).count();
+                let new_blocklisted =
+                    new_committee.members.values().filter(|m| m.is_blocklisted).count();
                 if prev.members != new_committee.members {
                     info!(
                         prev_len,
-                        new_len,
-                        prev_blocklisted,
-                        new_blocklisted,
-                        "bridge committee changed",
+                        new_len, prev_blocklisted, new_blocklisted, "bridge committee changed",
                     );
                     self.committee.store(Arc::new(new_committee));
                 } else {
@@ -194,13 +181,13 @@ impl<C: SomaBridgeClientInner + 'static> BridgeMonitor<C> {
 mod tests {
     use super::*;
     use crate::soma_client::tests::MockSomaClient;
-    use std::sync::atomic::Ordering;
-    use types::bridge::{BridgeChainId, BridgeCommittee, BridgeMember, BridgePubkey};
     use fastcrypto::secp256k1::Secp256k1KeyPair;
     use fastcrypto::traits::KeyPair;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use std::sync::atomic::Ordering;
     use types::base::SomaAddress;
+    use types::bridge::{BridgeChainId, BridgeCommittee, BridgeMember, BridgePubkey};
 
     fn fake_committee_with_n(n: usize) -> BridgeCommittee {
         let mut rng = StdRng::from_seed([42; 32]);
@@ -243,11 +230,7 @@ mod tests {
             if started.elapsed() > Duration::from_secs(2) {
                 panic!("paused state never propagated");
             }
-            channels
-                .bridge_paused_rx
-                .changed()
-                .await
-                .expect("watch channel closed");
+            channels.bridge_paused_rx.changed().await.expect("watch channel closed");
         }
     }
 
@@ -260,8 +243,7 @@ mod tests {
         let client = Arc::new(SomaBridgeClient::new(mock, BridgeChainId::SomaCustom));
 
         let poll = Duration::from_millis(20);
-        let (monitor, channels) =
-            BridgeMonitor::new(client.clone(), false, initial.clone(), poll);
+        let (monitor, channels) = BridgeMonitor::new(client.clone(), false, initial.clone(), poll);
         let _h = monitor.run();
 
         // After construction the ArcSwap holds the seed committee.
@@ -278,10 +260,7 @@ mod tests {
                 break;
             }
             if started.elapsed() > Duration::from_secs(2) {
-                panic!(
-                    "committee change never propagated; snapshot len = {}",
-                    snap.members.len()
-                );
+                panic!("committee change never propagated; snapshot len = {}", snap.members.len());
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -301,12 +280,10 @@ mod tests {
 
         // First observation matches initial value (no change → no
         // wake). `changed()` should time out.
-        let timed_out = tokio::time::timeout(
-            Duration::from_millis(150),
-            channels.bridge_paused_rx.changed(),
-        )
-        .await
-        .is_err();
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(150), channels.bridge_paused_rx.changed())
+                .await
+                .is_err();
         assert!(timed_out, "watch channel woke despite no upstream change");
     }
 }

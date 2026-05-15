@@ -98,10 +98,7 @@ async fn test_advance_epoch_routes_fees_to_protocol_fund() {
     let validator_rewards = result.unwrap();
 
     // Validators receive rewards from emissions (not fees).
-    assert!(
-        !validator_rewards.is_empty(),
-        "Validators should receive rewards from emissions"
-    );
+    assert!(!validator_rewards.is_empty(), "Validators should receive rewards from emissions");
 
     // Fees should land in the protocol fund.
     let fund_after = match &state {

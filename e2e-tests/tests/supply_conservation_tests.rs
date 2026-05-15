@@ -103,10 +103,7 @@ async fn test_supply_conservation_across_epoch_with_staking() {
         let tx_data = e2e_tests::stateless_tx_data(
             &test_cluster,
             sender,
-            TransactionKind::AddStake {
-                validator: validator_address,
-                amount: 1_000_000,
-            },
+            TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -178,10 +175,7 @@ async fn test_supply_conservation_multi_epoch() {
         let tx_data = e2e_tests::stateless_tx_data(
             &test_cluster,
             sender,
-            TransactionKind::AddStake {
-                validator: validator_address,
-                amount: 500_000,
-            },
+            TransactionKind::AddStake { validator: validator_address, amount: 500_000 },
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -247,10 +241,7 @@ async fn test_emission_pool_accounting() {
     let tx_data = e2e_tests::stateless_tx_data(
         &test_cluster,
         sender,
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());

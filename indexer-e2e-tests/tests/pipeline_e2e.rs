@@ -26,9 +26,7 @@ use types::effects::TransactionEffectsAPI;
 fn grpc_client_args(test_cluster: &TestCluster) -> ClientArgs {
     ClientArgs {
         ingestion: IngestionClientArgs {
-            rpc_api_url: Some(
-                test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url"),
-            ),
+            rpc_api_url: Some(test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url")),
             ..Default::default()
         },
     }
@@ -40,16 +38,15 @@ fn grpc_client_args(test_cluster: &TestCluster) -> ClientArgs {
 async fn test_transfer_coin_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-
     // Start a real network
-    let test_cluster =
-        TestClusterBuilder::new().build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     // Start the off-chain indexer stack
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a TransferCoin transaction
     let addresses = test_cluster.wallet.get_addresses();
@@ -119,14 +116,13 @@ async fn test_transfer_coin_indexed() {
 async fn test_watermarks_advance() {
     let _ = tracing_subscriber::fmt::try_init();
 
-
-    let test_cluster =
-        TestClusterBuilder::new().build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute 3 transactions to generate multiple checkpoints
     let addresses = test_cluster.wallet.get_addresses();
@@ -177,14 +173,13 @@ async fn test_watermarks_advance() {
 async fn test_objects_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-
-    let test_cluster =
-        TestClusterBuilder::new().build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction that creates/mutates objects
     let addresses = test_cluster.wallet.get_addresses();
@@ -229,14 +224,13 @@ async fn test_objects_indexed() {
 async fn test_graphql_queries_indexed_data() {
     let _ = tracing_subscriber::fmt::try_init();
 
-
-    let test_cluster =
-        TestClusterBuilder::new().build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction
     let addresses = test_cluster.wallet.get_addresses();
@@ -300,17 +294,13 @@ async fn test_graphql_queries_indexed_data() {
 async fn test_epoch_boundary_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(10_000)
-        
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_epoch_duration_ms(10_000).build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction to help the network progress
     let addresses = test_cluster.wallet.get_addresses();

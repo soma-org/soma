@@ -41,9 +41,7 @@ pub struct SomaClientBuilder {
 
 impl Default for SomaClientBuilder {
     fn default() -> Self {
-        Self {
-            request_timeout: Duration::from_secs(60),
-        }
+        Self { request_timeout: Duration::from_secs(60) }
     }
 }
 
@@ -328,4 +326,3 @@ impl SomaClient {
     // no longer exist (the balance accumulator is the sole record),
     // so there's nothing to merge.
 }
-

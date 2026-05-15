@@ -71,16 +71,9 @@ pub enum SignRequest {
     /// `EthClient::get_finalized_bridge_action_maybe`. `expected` is
     /// what each peer's response is validated against (recipient,
     /// amount, nonce, etc.).
-    EthDeposit {
-        tx_hash: [u8; 32],
-        event_idx: u16,
-        expected: BridgeAction,
-    },
+    EthDeposit { tx_hash: [u8; 32], event_idx: u16, expected: BridgeAction },
     /// Soma → Eth USDC withdrawal. Nonce-keyed on the Soma side.
-    SomaWithdrawal {
-        nonce: u64,
-        expected: BridgeAction,
-    },
+    SomaWithdrawal { nonce: u64, expected: BridgeAction },
     /// Governance action (pause/blocklist/limit-update/EVM upgrade).
     /// The full action goes in the URL; peers validate against their
     /// operator-approved whitelist.
@@ -117,19 +110,14 @@ impl PeerBroadcastAggregator {
     /// withdrawals); governance actions go fully in the URL path.
     fn dispatch(action: BridgeAction) -> SignRequest {
         match &action {
-            BridgeAction::Deposit {
-                eth_tx_hash,
-                eth_event_idx,
-                ..
-            } => SignRequest::EthDeposit {
+            BridgeAction::Deposit { eth_tx_hash, eth_event_idx, .. } => SignRequest::EthDeposit {
                 tx_hash: *eth_tx_hash,
                 event_idx: *eth_event_idx,
                 expected: action.clone(),
             },
-            BridgeAction::Withdrawal { nonce, .. } => SignRequest::SomaWithdrawal {
-                nonce: *nonce,
-                expected: action.clone(),
-            },
+            BridgeAction::Withdrawal { nonce, .. } => {
+                SignRequest::SomaWithdrawal { nonce: *nonce, expected: action.clone() }
+            }
             BridgeAction::EmergencyPause { .. }
             | BridgeAction::EmergencyUnpause { .. }
             | BridgeAction::UpdateCommitteeBlocklist { .. }
@@ -188,11 +176,9 @@ impl PeerBroadcastAggregator {
             futures.push(async move {
                 let pk = client.peer_pubkey().clone();
                 let res = match &*req {
-                    SignRequest::EthDeposit {
-                        tx_hash,
-                        event_idx,
-                        expected,
-                    } => client.request_sign_deposit(*tx_hash, *event_idx, expected).await,
+                    SignRequest::EthDeposit { tx_hash, event_idx, expected } => {
+                        client.request_sign_deposit(*tx_hash, *event_idx, expected).await
+                    }
                     SignRequest::SomaWithdrawal { nonce, expected } => {
                         client.request_sign_withdrawal(*nonce, expected).await
                     }
@@ -258,10 +244,7 @@ impl PeerBroadcastAggregator {
             skipped_bad_url,
             "aggregation finished below threshold"
         );
-        Err(BridgeError::InsufficientStake {
-            got: stake_so_far,
-            required: threshold,
-        })
+        Err(BridgeError::InsufficientStake { got: stake_so_far, required: threshold })
     }
 }
 
@@ -290,9 +273,7 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use types::base::SomaAddress;
-    use types::bridge::{
-        BridgeChainId, BridgeCommittee, BridgeMember, sign_bridge_message,
-    };
+    use types::bridge::{BridgeChainId, BridgeCommittee, BridgeMember, sign_bridge_message};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -312,10 +293,7 @@ mod tests {
         SignedBridgeAction {
             action: action.clone(),
             signer_pubkey: pk.as_bytes().to_vec(),
-            signature: BridgeSignature::from_bytes(sig.as_ref())
-                .unwrap()
-                .as_bytes()
-                .to_vec(),
+            signature: BridgeSignature::from_bytes(sig.as_ref()).unwrap().as_bytes().to_vec(),
         }
     }
 
@@ -386,10 +364,8 @@ mod tests {
         .await;
 
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
-        let cert = agg
-            .request_signatures(SignRequest::Governance(action.clone()), 7000)
-            .await
-            .unwrap();
+        let cert =
+            agg.request_signatures(SignRequest::Governance(action.clone()), 7000).await.unwrap();
         assert!(cert.signatures.len() >= 2);
         assert_eq!(cert.action, action);
     }
@@ -412,10 +388,7 @@ mod tests {
         .await;
 
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
-        let err = agg
-            .request_signatures(SignRequest::Governance(action), 5000)
-            .await
-            .unwrap_err();
+        let err = agg.request_signatures(SignRequest::Governance(action), 5000).await.unwrap_err();
         assert!(
             matches!(err, BridgeError::InsufficientStake { got: 2500, required: 5000 }),
             "{err:?}"
@@ -446,10 +419,7 @@ mod tests {
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
         // Threshold 6000 requires both A + B's stake; with B blocklisted
         // it's unreachable.
-        let err = agg
-            .request_signatures(SignRequest::Governance(action), 6000)
-            .await
-            .unwrap_err();
+        let err = agg.request_signatures(SignRequest::Governance(action), 6000).await.unwrap_err();
         assert!(
             matches!(err, BridgeError::InsufficientStake { got: 5000, required: 6000 }),
             "{err:?}"
@@ -499,10 +469,7 @@ mod tests {
         );
 
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
-        let err = agg
-            .request_signatures(SignRequest::Governance(action), 5000)
-            .await
-            .unwrap_err();
+        let err = agg.request_signatures(SignRequest::Governance(action), 5000).await.unwrap_err();
         // Only A's 3000 stake is counted.
         assert!(
             matches!(err, BridgeError::InsufficientStake { got: 3000, required: 5000 }),
@@ -526,10 +493,8 @@ mod tests {
         ])
         .await;
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
-        let cert = agg
-            .request_signatures(SignRequest::Governance(action.clone()), 5000)
-            .await
-            .unwrap();
+        let cert =
+            agg.request_signatures(SignRequest::Governance(action.clone()), 5000).await.unwrap();
         assert_eq!(cert.signatures.len(), 1);
         assert_eq!(cert.action, action);
     }
@@ -559,10 +524,7 @@ mod tests {
         // The dispatch must produce a URL whose event_idx is 7 (from
         // the action), not 0. Any other value won't match this mock.
         Mock::given(method("GET"))
-            .and(path(format!(
-                "/sign/bridge_tx/eth/soma/0x{}/7",
-                hex::encode([0xCC; 32])
-            )))
+            .and(path(format!("/sign/bridge_tx/eth/soma/0x{}/7", hex::encode([0xCC; 32]))))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "application/json")
@@ -628,10 +590,8 @@ mod tests {
             },
         );
         let agg = PeerBroadcastAggregator::new(Arc::new(ArcSwap::from_pointee(committee)));
-        let cert = agg
-            .request_signatures(SignRequest::Governance(action.clone()), 5000)
-            .await
-            .unwrap();
+        let cert =
+            agg.request_signatures(SignRequest::Governance(action.clone()), 5000).await.unwrap();
         assert_eq!(cert.action, action);
     }
 }

@@ -22,8 +22,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use types::base::SomaAddress;
 
-use crate::chain::types::*;
 use crate::chain::ProviderRegistry;
+use crate::chain::types::*;
 
 /// HTTP client over the soma-graphql `providers` query.
 #[derive(Clone)]
@@ -65,15 +65,10 @@ impl ProviderRegistry for IndexerProviderRegistry {
             .await
             .map_err(|e| ChainError::Rpc(format!("graphql post: {e}")))?;
         if !resp.status().is_success() {
-            return Err(ChainError::Rpc(format!(
-                "indexer returned status {}",
-                resp.status()
-            )));
+            return Err(ChainError::Rpc(format!("indexer returned status {}", resp.status())));
         }
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| ChainError::Rpc(format!("graphql json: {e}")))?;
+        let body: serde_json::Value =
+            resp.json().await.map_err(|e| ChainError::Rpc(format!("graphql json: {e}")))?;
         let edges = body
             .pointer("/data/providers/edges")
             .and_then(|v| v.as_array())

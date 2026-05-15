@@ -233,10 +233,7 @@ impl BridgeNodeConfig {
             return Err("Soma RPC URL is required".into());
         }
         if !self.bridge_key_path.exists() {
-            return Err(format!(
-                "Bridge key file not found: {}",
-                self.bridge_key_path.display()
-            ));
+            return Err(format!("Bridge key file not found: {}", self.bridge_key_path.display()));
         }
         Ok(())
     }

@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use ::types::channel::Channel;
 use ::types::object::ObjectID;
+use anyhow::Context as _;
 use tokio::sync::Mutex;
 
 use crate::channel::running_tab::TabProviderState;
@@ -37,10 +37,7 @@ impl Ledger {
     pub fn new(soma_home: PathBuf) -> Self {
         let base = soma_home.join("provider").join("channels");
         let _ = std::fs::create_dir_all(&base);
-        Self {
-            base,
-            cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-        }
+        Self { base, cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())) }
     }
 
     fn path_for(&self, id: &ObjectID) -> PathBuf {

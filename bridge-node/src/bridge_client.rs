@@ -74,11 +74,7 @@ impl BridgeClient {
             .timeout(DEFAULT_REQUEST_TIMEOUT)
             .build()
             .map_err(|e| BridgeError::ConfigError(format!("reqwest builder: {e}")))?;
-        Ok(Self {
-            peer_pubkey,
-            base_url: trimmed,
-            http,
-        })
+        Ok(Self { peer_pubkey, base_url: trimmed, http })
     }
 
     /// Test/inspection-only helper. Lets the aggregator log who it's
@@ -133,9 +129,12 @@ impl BridgeClient {
         url: &str,
         expected: &BridgeAction,
     ) -> BridgeResult<SignedBridgeAction> {
-        let resp = self.http.get(url).send().await.map_err(|e| {
-            BridgeError::PeerConnectionFailed(format!("GET {url}: {e}"))
-        })?;
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| BridgeError::PeerConnectionFailed(format!("GET {url}: {e}")))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -190,18 +189,13 @@ impl BridgeClient {
 pub fn governance_url(base_url: &str, action: &BridgeAction) -> BridgeResult<String> {
     use types::bridge::derive_eth_address;
     match action {
-        BridgeAction::EmergencyPause { nonce } => Ok(format!(
-            "{base_url}/sign/emergency_button/{nonce}/0"
-        )),
-        BridgeAction::EmergencyUnpause { nonce } => Ok(format!(
-            "{base_url}/sign/emergency_button/{nonce}/1"
-        )),
-        BridgeAction::UpdateCommitteeBlocklist {
-            nonce,
-            chain_id,
-            blocklist_type,
-            members,
-        } => {
+        BridgeAction::EmergencyPause { nonce } => {
+            Ok(format!("{base_url}/sign/emergency_button/{nonce}/0"))
+        }
+        BridgeAction::EmergencyUnpause { nonce } => {
+            Ok(format!("{base_url}/sign/emergency_button/{nonce}/1"))
+        }
+        BridgeAction::UpdateCommitteeBlocklist { nonce, chain_id, blocklist_type, members } => {
             // Encode each pubkey as compressed hex; the server re-derives
             // 20-byte eth addresses internally before signing.
             let keys = members
@@ -216,23 +210,14 @@ pub fn governance_url(base_url: &str, action: &BridgeAction) -> BridgeResult<Str
                 *blocklist_type as u8,
             ))
         }
-        BridgeAction::LimitUpdate {
-            nonce,
-            chain_id,
-            sending_chain_id,
-            new_usd_limit,
-        } => Ok(format!(
-            "{base_url}/sign/update_limit/{}/{nonce}/{}/{new_usd_limit}",
-            chain_id.as_u8(),
-            sending_chain_id.as_u8(),
-        )),
-        BridgeAction::EvmContractUpgrade {
-            nonce,
-            chain_id,
-            proxy,
-            new_impl,
-            call_data,
-        } => {
+        BridgeAction::LimitUpdate { nonce, chain_id, sending_chain_id, new_usd_limit } => {
+            Ok(format!(
+                "{base_url}/sign/update_limit/{}/{nonce}/{}/{new_usd_limit}",
+                chain_id.as_u8(),
+                sending_chain_id.as_u8(),
+            ))
+        }
+        BridgeAction::EvmContractUpgrade { nonce, chain_id, proxy, new_impl, call_data } => {
             let proxy_hex = format!("0x{}", hex::encode(proxy));
             let impl_hex = format!("0x{}", hex::encode(new_impl));
             if call_data.is_empty() {
@@ -282,10 +267,7 @@ mod tests {
         SignedBridgeAction {
             action: action.clone(),
             signer_pubkey: pk.as_bytes().to_vec(),
-            signature: BridgeSignature::from_bytes(sig.as_ref())
-                .unwrap()
-                .as_bytes()
-                .to_vec(),
+            signature: BridgeSignature::from_bytes(sig.as_ref()).unwrap().as_bytes().to_vec(),
         }
     }
 

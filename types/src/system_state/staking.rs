@@ -244,9 +244,8 @@ impl StakingPool {
         {
             return 0;
         }
-        let compounded = (principal as u128)
-            .saturating_mul(self.cumulative_index)
-            / index_at_last_collect;
+        let compounded =
+            (principal as u128).saturating_mul(self.cumulative_index) / index_at_last_collect;
         compounded.saturating_sub(principal as u128) as u64
     }
 
@@ -280,10 +279,8 @@ impl StakingPool {
             return;
         }
         if self.active_stake > 0 {
-            let increment = self
-                .cumulative_index
-                .saturating_mul(amount as u128)
-                / (self.active_stake as u128);
+            let increment =
+                self.cumulative_index.saturating_mul(amount as u128) / (self.active_stake as u128);
             self.cumulative_index = self.cumulative_index.saturating_add(increment);
         }
         self.active_stake = self.active_stake.saturating_add(amount);
@@ -362,12 +359,7 @@ pub struct Delegation {
 
 impl Delegation {
     pub fn new(principal: u64, index_at_last_collect: u128) -> Self {
-        Self {
-            principal,
-            index_at_last_collect,
-            pending_principal: 0,
-            pending_added_at_epoch: 0,
-        }
+        Self { principal, index_at_last_collect, pending_principal: 0, pending_added_at_epoch: 0 }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -405,8 +397,7 @@ pub fn auto_settle(delegation: &mut Delegation, pool: &StakingPool, current_epoc
         && delegation.index_at_last_collect > 0
         && current_index > delegation.index_at_last_collect
     {
-        let compounded = (delegation.principal as u128)
-            .saturating_mul(current_index)
+        let compounded = (delegation.principal as u128).saturating_mul(current_index)
             / delegation.index_at_last_collect;
         delegation.principal = compounded as u64;
     }
@@ -418,9 +409,7 @@ pub fn auto_settle(delegation: &mut Delegation, pool: &StakingPool, current_epoc
         // epoch's reward fold, i.e. the moment pending became active.
         let baseline = pool.index_at_epoch_start(delegation.pending_added_at_epoch + 1);
         let promoted = if baseline > 0 && current_index > baseline {
-            ((delegation.pending_principal as u128)
-                .saturating_mul(current_index)
-                / baseline) as u64
+            ((delegation.pending_principal as u128).saturating_mul(current_index) / baseline) as u64
         } else {
             delegation.pending_principal
         };

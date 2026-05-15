@@ -119,10 +119,7 @@ fn main() -> ExitCode {
     // Tokio is a workspace dep on bridge-node; spin a current-thread
     // runtime here rather than `#[tokio::main]` so the CLI ergonomics
     // (early exits with status codes) stay readable.
-    let rt = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
+    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("ERROR: failed to build tokio runtime: {e}");
@@ -166,12 +163,9 @@ async fn run(args: Args) -> Result<(), RunError> {
     // outbound-tx record-id derivation + metric labels. This tool only
     // *reads*, so any well-formed Soma-side chain id works. Use the
     // dev-config default to keep the construction simple.
-    let client = SomaBridgeClient::new_rpc(
-        &args.soma_rpc,
-        BridgeChainId::SomaCustom,
-    )
-    .await
-    .map_err(|e| RunError::Rpc(format!("connect: {e}")))?;
+    let client = SomaBridgeClient::new_rpc(&args.soma_rpc, BridgeChainId::SomaCustom)
+        .await
+        .map_err(|e| RunError::Rpc(format!("connect: {e}")))?;
 
     eprintln!("[2/4] Fetching BridgeState.bridge_committee ...");
     let committee = client
@@ -224,9 +218,7 @@ async fn run(args: Args) -> Result<(), RunError> {
             // Should never happen — on-chain map keys are validated at
             // insertion. If it does, the chain is in a corrupted state
             // and we don't want to paper over it.
-            RunError::Rpc(format!(
-                "stored committee pubkey failed curve validation: {e}"
-            ))
+            RunError::Rpc(format!("stored committee pubkey failed curve validation: {e}"))
         })?;
         let addr = derive_eth_address(&pk);
         derived.push((addr, *vp));
@@ -249,10 +241,8 @@ async fn run(args: Args) -> Result<(), RunError> {
     // We do this in u128 because raw_total*10000 can overflow u64 if the
     // chain ever stores stakes in something larger than BPS units.
     const TOTAL_BPS: u128 = 10_000;
-    let mut scaled: Vec<u16> = derived
-        .iter()
-        .map(|(_, vp)| (((*vp as u128) * TOTAL_BPS) / raw_total) as u16)
-        .collect();
+    let mut scaled: Vec<u16> =
+        derived.iter().map(|(_, vp)| (((*vp as u128) * TOTAL_BPS) / raw_total) as u16).collect();
 
     let scaled_sum: u128 = scaled.iter().map(|s| *s as u128).sum();
     let mut remainder = TOTAL_BPS.saturating_sub(scaled_sum) as usize;
@@ -262,12 +252,7 @@ async fn run(args: Args) -> Result<(), RunError> {
         // the largest entries. Ties broken by lower index to stay
         // deterministic.
         let mut idx: Vec<usize> = (0..derived.len()).collect();
-        idx.sort_by(|&a, &b| {
-            derived[b]
-                .1
-                .cmp(&derived[a].1)
-                .then(a.cmp(&b))
-        });
+        idx.sort_by(|&a, &b| derived[b].1.cmp(&derived[a].1).then(a.cmp(&b)));
         // If the remainder exceeds the number of members we'd be racing
         // through the loop a lot — but TOTAL_BPS=10000 and each entry
         // can absorb at most `10000 - scaled[i]` extra, so a single pass
@@ -302,11 +287,8 @@ async fn run(args: Args) -> Result<(), RunError> {
     // Build the parallel (addr, stake) slice that the JSON and the
     // digest both consume. Keep the original map order — `members.iter()`
     // on a `BTreeMap<BridgePubkey, _>` is pubkey-sorted, which is stable.
-    let members_with_stake: Vec<([u8; 20], u16)> = derived
-        .iter()
-        .zip(scaled.iter())
-        .map(|((addr, _), stake)| (*addr, *stake))
-        .collect();
+    let members_with_stake: Vec<([u8; 20], u16)> =
+        derived.iter().zip(scaled.iter()).map(|((addr, _), stake)| (*addr, *stake)).collect();
 
     // Committee digest: sort by Eth address (NOT by pubkey order — the
     // Eth-side contract identifies seats by address, so the digest
@@ -326,10 +308,7 @@ async fn run(args: Args) -> Result<(), RunError> {
 
     eprintln!("[4/4] Writing committee fields.");
     eprintln!();
-    eprintln!(
-        "       active_members           = {}",
-        members_with_stake.len()
-    );
+    eprintln!("       active_members           = {}", members_with_stake.len());
     eprintln!("       raw_total_voting_power   = {raw_total}");
     eprintln!("       normalized_stake_sum_bps = {final_sum}");
     eprintln!("       target_chain_id          = {}", args.target_chain_id);
@@ -340,20 +319,12 @@ async fn run(args: Args) -> Result<(), RunError> {
         .iter()
         .map(|(addr, _)| Value::String(format!("0x{}", hex::encode(addr))))
         .collect();
-    let stakes_json: Vec<Value> = members_with_stake
-        .iter()
-        .map(|(_, s)| Value::Number((*s).into()))
-        .collect();
+    let stakes_json: Vec<Value> =
+        members_with_stake.iter().map(|(_, s)| Value::Number((*s).into())).collect();
 
     match &args.output {
         Some(path) => {
-            write_or_merge(
-                path,
-                members_json,
-                stakes_json,
-                &digest_hex,
-                args.target_chain_id,
-            )?;
+            write_or_merge(path, members_json, stakes_json, &digest_hex, args.target_chain_id)?;
         }
         None => {
             // No output path — write the full deploy_configs JSON to
@@ -361,15 +332,10 @@ async fn run(args: Args) -> Result<(), RunError> {
             // emitted so a downstream `> file.json` redirect produces
             // a file that's structurally correct but will (loudly) fail
             // the deploy-time validation until the operator fills them.
-            let full = build_full_config(
-                members_json,
-                stakes_json,
-                &digest_hex,
-                args.target_chain_id,
-            );
-            let pretty = serde_json::to_string_pretty(&full).map_err(|e| {
-                RunError::Io(format!("serialize JSON: {e}"))
-            })?;
+            let full =
+                build_full_config(members_json, stakes_json, &digest_hex, args.target_chain_id);
+            let pretty = serde_json::to_string_pretty(&full)
+                .map_err(|e| RunError::Io(format!("serialize JSON: {e}")))?;
             println!("{pretty}");
         }
     }
@@ -419,35 +385,21 @@ fn write_or_merge(
         // ordering of object keys (it uses a BTreeMap by default unless
         // `preserve_order` is enabled — and even with BTreeMap, ordering
         // is stable). The operator's other fields ride through untouched.
-        let existing = fs::read_to_string(path).map_err(|e| {
-            RunError::Io(format!("read {}: {e}", path.display()))
-        })?;
-        let mut parsed: Value = serde_json::from_str(&existing).map_err(|e| {
-            RunError::Io(format!("parse {} as JSON: {e}", path.display()))
-        })?;
+        let existing = fs::read_to_string(path)
+            .map_err(|e| RunError::Io(format!("read {}: {e}", path.display())))?;
+        let mut parsed: Value = serde_json::from_str(&existing)
+            .map_err(|e| RunError::Io(format!("parse {} as JSON: {e}", path.display())))?;
         let obj = parsed.as_object_mut().ok_or_else(|| {
-            RunError::Io(format!(
-                "{}: top-level JSON value is not an object",
-                path.display()
-            ))
+            RunError::Io(format!("{}: top-level JSON value is not an object", path.display()))
         })?;
         obj.insert("committeeMembers".to_string(), Value::Array(members));
         obj.insert("committeeStake".to_string(), Value::Array(stakes));
-        obj.insert(
-            "somaCommitteeDigest".to_string(),
-            Value::String(digest_hex.to_string()),
-        );
+        obj.insert("somaCommitteeDigest".to_string(), Value::String(digest_hex.to_string()));
 
-        eprintln!(
-            "       Merged committee fields into existing {}",
-            path.display()
-        );
+        eprintln!("       Merged committee fields into existing {}", path.display());
         parsed
     } else {
-        eprintln!(
-            "       File {} did not exist — writing fresh template.",
-            path.display()
-        );
+        eprintln!("       File {} did not exist — writing fresh template.", path.display());
         build_full_config(members, stakes, digest_hex, target_chain_id)
     };
 
@@ -455,17 +407,13 @@ fn write_or_merge(
     // emits 2-space by default — explicit here for clarity / future-proofing.
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
     let mut buf = Vec::new();
-    let mut ser =
-        serde_json::Serializer::with_formatter(&mut buf, formatter);
-    serde::Serialize::serialize(&value, &mut ser).map_err(|e| {
-        RunError::Io(format!("serialize merged JSON: {e}"))
-    })?;
+    let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+    serde::Serialize::serialize(&value, &mut ser)
+        .map_err(|e| RunError::Io(format!("serialize merged JSON: {e}")))?;
     // Trailing newline for POSIX-friendly diffs.
     buf.push(b'\n');
 
-    fs::write(path, &buf).map_err(|e| {
-        RunError::Io(format!("write {}: {e}", path.display()))
-    })?;
+    fs::write(path, &buf).map_err(|e| RunError::Io(format!("write {}: {e}", path.display())))?;
     eprintln!("       Wrote {}", path.display());
 
     Ok(())

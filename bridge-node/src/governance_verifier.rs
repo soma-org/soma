@@ -118,10 +118,7 @@ mod tests {
     fn test_unapproved_action_rejected() {
         let v = GovernanceVerifier::new(vec![pause(7)]).unwrap();
         // Different nonce — different digest — not in whitelist.
-        assert!(matches!(
-            v.verify(pause(8)),
-            Err(BridgeError::GovernanceActionIsNotApproved),
-        ));
+        assert!(matches!(v.verify(pause(8)), Err(BridgeError::GovernanceActionIsNotApproved),));
     }
 
     #[test]
@@ -139,10 +136,7 @@ mod tests {
         // Even with a non-empty whitelist, a Deposit can never be
         // approved via this path — token transfers are server-verified
         // via the chain (eth_client::get_finalized_bridge_action_maybe).
-        assert!(matches!(
-            v.verify(deposit(1)),
-            Err(BridgeError::ActionIsNotGovernanceAction),
-        ));
+        assert!(matches!(v.verify(deposit(1)), Err(BridgeError::ActionIsNotGovernanceAction),));
     }
 
     #[test]
@@ -158,9 +152,6 @@ mod tests {
     #[test]
     fn test_empty_whitelist_rejects_everything() {
         let v = GovernanceVerifier::default();
-        assert!(matches!(
-            v.verify(pause(1)),
-            Err(BridgeError::GovernanceActionIsNotApproved),
-        ));
+        assert!(matches!(v.verify(pause(1)), Err(BridgeError::GovernanceActionIsNotApproved),));
     }
 }

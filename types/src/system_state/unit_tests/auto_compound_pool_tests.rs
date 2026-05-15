@@ -13,9 +13,7 @@
 //! below and indirectly by every multi-epoch test here.
 
 use crate::object::ObjectID;
-use crate::system_state::staking::{
-    Delegation, F1_INDEX_SCALE, StakingPool, auto_settle,
-};
+use crate::system_state::staking::{Delegation, F1_INDEX_SCALE, StakingPool, auto_settle};
 
 fn pool() -> StakingPool {
     StakingPool::new(ObjectID::new([7; 32]))
@@ -122,8 +120,12 @@ fn consecutive_deposits_compound_multiplicatively() {
     // (within 1 part per 1e18 of integer rounding).
     let expected_full_ratio = F1_INDEX_SCALE * 12 / 10;
     let diff = expected_total.abs_diff(expected_full_ratio);
-    assert!(diff <= 1, "compounded ratio matches 1.2× within rounding, got {} vs {}",
-        expected_total, expected_full_ratio);
+    assert!(
+        diff <= 1,
+        "compounded ratio matches 1.2× within rounding, got {} vs {}",
+        expected_total,
+        expected_full_ratio
+    );
 }
 
 /// Zero-reward deposit is a no-op — index doesn't move, stake
@@ -236,10 +238,7 @@ fn full_drain_then_deposit_no_underflow() {
 
     p.deposit_staker_rewards(100_000_000);
     assert_eq!(p.active_stake, 100_000_000);
-    assert_eq!(
-        p.cumulative_index, F1_INDEX_SCALE,
-        "no index advance — no stake to compound for",
-    );
+    assert_eq!(p.cumulative_index, F1_INDEX_SCALE, "no index advance — no stake to compound for",);
 }
 
 /// `remove_active_stake` saturates rather than panicking on
@@ -418,7 +417,9 @@ fn matured_pending_earns_from_next_epoch() {
     assert!(
         (alice_expected_lo..=alice_expected_hi).contains(&alice.principal),
         "alice in [{}, {}], got {}",
-        alice_expected_lo, alice_expected_hi, alice.principal,
+        alice_expected_lo,
+        alice_expected_hi,
+        alice.principal,
     );
 
     let carol_expected_lo = 1_095_238_000u64;
@@ -426,7 +427,9 @@ fn matured_pending_earns_from_next_epoch() {
     assert!(
         (carol_expected_lo..=carol_expected_hi).contains(&carol.principal),
         "carol in [{}, {}], got {}",
-        carol_expected_lo, carol_expected_hi, carol.principal,
+        carol_expected_lo,
+        carol_expected_hi,
+        carol.principal,
     );
 
     // Conservation: total principals match active_stake within
@@ -654,8 +657,7 @@ fn pool_active_stake_equals_sum_of_settled_principals() {
     auto_settle(&mut carol, &p, 3);
     auto_settle(&mut dave, &p, 3);
 
-    let sum =
-        alice.principal + bob.principal + carol.principal + dave.principal;
+    let sum = alice.principal + bob.principal + carol.principal + dave.principal;
     let unclaimed = p.active_stake.saturating_sub(sum);
     let overclaimed = sum.saturating_sub(p.active_stake);
     assert!(
@@ -664,14 +666,8 @@ fn pool_active_stake_equals_sum_of_settled_principals() {
         sum,
         p.active_stake,
     );
-    assert_eq!(
-        carol.pending_principal, 0,
-        "carol's pending was promoted on settle",
-    );
-    assert_eq!(
-        dave.pending_principal, 0,
-        "dave's pending was promoted on settle",
-    );
+    assert_eq!(carol.pending_principal, 0, "carol's pending was promoted on settle",);
+    assert_eq!(dave.pending_principal, 0, "dave's pending was promoted on settle",);
 }
 
 // =============================================================================

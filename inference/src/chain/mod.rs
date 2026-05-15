@@ -17,11 +17,11 @@ pub mod indexer;
 pub mod memory;
 pub mod types;
 
-use async_trait::async_trait;
 use ::types::base::SomaAddress;
 use ::types::channel::{Channel, Voucher};
 use ::types::crypto::GenericSignature;
 use ::types::object::{CoinType, ObjectID};
+use async_trait::async_trait;
 
 pub use self::types::*;
 
@@ -54,11 +54,7 @@ pub trait ChannelSurface: Send + Sync + 'static {
 
     /// Settle on-chain (provider-side caller). Submits the latest
     /// voucher signature.
-    async fn settle(
-        &self,
-        voucher: Voucher,
-        sig: GenericSignature,
-    ) -> Result<(), ChainError>;
+    async fn settle(&self, voucher: Voucher, sig: GenericSignature) -> Result<(), ChainError>;
 
     /// Top up the deposit (payer-only on-chain).
     async fn top_up(

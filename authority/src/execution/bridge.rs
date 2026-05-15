@@ -27,8 +27,8 @@ use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
     BridgeAttachWithdrawalSignaturesArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
-    BridgeEmergencyUnpauseArgs, BridgeRegisterBridgeKeyArgs,
-    BridgeUpdateCommitteeBlocklistArgs, BridgeWithdrawArgs, TransactionKind,
+    BridgeEmergencyUnpauseArgs, BridgeRegisterBridgeKeyArgs, BridgeUpdateCommitteeBlocklistArgs,
+    BridgeWithdrawArgs, TransactionKind,
 };
 
 use super::TransactionExecutor;
@@ -120,16 +120,15 @@ impl BridgeExecutor {
         let mut total_stake: u64 = 0;
 
         for (claimed_pubkey, sig) in signatures {
-            let recoverable_sig =
-                Secp256k1RecoverableSignature::from_bytes(sig.as_slice()).map_err(|_| {
+            let recoverable_sig = Secp256k1RecoverableSignature::from_bytes(sig.as_slice())
+                .map_err(|_| {
                     ExecutionFailureStatus::SomaError(SomaError::from(
                         "Invalid ECDSA recoverable signature".to_string(),
                     ))
                 })?;
 
-            let recovered_pubkey: Secp256k1PublicKey = recoverable_sig
-                .recover_with_hash::<Keccak256>(message)
-                .map_err(|_| {
+            let recovered_pubkey: Secp256k1PublicKey =
+                recoverable_sig.recover_with_hash::<Keccak256>(message).map_err(|_| {
                     ExecutionFailureStatus::SomaError(SomaError::from(
                         "ECDSA signature recovery failed".to_string(),
                     ))
@@ -353,9 +352,8 @@ impl BridgeExecutor {
         // and begin off-chain signing for Ethereum release
         let bridge = state.bridge_state_mut();
         let nonce = bridge.next_withdrawal_nonce;
-        bridge.next_withdrawal_nonce = nonce
-            .checked_add(1)
-            .ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
+        bridge.next_withdrawal_nonce =
+            nonce.checked_add(1).ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
 
         // Debit the conservation-invariant supply counter. A
         // `checked_sub` failure here is a *real* bug, not just an
@@ -407,9 +405,7 @@ impl BridgeExecutor {
                 Version::MIN,
                 bcs::to_bytes(&pending).unwrap(),
             ),
-            Owner::Shared {
-                initial_shared_version: types::object::OBJECT_START_VERSION,
-            },
+            Owner::Shared { initial_shared_version: types::object::OBJECT_START_VERSION },
             tx_digest,
         );
         store.create_object(withdrawal_object);
@@ -448,9 +444,8 @@ impl BridgeExecutor {
         // the EmergencyOp counter — mirrors Sui's `execute_system_message`
         // which dispatches by message_type byte and increments the per-type
         // seq num.
-        let expected = bridge.expected_system_message_seq(
-            types::bridge::BridgeMessageType::EmergencyOp,
-        );
+        let expected =
+            bridge.expected_system_message_seq(types::bridge::BridgeMessageType::EmergencyOp);
         if args.nonce != expected {
             return Err(ExecutionFailureStatus::BridgeSystemMessageSeqMismatch {
                 expected,
@@ -502,9 +497,8 @@ impl BridgeExecutor {
         }
 
         // Per-message-type seq num replay defense — shared with pause.
-        let expected = bridge.expected_system_message_seq(
-            types::bridge::BridgeMessageType::EmergencyOp,
-        );
+        let expected =
+            bridge.expected_system_message_seq(types::bridge::BridgeMessageType::EmergencyOp);
         if args.nonce != expected {
             return Err(ExecutionFailureStatus::BridgeSystemMessageSeqMismatch {
                 expected,
@@ -587,7 +581,8 @@ impl BridgeExecutor {
         for (existing_addr, existing_reg) in &bridge.bridge_registrations {
             if existing_reg.bridge_pubkey == args.bridge_pubkey && *existing_addr != signer {
                 return Err(ExecutionFailureStatus::SomaError(SomaError::from(
-                    "BridgeRegisterBridgeKey: pubkey already registered by a different validator".to_string(),
+                    "BridgeRegisterBridgeKey: pubkey already registered by a different validator"
+                        .to_string(),
                 )));
             }
         }
@@ -653,8 +648,7 @@ impl BridgeExecutor {
         } else {
             types::bridge::BlocklistType::Unblocklist
         };
-        let payload =
-            types::bridge::encode_blocklist_payload(blocklist_type, &args.eth_addresses);
+        let payload = types::bridge::encode_blocklist_payload(blocklist_type, &args.eth_addresses);
         let message = types::bridge::encode_bridge_message(
             types::bridge::BridgeMessageType::UpdateCommitteeBlocklist,
             types::bridge::BRIDGE_MESSAGE_VERSION,
@@ -687,18 +681,15 @@ impl BridgeExecutor {
                 }
             }
             if !found {
-                return Err(ExecutionFailureStatus::SomaError(SomaError::from(
-                    format!(
-                        "Blocklist payload contains unknown committee eth address 0x{}",
-                        hex::encode(target)
-                    ),
-                )));
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Blocklist payload contains unknown committee eth address 0x{}",
+                    hex::encode(target)
+                ))));
             }
         }
 
-        bridge.consume_system_message_seq(
-            types::bridge::BridgeMessageType::UpdateCommitteeBlocklist,
-        );
+        bridge
+            .consume_system_message_seq(types::bridge::BridgeMessageType::UpdateCommitteeBlocklist);
 
         Self::commit_system_state(store, state_object, &state)?;
         Ok(())
@@ -741,9 +732,7 @@ impl BridgeExecutor {
         );
         let withdrawal_object = store
             .read_object(&withdrawal_id)
-            .ok_or(ExecutionFailureStatus::ObjectNotFound {
-                object_id: withdrawal_id,
-            })?
+            .ok_or(ExecutionFailureStatus::ObjectNotFound { object_id: withdrawal_id })?
             .clone();
         let mut pending: PendingWithdrawal =
             bcs::from_bytes(withdrawal_object.as_inner().data.contents()).map_err(|e| {
@@ -791,10 +780,8 @@ impl BridgeExecutor {
         )?;
 
         // Attach cert and persist the mutated object.
-        pending.verified_signatures = Some(WithdrawalCertificate {
-            signatures: args.signatures,
-            attached_at_epoch,
-        });
+        pending.verified_signatures =
+            Some(WithdrawalCertificate { signatures: args.signatures, attached_at_epoch });
         let mut updated = withdrawal_object;
         updated.data.update_contents(bcs::to_bytes(&pending).unwrap());
         store.mutate_input_object(updated);

@@ -21,17 +21,14 @@ use types::system_state::staking::Delegation;
 fn collect_delegations(
     test_cluster: &test_cluster::TestCluster,
 ) -> BTreeMap<(ObjectID, SomaAddress), Delegation> {
-    test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .database_for_testing()
-                .iter_all_delegations()
-                .expect("delegation scan")
-                .into_iter()
-                .collect()
-        })
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .database_for_testing()
+            .iter_all_delegations()
+            .expect("delegation scan")
+            .into_iter()
+            .collect()
+    })
 }
 
 /// Stage 9d-C1 invariant: after the chain advances at least one
@@ -61,16 +58,12 @@ async fn delegations_table_populated_after_epoch_change() {
          self-stake from epoch 0 — empty table indicates the backfill didn't fire",
     );
     let pre_count = pre_delegations.len();
-    let pre_total: u128 =
-        pre_delegations.values().map(|d| d.principal as u128).sum();
+    let pre_total: u128 = pre_delegations.values().map(|d| d.principal as u128).sum();
 
-    test_cluster
-        .wait_for_epoch_with_timeout(Some(1), std::time::Duration::from_secs(30))
-        .await;
+    test_cluster.wait_for_epoch_with_timeout(Some(1), std::time::Duration::from_secs(30)).await;
 
     let post_delegations = collect_delegations(&test_cluster);
-    let post_total: u128 =
-        post_delegations.values().map(|d| d.principal as u128).sum();
+    let post_total: u128 = post_delegations.values().map(|d| d.principal as u128).sum();
 
     // F1 schema: validator commission credits accumulate into the
     // existing self-stake row rather than spawning new rows. So the
@@ -97,9 +90,8 @@ async fn delegations_table_populated_after_epoch_change() {
             "delegation row {:?} has zero principal — should have been pruned",
             key
         );
-        let pre = pre_delegations
-            .get(key)
-            .expect("post-epoch row must mirror a genesis row by key");
+        let pre =
+            pre_delegations.get(key).expect("post-epoch row must mirror a genesis row by key");
         assert!(
             post.principal >= pre.principal,
             "validator {:?} commission credit must not shrink principal: pre={} post={}",
@@ -158,8 +150,7 @@ async fn delegations_table_populated_after_epoch_change() {
                 obj_row.index_at_last_collect, cf_row.index_at_last_collect,
                 "F1: index_at_last_collect divergence between CF and \
                  DelegationAccumulator object for ({:?}, {:?}): cf={} obj={}",
-                pool_id, staker,
-                cf_row.index_at_last_collect, obj_row.index_at_last_collect,
+                pool_id, staker, cf_row.index_at_last_collect, obj_row.index_at_last_collect,
             );
             assert_eq!(
                 obj_row.pending_principal, cf_row.pending_principal,

@@ -1,6 +1,5 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 100
 expression: stdout
 ---
 Run the local agent-facing proxy on `127.0.0.1:<port>`.
@@ -41,6 +40,17 @@ Options:
 
       --indexer-url <INDEXER_URL>
           GraphQL HTTP endpoint of the indexer. Required: provider discovery and (in `weighted` mode) reputation are sourced from here
+
+      --trusted-providers-url <TRUSTED_PROVIDERS_URL>
+          HTTP endpoint of the points service that publishes the per-season authorized-providers allowlist (e.g. `https://points.soma.org`). When set, the proxy refreshes the allowlist periodically and skips routing to any provider not on it. somacode defaults to ON via the `points.soma.org` endpoint; set `--include-untrusted` to opt out
+
+      --trusted-providers-refresh-secs <TRUSTED_PROVIDERS_REFRESH_SECS>
+          Refresh interval (seconds) for the trusted-providers snapshot. Defaults to 10 minutes — short enough to pick up a fresh authorization quickly without hammering the points service
+          
+          [default: 600]
+
+      --include-untrusted
+          Disable the trusted-providers filter entirely. Routes through every provider that satisfies the price / SLA filters regardless of authorization status. Use this in localnet, in tests, and when running with a custom `--indexer-url` whose providers aren't on the public points list
 
   -h, --help
           Print help (see a summary with '-h')

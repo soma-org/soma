@@ -8,10 +8,10 @@
 //! reconciles realized cost on the streamed `usage` chunk.
 
 pub mod config;
-pub mod state;
 mod relay;
 mod router;
 mod server;
+pub mod state;
 mod trusted;
 pub use trusted::TrustedProviders;
 
@@ -19,9 +19,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ::types::base::SomaAddress;
 use anyhow::Context as _;
 use sdk::wallet_context::WalletContext;
-use ::types::base::SomaAddress;
 
 pub use config::Config;
 
@@ -45,16 +45,10 @@ pub async fn run(
     // Stateless on disk — purely in-memory channel cache. On first
     // request the router rehydrates from the chain / the provider.
     let store = state::ClientStore::new();
-    let channel =
-        Arc::new(crate::channel::RunningTab::for_client(wallet.clone(), address));
+    let channel = Arc::new(crate::channel::RunningTab::for_client(wallet.clone(), address));
 
-    let inner_router = Arc::new(router::Router::new(
-        registry.clone(),
-        chain.clone(),
-        store,
-        cfg.clone(),
-        address,
-    ));
+    let inner_router =
+        Arc::new(router::Router::new(registry.clone(), chain.clone(), store, cfg.clone(), address));
 
     // Initial discovery refresh — best-effort.
     {
@@ -70,15 +64,9 @@ pub async fn run(
         });
     }
 
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()?;
-    let relay_ctx = relay::RelayCtx {
-        channel: channel.clone(),
-        http,
-        wallet: wallet.clone(),
-        signer: address,
-    };
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
+    let relay_ctx =
+        relay::RelayCtx { channel: channel.clone(), http, wallet: wallet.clone(), signer: address };
 
     let cs = Arc::new(server::ClientState { router: inner_router, relay: relay_ctx });
     let app = server::build_router(cs);

@@ -110,9 +110,8 @@ impl ProviderExecutor {
             .read_object(&args.provider_id)
             .ok_or(ExecutionFailureStatus::ProviderNotFound)?
             .clone();
-        let mut provider = provider_object
-            .as_provider()
-            .ok_or(ExecutionFailureStatus::ProviderNotFound)?;
+        let mut provider =
+            provider_object.as_provider().ok_or(ExecutionFailureStatus::ProviderNotFound)?;
 
         // Defense in depth: even though `provider_id` matches the
         // signer-derived id, verify the loaded record's `address`
@@ -263,10 +262,7 @@ mod tests {
                 TransactionDigest::default(),
             )
             .expect_err("empty endpoint must fail");
-        assert!(matches!(
-            err,
-            ExecutionFailureStatus::ProviderInvalidEndpoint { .. }
-        ));
+        assert!(matches!(err, ExecutionFailureStatus::ProviderInvalidEndpoint { .. }));
     }
 
     #[test]
@@ -283,10 +279,7 @@ mod tests {
                 TransactionDigest::default(),
             )
             .expect_err("oversize endpoint must fail");
-        assert!(matches!(
-            err,
-            ExecutionFailureStatus::ProviderInvalidEndpoint { .. }
-        ));
+        assert!(matches!(err, ExecutionFailureStatus::ProviderInvalidEndpoint { .. }));
     }
 
     #[test]
@@ -324,10 +317,7 @@ mod tests {
         exec.execute_update(
             &mut store,
             signer,
-            UpdateProviderArgs {
-                provider_id,
-                endpoint: "https://stable.example".into(),
-            },
+            UpdateProviderArgs { provider_id, endpoint: "https://stable.example".into() },
             TransactionDigest::default(),
         )
         .expect("same-endpoint update succeeds");
@@ -350,10 +340,7 @@ mod tests {
             .execute_update(
                 &mut store,
                 attacker,
-                UpdateProviderArgs {
-                    provider_id,
-                    endpoint: "https://hijacked.example".into(),
-                },
+                UpdateProviderArgs { provider_id, endpoint: "https://hijacked.example".into() },
                 TransactionDigest::default(),
             )
             .expect_err("wrong signer must fail");

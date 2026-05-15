@@ -25,15 +25,11 @@ use rpc::proto::soma::{
 };
 use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
-use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state,
-};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state};
 
 /// Build a genesis checkpoint with system state.
 fn genesis_checkpoint() -> Checkpoint {
-    TestCheckpointBuilder::new(0)
-        .with_genesis_system_state(default_test_system_state())
-        .build()
+    TestCheckpointBuilder::new(0).with_genesis_system_state(default_test_system_state()).build()
 }
 
 /// Build a transfer checkpoint at sequence_number=1.

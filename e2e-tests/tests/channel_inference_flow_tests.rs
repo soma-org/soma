@@ -82,14 +82,7 @@ struct RunningSession {
 
 impl RunningSession {
     fn new(channel_id: ObjectID, payer: SomaAddress, payee: SomaAddress) -> Self {
-        Self {
-            channel_id,
-            payer,
-            payee,
-            cumulative: 0,
-            latest_sig: None,
-            total_authorized: 0,
-        }
+        Self { channel_id, payer, payee, cumulative: 0, latest_sig: None, total_authorized: 0 }
     }
 
     /// Authorize an additional `amount` of spend by signing a fresh
@@ -311,10 +304,7 @@ async fn submit_withdraw(
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         payer,
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
-            channel_id,
-            payee,
-        }),
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id, payee }),
     );
     let signed = test_cluster.wallet.sign_transaction(&tx_data).await;
     let r = test_cluster
@@ -343,10 +333,7 @@ fn assert_failure_kind(status: &ExecutionStatus, expected: &str) {
         ExecutionStatus::Success => panic!("expected failure ({expected}), got success"),
         ExecutionStatus::Failure { error } => {
             let dbg = format!("{:?}", error);
-            assert!(
-                dbg.contains(expected),
-                "expected error to contain {expected:?}, got {dbg}"
-            );
+            assert!(dbg.contains(expected), "expected error to contain {expected:?}, got {dbg}");
         }
     }
 }
@@ -409,11 +396,9 @@ async fn proxy_provider_long_running_session() {
     // 3. Top up — channel deposit grows by the amount, channel keeps
     //    running. (Run 3 more requests after to prove it works.)
     let topup_amount = 100_000;
-    let status = submit_top_up(
-        &test_cluster, payer, channel_id, CoinType::Usdc, topup_amount,
-    )
-    .await
-    .expect("topup tx executes");
+    let status = submit_top_up(&test_cluster, payer, channel_id, CoinType::Usdc, topup_amount)
+        .await
+        .expect("topup tx executes");
     assert!(status.is_ok(), "TopUp must succeed: {status:?}");
     let after_topup = read_channel(&test_cluster, channel_id).unwrap();
     assert_eq!(
@@ -484,11 +469,7 @@ async fn proxy_provider_long_running_session() {
         total_settled,
     );
     // Payee gained `total_settled` minus 8 Settle gas fees.
-    assert!(
-        payee_net_credit > 0,
-        "payee net credit {} must be positive",
-        payee_net_credit,
-    );
+    assert!(payee_net_credit > 0, "payee net credit {} must be positive", payee_net_credit,);
     assert!(
         payee_net_credit <= total_settled,
         "payee net credit {} cannot exceed total_settled {}",
@@ -496,12 +477,7 @@ async fn proxy_provider_long_running_session() {
         total_settled,
     );
 
-    info!(
-        total_settled,
-        payer_net_debit,
-        payee_net_credit,
-        "long-running session closed cleanly",
-    );
+    info!(total_settled, payer_net_debit, payee_net_credit, "long-running session closed cleanly",);
 }
 
 /// Edge-case sweep: every channel error path the executor enforces.
@@ -531,11 +507,11 @@ async fn channel_typed_error_sweep() {
             TransactionKind::Settle(SettleArgs {
                 channel_id,
                 cumulative_amount: session.cumulative,
-            cumulative_prompt_tokens: 0,
-            cumulative_completion_tokens: 0,
-            cumulative_cache_read_tokens: 0,
-            cumulative_cache_write_tokens: 0,
-            cumulative_requests: 0,
+                cumulative_prompt_tokens: 0,
+                cumulative_completion_tokens: 0,
+                cumulative_cache_read_tokens: 0,
+                cumulative_cache_write_tokens: 0,
+                cumulative_requests: 0,
                 voucher_signature: sig.clone(),
             }),
         );
@@ -562,9 +538,7 @@ async fn channel_typed_error_sweep() {
         )
         .await
         .unwrap();
-        let status = submit_settle(&test_cluster, payee, channel_id, 500, stale_sig)
-            .await
-            .unwrap();
+        let status = submit_settle(&test_cluster, payee, channel_id, 500, stale_sig).await.unwrap();
         assert_failure_kind(&status, "ChannelVoucherNotMonotonic");
     }
 
@@ -580,9 +554,7 @@ async fn channel_typed_error_sweep() {
         )
         .await
         .unwrap();
-        let status = submit_settle(&test_cluster, payee, channel_id, huge, huge_sig)
-            .await
-            .unwrap();
+        let status = submit_settle(&test_cluster, payee, channel_id, huge, huge_sig).await.unwrap();
         assert_failure_kind(&status, "ChannelOverspend");
     }
 
@@ -599,45 +571,31 @@ async fn channel_typed_error_sweep() {
         )
         .await
         .unwrap();
-        let status = submit_settle(
-            &test_cluster,
-            payee,
-            channel_id,
-            session.cumulative + 1_000,
-            bad_sig,
-        )
-        .await
-        .unwrap();
+        let status =
+            submit_settle(&test_cluster, payee, channel_id, session.cumulative + 1_000, bad_sig)
+                .await
+                .unwrap();
         assert_failure_kind(&status, "ChannelInvalidVoucherSignature");
     }
 
     // 5. TopUp by non-payer → ChannelCallerNotPayer.
     {
-        let status = submit_top_up(
-            &test_cluster, payee, channel_id, CoinType::Usdc, 1_000,
-        )
-        .await
-        .unwrap();
+        let status =
+            submit_top_up(&test_cluster, payee, channel_id, CoinType::Usdc, 1_000).await.unwrap();
         assert_failure_kind(&status, "ChannelCallerNotPayer");
     }
 
     // 6. TopUp with wrong coin_type → ChannelCoinTypeMismatch.
     {
-        let status = submit_top_up(
-            &test_cluster, payer, channel_id, CoinType::Soma, 1_000,
-        )
-        .await
-        .unwrap();
+        let status =
+            submit_top_up(&test_cluster, payer, channel_id, CoinType::Soma, 1_000).await.unwrap();
         assert_failure_kind(&status, "ChannelCoinTypeMismatch");
     }
 
     // 7. TopUp with zero amount → ChannelAmountZero.
     {
-        let status = submit_top_up(
-            &test_cluster, payer, channel_id, CoinType::Usdc, 0,
-        )
-        .await
-        .unwrap();
+        let status =
+            submit_top_up(&test_cluster, payer, channel_id, CoinType::Usdc, 0).await.unwrap();
         assert_failure_kind(&status, "ChannelAmountZero");
     }
 
@@ -678,11 +636,8 @@ async fn channel_typed_error_sweep() {
     //     clear the close_requested_at_ms (turning the channel back
     //     into a long-running one).
     {
-        let status = submit_top_up(
-            &test_cluster, payer, channel_id, CoinType::Usdc, 5_000,
-        )
-        .await
-        .unwrap();
+        let status =
+            submit_top_up(&test_cluster, payer, channel_id, CoinType::Usdc, 5_000).await.unwrap();
         assert!(status.is_ok(), "TopUp must succeed even with close pending");
         let ch = read_channel(&test_cluster, channel_id).unwrap();
         assert!(
@@ -759,9 +714,7 @@ async fn settle_credits_payee_immediately_no_close_needed() {
     )
     .await
     .unwrap();
-    let status = submit_settle(&test_cluster, payee, channel_id, 25_000, sig)
-        .await
-        .unwrap();
+    let status = submit_settle(&test_cluster, payee, channel_id, 25_000, sig).await.unwrap();
     assert!(status.is_ok());
 
     let payee_after = read_usdc(&test_cluster, payee);
@@ -798,10 +751,7 @@ async fn channel_survives_reconfiguration() {
     // Short epochs so reconfig doesn't dominate runtime. Test
     // protocol-config sets `channel_grace_period_ms = 5_000` so we
     // wait that long after RequestClose to withdraw.
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(15_000)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_epoch_duration_ms(15_000).build().await;
     let addrs = test_cluster.wallet.get_addresses();
     let payer = addrs[0];
     let payee = addrs[1];
@@ -854,10 +804,7 @@ async fn channel_survives_reconfiguration() {
         .await
         .expect("post-reconfig settle executes");
     assert!(status.is_ok(), "Settle of post-reconfig voucher: {status:?}");
-    assert_eq!(
-        read_channel(&test_cluster, channel_id).unwrap().settled_amount(),
-        cum2,
-    );
+    assert_eq!(read_channel(&test_cluster, channel_id).unwrap().settled_amount(), cum2,);
 
     // 6. RequestClose in epoch N+1, then trigger another reconfiguration
     //    so the timer crosses an epoch boundary, then WithdrawAfterTimeout.
@@ -866,10 +813,7 @@ async fn channel_survives_reconfiguration() {
         .expect("request_close executes");
     assert!(status.is_ok(), "RequestClose: {status:?}");
     assert!(
-        read_channel(&test_cluster, channel_id)
-            .unwrap()
-            .close_requested_at_ms()
-            .is_some(),
+        read_channel(&test_cluster, channel_id).unwrap().close_requested_at_ms().is_some(),
         "close timer must be armed",
     );
 
@@ -877,32 +821,23 @@ async fn channel_survives_reconfiguration() {
     // epoch transitions.
     test_cluster.trigger_reconfiguration().await;
     assert!(
-        read_channel(&test_cluster, channel_id)
-            .unwrap()
-            .close_requested_at_ms()
-            .is_some(),
+        read_channel(&test_cluster, channel_id).unwrap().close_requested_at_ms().is_some(),
         "close timer must survive reconfig",
     );
 
     // Drive Clock past the grace boundary. The reconfiguration above
     // already consumed wall-clock time; pump a few commits to be sure.
-    let close_ts = read_channel(&test_cluster, channel_id)
-        .unwrap()
-        .close_requested_at_ms()
-        .unwrap();
+    let close_ts =
+        read_channel(&test_cluster, channel_id).unwrap().close_requested_at_ms().unwrap();
     // 5_000ms = test protocol-config grace period.
     while read_clock_ts(&test_cluster) < close_ts + 5_000 {
         drive_one_commit(&test_cluster).await;
         sleep(Duration::from_millis(200)).await;
     }
 
-    let status = submit_withdraw(&test_cluster, payer, channel_id)
-        .await
-        .expect("withdraw executes");
-    assert!(
-        status.is_ok(),
-        "WithdrawAfterTimeout across reconfig: {status:?}"
-    );
+    let status =
+        submit_withdraw(&test_cluster, payer, channel_id).await.expect("withdraw executes");
+    assert!(status.is_ok(), "WithdrawAfterTimeout across reconfig: {status:?}");
     assert!(
         read_channel(&test_cluster, channel_id).is_none(),
         "channel object must be deleted after withdraw",

@@ -23,9 +23,7 @@ use indexer_framework::IndexerArgs;
 use indexer_framework::ingestion::ClientArgs;
 use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
 use types::base::SomaAddress;
-use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state,
-};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state};
 
 /// Ingest synthetic `.binpb.zst` checkpoint files from a local directory.
 fn local_client_args(dir: &Path) -> ClientArgs {

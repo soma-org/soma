@@ -174,10 +174,7 @@ mod tests {
         ])
         .unwrap();
         sigs.insert(pk, BridgeSignature::from_bytes(&[0xCC; 65]).unwrap());
-        WithdrawalCertificate {
-            signatures: sigs,
-            attached_at_epoch: 0,
-        }
+        WithdrawalCertificate { signatures: sigs, attached_at_epoch: 0 }
     }
 
     /// **Cross-language selector proof.** The first 4 bytes of
@@ -197,11 +194,8 @@ mod tests {
     /// for a 1-signature, 72-byte-payload withdrawal release call.
     #[test]
     fn calldata_starts_with_selector() {
-        let calldata = encode_release_calldata_from_action(
-            &sample_withdrawal(),
-            &sample_cert(),
-        )
-        .unwrap();
+        let calldata =
+            encode_release_calldata_from_action(&sample_withdrawal(), &sample_cert()).unwrap();
         assert_eq!(&calldata[..4], &release_function_selector());
         // Calldata is dynamic in length depending on payload + sig
         // count; a 1-sig 72-byte-payload call comes in at >= 4 + 32 * 12 bytes.
@@ -214,8 +208,7 @@ mod tests {
     #[test]
     fn rejects_non_withdrawal_action() {
         let pause = BridgeAction::EmergencyPause { nonce: 0 };
-        let err =
-            encode_release_calldata_from_action(&pause, &sample_cert()).unwrap_err();
+        let err = encode_release_calldata_from_action(&pause, &sample_cert()).unwrap_err();
         assert!(matches!(err, BridgeError::Internal(_)));
     }
 

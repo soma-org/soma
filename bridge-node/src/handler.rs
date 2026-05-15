@@ -61,10 +61,7 @@ pub trait BridgeRequestHandlerTrait: Send + Sync {
     /// nonce-keyed rather than tx-digest-keyed (the on-chain object id
     /// is derived from `nonce`), so this is the Soma analog of Sui's
     /// `handle_sui_token_transfer`.
-    async fn handle_soma_withdrawal(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<SignedBridgeAction>;
+    async fn handle_soma_withdrawal(&self, nonce: u64) -> BridgeResult<SignedBridgeAction>;
 
     /// Sign a governance action (pause / unpause / blocklist update /
     /// limit update / EVM upgrade / committee update). The action must
@@ -122,10 +119,7 @@ impl<SC: SomaBridgeClientInner> BridgeRequestHandler<SC> {
     /// the log at `event_idx`. Encapsulates the only authority-relevant
     /// I/O — caller can wrap with caching if needed.
     async fn verify_eth(&self, tx_hash: [u8; 32], event_idx: u16) -> BridgeResult<BridgeAction> {
-        let action = self
-            .eth_client
-            .get_finalized_bridge_action_maybe(tx_hash, event_idx)
-            .await?;
+        let action = self.eth_client.get_finalized_bridge_action_maybe(tx_hash, event_idx).await?;
         info!(?action, "Eth bridge action verified");
         Ok(action)
     }
@@ -175,10 +169,7 @@ impl<SC: SomaBridgeClientInner> BridgeRequestHandlerTrait for BridgeRequestHandl
         Ok(self.sign(action))
     }
 
-    async fn handle_soma_withdrawal(
-        &self,
-        nonce: u64,
-    ) -> BridgeResult<SignedBridgeAction> {
+    async fn handle_soma_withdrawal(&self, nonce: u64) -> BridgeResult<SignedBridgeAction> {
         let action = self.verify_soma_withdrawal(nonce).await?;
         Ok(self.sign(action))
     }
@@ -230,26 +221,18 @@ mod tests {
 
     fn handler_with(
         approved: Vec<BridgeAction>,
-    ) -> (
-        BridgeRequestHandler<MockSomaClient>,
-        Arc<SomaBridgeClient<MockSomaClient>>,
-    ) {
+    ) -> (BridgeRequestHandler<MockSomaClient>, Arc<SomaBridgeClient<MockSomaClient>>) {
         let mock = MockSomaClient::new();
         let soma = Arc::new(SomaBridgeClient::new(mock, BridgeChainId::SomaCustom));
         let eth = Arc::new(EthClient::new_for_test(
             "0x0000000000000000000000000000000000000001".to_string(),
         ));
-        let h =
-            BridgeRequestHandler::new(fresh_kp(), eth, Arc::clone(&soma), approved).unwrap();
+        let h = BridgeRequestHandler::new(fresh_kp(), eth, Arc::clone(&soma), approved).unwrap();
         (h, soma)
     }
 
     fn install_withdrawal(soma: &SomaBridgeClient<MockSomaClient>, pw: PendingWithdrawal) {
-        soma.inner_for_test()
-            .pending_withdrawals
-            .lock()
-            .unwrap()
-            .insert(pw.nonce, pw);
+        soma.inner_for_test().pending_withdrawals.lock().unwrap().insert(pw.nonce, pw);
     }
 
     #[tokio::test]
@@ -364,9 +347,8 @@ mod tests {
 
     #[test]
     fn test_parse_tx_hash_rejects_wrong_length() {
-        assert!(matches!(
-            parse_tx_hash("0xabcd"),
-            Err(BridgeError::InvalidBridgeClientRequest(_)),
-        ));
+        assert!(
+            matches!(parse_tx_hash("0xabcd"), Err(BridgeError::InvalidBridgeClientRequest(_)),)
+        );
     }
 }

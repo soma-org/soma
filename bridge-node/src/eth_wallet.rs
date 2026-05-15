@@ -79,9 +79,6 @@ mod tests {
 
     #[test]
     fn wallet_rejects_invalid_key() {
-        assert!(matches!(
-            EthWallet::from_hex("not-a-key"),
-            Err(BridgeError::ConfigError(_))
-        ));
+        assert!(matches!(EthWallet::from_hex("not-a-key"), Err(BridgeError::ConfigError(_))));
     }
 }

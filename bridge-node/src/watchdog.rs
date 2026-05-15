@@ -136,10 +136,7 @@ impl BridgeWatchdog {
     /// caller can keep them alive (and abort on shutdown). Mirrors
     /// Sui's `BridgeWatchDog::run`.
     pub fn start(self) -> Vec<tokio::task::JoinHandle<()>> {
-        info!(
-            count = self.observables.len(),
-            "BridgeWatchdog: spawning observables"
-        );
+        info!(count = self.observables.len(), "BridgeWatchdog: spawning observables");
         self.observables
             .into_iter()
             .map(|obs| {
@@ -147,9 +144,7 @@ impl BridgeWatchdog {
                     let mut timer = interval(obs.interval());
                     // Skip missed ticks so a stalled observable doesn't burst
                     // out a backlog of catch-up polls when it recovers.
-                    timer.set_missed_tick_behavior(
-                        tokio::time::MissedTickBehavior::Skip,
-                    );
+                    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                     let name = obs.name().to_string();
                     info!(observable = %name, "Observable task spawned");
                     loop {
@@ -211,10 +206,7 @@ impl Observable for EthVaultBalanceObservable {
     async fn observe_and_report(&self) {
         match self
             .eth_client
-            .get_erc20_balance(
-                &self.usdc_contract_address,
-                &self.eth_bridge_contract_address,
-            )
+            .get_erc20_balance(&self.usdc_contract_address, &self.eth_bridge_contract_address)
             .await
         {
             Ok(balance) => {
@@ -305,12 +297,7 @@ impl EthBridgeStatusObservable {
         eth_bridge_contract_address: String,
         interval: Duration,
     ) -> Self {
-        Self {
-            eth_client,
-            eth_bridge_contract_address,
-            interval,
-            last_state: AtomicU32::new(0),
-        }
+        Self { eth_client, eth_bridge_contract_address, interval, last_state: AtomicU32::new(0) }
     }
 }
 
@@ -325,11 +312,7 @@ impl Observable for EthBridgeStatusObservable {
     }
 
     async fn observe_and_report(&self) {
-        match self
-            .eth_client
-            .get_bridge_paused(&self.eth_bridge_contract_address)
-            .await
-        {
+        match self.eth_client.get_bridge_paused(&self.eth_bridge_contract_address).await {
             Ok(paused) => {
                 let now = if paused { 1 } else { 2 };
                 let prev = self.last_state.swap(now, Ordering::SeqCst);
@@ -466,16 +449,10 @@ impl ConservationInvariantObservable {
     async fn check_once(&self) -> BridgeResult<bool> {
         let eth_locked = self
             .eth_client
-            .get_erc20_balance(
-                &self.usdc_contract_address,
-                &self.eth_bridge_contract_address,
-            )
+            .get_erc20_balance(&self.usdc_contract_address, &self.eth_bridge_contract_address)
             .await?;
         let soma_supply = (self.soma_supply)().await? as u128;
-        info!(
-            eth_locked,
-            soma_supply, "ConservationInvariant: paired reading"
-        );
+        info!(eth_locked, soma_supply, "ConservationInvariant: paired reading");
         let limit = eth_locked.saturating_add(self.in_flight_tolerance_micro);
         Ok(soma_supply <= limit)
     }
@@ -490,13 +467,11 @@ impl ConservationInvariantObservable {
             ))
         })?;
         let pause_action = BridgeAction::EmergencyPause { nonce };
-        submit_to_executor(&self.signing_tx, pause_action)
-            .await
-            .map_err(|e| {
-                crate::error::BridgeError::Internal(format!(
-                    "watchdog: failed to enqueue pause action: {e}"
-                ))
-            })?;
+        submit_to_executor(&self.signing_tx, pause_action).await.map_err(|e| {
+            crate::error::BridgeError::Internal(format!(
+                "watchdog: failed to enqueue pause action: {e}"
+            ))
+        })?;
         Ok(())
     }
 }
@@ -516,18 +491,13 @@ impl Observable for ConservationInvariantObservable {
             Ok(true) => {
                 let prev = self.consecutive_violations.swap(0, Ordering::SeqCst);
                 if prev > 0 {
-                    info!(
-                        was = prev,
-                        "ConservationInvariant: restored to healthy"
-                    );
+                    info!(was = prev, "ConservationInvariant: restored to healthy");
                 }
                 self.auto_pause_emitted.store(false, Ordering::SeqCst);
             }
             Ok(false) => {
-                let count = self
-                    .consecutive_violations
-                    .fetch_add(1, Ordering::SeqCst)
-                    .saturating_add(1);
+                let count =
+                    self.consecutive_violations.fetch_add(1, Ordering::SeqCst).saturating_add(1);
                 warn!(
                     consecutive_violations = count,
                     threshold = self.failure_threshold,
@@ -575,10 +545,8 @@ mod tests {
     /// expected nonce.
     #[tokio::test]
     async fn conservation_emit_auto_pause_queues_emergency_pause() {
-        let (signing_tx, mut signing_rx) =
-            mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: ExpectedPauseNonceReader =
-            Arc::new(|| Box::pin(async { Ok(42u64) }));
+        let (signing_tx, mut signing_rx) = mpsc::channel::<BridgeActionExecutionWrapper>(8);
+        let nonce_fn: ExpectedPauseNonceReader = Arc::new(|| Box::pin(async { Ok(42u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
         let obs = ConservationInvariantObservable::new(
@@ -607,25 +575,21 @@ mod tests {
     /// fires — the loop just keeps trying.
     #[tokio::test]
     async fn conservation_survives_rpc_errors() {
-        let (signing_tx, _signing_rx) =
-            mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: ExpectedPauseNonceReader =
-            Arc::new(|| Box::pin(async { Ok(0u64) }));
+        let (signing_tx, _signing_rx) = mpsc::channel::<BridgeActionExecutionWrapper>(8);
+        let nonce_fn: ExpectedPauseNonceReader = Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
-        let watchdog = BridgeWatchdog::new().with(Box::new(
-            ConservationInvariantObservable::new(
-                eth,
-                supply_reader(0),
-                "0x0".to_string(),
-                "0x0".to_string(),
-                Duration::from_millis(20),
-                100,
-                0,
-                signing_tx,
-                nonce_fn,
-            ),
-        ));
+        let watchdog = BridgeWatchdog::new().with(Box::new(ConservationInvariantObservable::new(
+            eth,
+            supply_reader(0),
+            "0x0".to_string(),
+            "0x0".to_string(),
+            Duration::from_millis(20),
+            100,
+            0,
+            signing_tx,
+            nonce_fn,
+        )));
         let handles = watchdog.start();
         tokio::time::sleep(Duration::from_millis(200)).await;
         for h in &handles {
@@ -640,10 +604,8 @@ mod tests {
     /// observe loop treats it as a missing data point (not a violation).
     #[tokio::test]
     async fn conservation_err_not_counted_as_violation() {
-        let (signing_tx, _signing_rx) =
-            mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: ExpectedPauseNonceReader =
-            Arc::new(|| Box::pin(async { Ok(0u64) }));
+        let (signing_tx, _signing_rx) = mpsc::channel::<BridgeActionExecutionWrapper>(8);
+        let nonce_fn: ExpectedPauseNonceReader = Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
 
         let obs = ConservationInvariantObservable::new(
@@ -669,13 +631,10 @@ mod tests {
     /// shape — observables can be mixed and spawned without panic.
     #[tokio::test]
     async fn registry_spawns_one_task_per_observable() {
-        let (signing_tx, _rx) =
-            mpsc::channel::<BridgeActionExecutionWrapper>(8);
-        let nonce_fn: ExpectedPauseNonceReader =
-            Arc::new(|| Box::pin(async { Ok(0u64) }));
+        let (signing_tx, _rx) = mpsc::channel::<BridgeActionExecutionWrapper>(8);
+        let nonce_fn: ExpectedPauseNonceReader = Arc::new(|| Box::pin(async { Ok(0u64) }));
         let eth = Arc::new(EthClient::new_for_test("0x0".to_string()));
-        let paused_reader: SomaPausedReader =
-            Arc::new(|| Box::pin(async { Ok(false) }));
+        let paused_reader: SomaPausedReader = Arc::new(|| Box::pin(async { Ok(false) }));
 
         let watchdog = BridgeWatchdog::new()
             .with(Box::new(EthVaultBalanceObservable::new(

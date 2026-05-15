@@ -17,8 +17,8 @@ use crate::pipeline::CommitterConfig;
 use crate::pipeline::Processor;
 use crate::pipeline::processor::processor;
 use crate::pipeline::sequential::committer::committer;
-use crate::store::Store;
 use crate::store::SequentialStore;
+use crate::store::Store;
 use crate::types::full_checkpoint_content::Checkpoint;
 
 mod committer;

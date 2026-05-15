@@ -151,7 +151,8 @@ mod staking_lifecycle_tests {
         assert!(
             post_index > pre_index,
             "cumulative_index must advance after reward, got {} -> {}",
-            pre_index, post_index,
+            pre_index,
+            post_index,
         );
         // Index stays well below u128 max at realistic rates.
         assert!(post_index < F1_INDEX_SCALE * 1000, "single-epoch index sanity");
@@ -165,9 +166,7 @@ mod staking_lifecycle_tests {
     fn voting_power_frozen_mid_epoch() {
         let mut state = set_up_4_validators();
         let v1 = validator_addr(1);
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("add");
 
         // Run an epoch so the pending stake promotes.
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
@@ -204,7 +203,8 @@ mod staking_lifecycle_tests {
         assert!(
             post_voting_power < pre_voting_power,
             "voting power must recompute on epoch advance: {} -> {}",
-            pre_voting_power, post_voting_power,
+            pre_voting_power,
+            post_voting_power,
         );
     }
 
@@ -219,9 +219,7 @@ mod staking_lifecycle_tests {
     fn withdraw_drains_pending_first() {
         let mut state = set_up_4_validators();
         let v1 = validator_addr(1);
-        let pool_id = state
-            .add_stake_to_validator(v1, 60 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id = state.add_stake_to_validator(v1, 60 * SHANNONS_PER_SOMA).expect("add");
 
         // active=100, pending=60.
         assert_eq!(pool_active_stake(&state, v1), 100 * SHANNONS_PER_SOMA);
@@ -250,9 +248,7 @@ mod staking_lifecycle_tests {
     fn withdraw_spills_into_active_when_pending_exhausted() {
         let mut state = set_up_4_validators();
         let v1 = validator_addr(1);
-        let pool_id = state
-            .add_stake_to_validator(v1, 30 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id = state.add_stake_to_validator(v1, 30 * SHANNONS_PER_SOMA).expect("add");
 
         // active=100, pending=30.
         // Withdraw 50 — drains 30 from pending and 20 from active.
@@ -335,9 +331,8 @@ mod staking_lifecycle_tests {
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
         advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
 
-        let stakes: Vec<u64> = (1..=4)
-            .map(|i| pool_active_stake(&state, validator_addr(i)))
-            .collect();
+        let stakes: Vec<u64> =
+            (1..=4).map(|i| pool_active_stake(&state, validator_addr(i))).collect();
 
         // All pools grew (received some reward).
         for s in &stakes {
@@ -376,7 +371,8 @@ mod staking_lifecycle_tests {
             assert!(
                 curr > prev,
                 "validator's active_stake must grow each epoch: {} -> {}",
-                prev, curr,
+                prev,
+                curr,
             );
             prev = curr;
         }
@@ -393,9 +389,7 @@ mod staking_lifecycle_tests {
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
 
         // Epoch 0: add 100 stake (lands in pending).
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("add");
 
         // Advance epoch — pending promotes; v1 now has 200 active.
         advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
@@ -449,12 +443,8 @@ mod staking_lifecycle_tests {
 
         // Two stakers (alice and bob) each add 100 pending to v1.
         // Pool aggregate goes to (active=100, pending=200).
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("alice add");
-        state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("bob add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("alice add");
+        state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("bob add");
 
         assert_eq!(pool_active_stake(&state, v1), 100 * SHANNONS_PER_SOMA);
         assert_eq!(pool_pending_stake(&state, v1), 200 * SHANNONS_PER_SOMA);
@@ -534,7 +524,8 @@ mod staking_lifecycle_tests {
         assert!(
             pool_growth.abs_diff(expected_total) <= 1,
             "pool grew by full reward, expected ~{}, got {}",
-            expected_total, pool_growth,
+            expected_total,
+            pool_growth,
         );
 
         // Cumulative index advance = (pre_active + staker_reward)/pre_active.
@@ -542,14 +533,14 @@ mod staking_lifecycle_tests {
         // would over-compound (their share would include commission
         // which doesn't belong to them).
         let actual_ratio = (post_index as u128) * F1_INDEX_SCALE / (pre_index as u128);
-        let expected_ratio = ((pre_active + expected_staker) as u128)
-            * F1_INDEX_SCALE
-            / (pre_active as u128);
+        let expected_ratio =
+            ((pre_active + expected_staker) as u128) * F1_INDEX_SCALE / (pre_active as u128);
         let ratio_diff = actual_ratio.abs_diff(expected_ratio);
         assert!(
             ratio_diff < F1_INDEX_SCALE / 1_000_000,
             "index advance ratio reflects staker portion only: actual={}, expected={}",
-            actual_ratio, expected_ratio,
+            actual_ratio,
+            expected_ratio,
         );
 
         // Credit map contains the commission for this validator.
@@ -557,7 +548,8 @@ mod staking_lifecycle_tests {
         assert!(
             credit.principal.abs_diff(expected_commission) <= 1,
             "credit principal must match commission: expected ~{}, got {}",
-            expected_commission, credit.principal,
+            expected_commission,
+            credit.principal,
         );
         // The credit references the validator's pool.
         let pool_id = state
@@ -639,11 +631,8 @@ mod staking_lifecycle_tests {
 
         let post_active: Vec<u64> =
             [v1, v2, v3, v4].iter().map(|a| pool_active_stake(&state, *a)).collect();
-        let growth: Vec<u64> = pre_active
-            .iter()
-            .zip(post_active.iter())
-            .map(|(pre, post)| post - pre)
-            .collect();
+        let growth: Vec<u64> =
+            pre_active.iter().zip(post_active.iter()).map(|(pre, post)| post - pre).collect();
 
         // v4 is slashed → grew by less than its 25 SOMA fair share.
         // (reward_slashing_rate is 50% by default, so v4 gets 12.5
@@ -656,7 +645,9 @@ mod staking_lifecycle_tests {
             assert!(
                 g > v4_growth,
                 "v{} (unslashed) grew {}, v4 (slashed) grew {} — unslashed must grow more",
-                i + 1, g, v4_growth,
+                i + 1,
+                g,
+                v4_growth,
             );
         }
         // Equal-stake unslashed validators get equal share of
@@ -675,7 +666,8 @@ mod staking_lifecycle_tests {
         assert!(
             total_growth.abs_diff(expected_total) <= 4,
             "total pool growth must equal total reward (within rounding): expected {}, got {}",
-            expected_total, total_growth,
+            expected_total,
+            total_growth,
         );
 
         // Sanity: v4's growth is positive but less than 25 SOMA (1/4
@@ -694,21 +686,16 @@ mod staking_lifecycle_tests {
     #[test]
     fn no_reports_means_equal_growth_for_equal_stake() {
         let mut state = set_up_4_validators();
-        let pre_active: Vec<u64> = (1..=4)
-            .map(|i| pool_active_stake(&state, validator_addr(i)))
-            .collect();
+        let pre_active: Vec<u64> =
+            (1..=4).map(|i| pool_active_stake(&state, validator_addr(i))).collect();
 
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
         advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
 
-        let post_active: Vec<u64> = (1..=4)
-            .map(|i| pool_active_stake(&state, validator_addr(i)))
-            .collect();
-        let growth: Vec<u64> = pre_active
-            .iter()
-            .zip(post_active.iter())
-            .map(|(pre, post)| post - pre)
-            .collect();
+        let post_active: Vec<u64> =
+            (1..=4).map(|i| pool_active_stake(&state, validator_addr(i))).collect();
+        let growth: Vec<u64> =
+            pre_active.iter().zip(post_active.iter()).map(|(pre, post)| post - pre).collect();
 
         let max_g = *growth.iter().max().unwrap();
         let min_g = *growth.iter().min().unwrap();
@@ -737,9 +724,7 @@ mod staking_lifecycle_tests {
         let pre_pending = pool_pending_stake(&state, v1);
 
         // Add 100 SOMA → lands in pending.
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("add");
         assert_eq!(pool_active_stake(&state, v1), pre_active);
         assert_eq!(pool_pending_stake(&state, v1), pre_pending + 100 * SHANNONS_PER_SOMA);
 
@@ -758,11 +743,7 @@ mod staking_lifecycle_tests {
             pre_active,
             "active untouched by same-epoch add+withdraw",
         );
-        assert_eq!(
-            pool_pending_stake(&state, v1),
-            pre_pending,
-            "pending returns to pre-add value",
-        );
+        assert_eq!(pool_pending_stake(&state, v1), pre_pending, "pending returns to pre-add value",);
 
         // Advance the epoch with rewards. The would-be staker
         // doesn't earn anything because their stake was withdrawn
@@ -776,8 +757,7 @@ mod staking_lifecycle_tests {
         // 100-SOMA add). If the add-and-withdraw had leaked into the
         // divisor, the index advance ratio would be different.
         let expected_growth_factor =
-            ((pre_active + 25 * SHANNONS_PER_SOMA) as u128) * F1_INDEX_SCALE
-                / (pre_active as u128);
+            ((pre_active + 25 * SHANNONS_PER_SOMA) as u128) * F1_INDEX_SCALE / (pre_active as u128);
         let actual_growth_factor = (post_index as u128) * F1_INDEX_SCALE / (pre_index as u128);
         // 25 SOMA = 100 SOMA / 4 validators (equal voting power).
         let diff = actual_growth_factor.abs_diff(expected_growth_factor);
@@ -797,12 +777,8 @@ mod staking_lifecycle_tests {
         let v1 = validator_addr(1);
 
         // Alice and bob each add 100 pending mid-epoch.
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("alice add");
-        state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("bob add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("alice add");
+        state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("bob add");
         assert_eq!(pool_pending_stake(&state, v1), 200 * SHANNONS_PER_SOMA);
 
         // Alice changes her mind and withdraws her 100 pending.
@@ -837,16 +813,12 @@ mod staking_lifecycle_tests {
         let mut tracker = ValidatorRewards::new(&state.validators().validators);
 
         // Alice adds 100 pending → epoch advance promotes it.
-        let pool_id = state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("alice add");
+        let pool_id = state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("alice add");
         advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
         assert_eq!(pool_active_stake(&state, v1), 200 * SHANNONS_PER_SOMA);
 
         // Bob adds 100 pending mid-epoch.
-        state
-            .add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA)
-            .expect("bob add");
+        state.add_stake_to_validator(v1, 100 * SHANNONS_PER_SOMA).expect("bob add");
         assert_eq!(pool_active_stake(&state, v1), 200 * SHANNONS_PER_SOMA);
         assert_eq!(pool_pending_stake(&state, v1), 100 * SHANNONS_PER_SOMA);
 

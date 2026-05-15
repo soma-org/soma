@@ -1089,7 +1089,11 @@ impl ObjectCacheRead for WritebackCache {
         self.get_object_impl("object_latest", id)
     }
 
-    fn get_balance(&self, owner: types::base::SomaAddress, coin_type: types::object::CoinType) -> u64 {
+    fn get_balance(
+        &self,
+        owner: types::base::SomaAddress,
+        coin_type: types::object::CoinType,
+    ) -> u64 {
         // Cold path (only consulted by the consensus-handler reservation
         // pre-pass once per balance-mode sender per commit), so go
         // straight to the perpetual store rather than caching.

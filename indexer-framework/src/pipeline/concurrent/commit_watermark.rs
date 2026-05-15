@@ -142,7 +142,10 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
             let elapsed = guard.stop_and_record();
 
             if let Some(ref watermark) = pending_watermark {
-                metrics.watermark_epoch.with_label_values(&[H::NAME]).set(watermark.epoch_hi_inclusive as i64);
+                metrics
+                    .watermark_epoch
+                    .with_label_values(&[H::NAME])
+                    .set(watermark.epoch_hi_inclusive as i64);
 
                 metrics
                     .watermark_checkpoint
@@ -266,7 +269,10 @@ async fn write_watermark<H: Handler>(
             checkpoint_lag_reporter
                 .report_lag(watermark.checkpoint_hi_inclusive, watermark.timestamp_ms_hi_inclusive);
 
-            metrics.watermark_epoch_in_db.with_label_values(&[H::NAME]).set(watermark.epoch_hi_inclusive as i64);
+            metrics
+                .watermark_epoch_in_db
+                .with_label_values(&[H::NAME])
+                .set(watermark.epoch_hi_inclusive as i64);
 
             metrics
                 .watermark_transaction_in_db

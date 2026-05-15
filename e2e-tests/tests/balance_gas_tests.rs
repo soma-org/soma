@@ -57,10 +57,8 @@ async fn test_balance_mode_gas_addstake_succeeds() {
             .soma_address
     });
 
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
 
     let initial_balance = read_usdc_balance(&test_cluster, sender);
     assert!(initial_balance > 0, "sender must start with USDC balance for balance-mode gas");
@@ -70,10 +68,7 @@ async fn test_balance_mode_gas_addstake_succeeds() {
     // is needed (and Stage 13a's genesis no longer creates them).
     // ValidDuring covers the current epoch.
     let tx_data = TransactionData::new_with_expiration(
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         Vec::new(), // EMPTY gas_payment → balance-mode
         TransactionExpiration::ValidDuring {
@@ -150,10 +145,7 @@ async fn test_balance_mode_gas_without_valid_during_is_rejected() {
     // input. Stateless tx (empty gas_payment) but expiration = None
     // — should be rejected by the validator at signing time.
     let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         Vec::new(), // empty
                     // Default expiration is None — no replay protection
@@ -257,7 +249,9 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
             info!("underfunded tx rejected at submission: {:#}", e);
         }
         Err(_) => {
-            info!("underfunded tx timed out (expected — no validator will sign / drop in pre-pass)");
+            info!(
+                "underfunded tx timed out (expected — no validator will sign / drop in pre-pass)"
+            );
         }
     }
 }

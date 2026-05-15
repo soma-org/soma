@@ -177,4 +177,3 @@ pub fn advance_epoch_returning_credits(
         .advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
         .expect("Failed to advance epoch")
 }
-

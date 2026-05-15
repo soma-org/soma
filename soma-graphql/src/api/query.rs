@@ -606,8 +606,8 @@ impl Query {
     /// gRPC `GetBalance` modulo indexer lag.
     async fn balance(&self, ctx: &Context<'_>, address: String) -> Result<BigInt> {
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
-        let addr_bytes = hex::decode(addr_hex)
-            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+        let addr_bytes =
+            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
 
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
@@ -950,18 +950,7 @@ impl Query {
             .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
             .transpose()?;
 
-        type Row = (
-            Vec<u8>,
-            i64,
-            i64,
-            i64,
-            i64,
-            Vec<u8>,
-            i64,
-            i64,
-            Option<String>,
-            Option<String>,
-        );
+        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>);
 
         let mut query = soma_validators::table
             .select((
@@ -1033,18 +1022,7 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_validators;
 
-        type Row = (
-            Vec<u8>,
-            i64,
-            i64,
-            i64,
-            i64,
-            Vec<u8>,
-            i64,
-            i64,
-            Option<String>,
-            Option<String>,
-        );
+        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>);
 
         let mut query = soma_validators::table
             .select((
@@ -1099,8 +1077,8 @@ impl Query {
         let mut conn = pg.connect().await?;
 
         let id_hex = id.strip_prefix("0x").unwrap_or(&id);
-        let id_bytes = hex::decode(id_hex)
-            .map_err(|e| Error::new(format!("Invalid channel id: {e}")))?;
+        let id_bytes =
+            hex::decode(id_hex).map_err(|e| Error::new(format!("Invalid channel id: {e}")))?;
 
         use indexer_alt_schema::schema::soma_channels;
 
@@ -1172,8 +1150,7 @@ impl Query {
     ) -> Result<Connection<String, GqlChannel>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit =
-            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         if payer.is_none() && payee.is_none() {
@@ -1236,10 +1213,8 @@ impl Query {
             query = query.filter(soma_channels::channel_id.gt(cursor_bytes));
         }
 
-        let rows: Vec<Row> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
         let has_next = rows.len() as i64 > limit;
         let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
         let has_previous = after.is_some();
@@ -1273,17 +1248,13 @@ impl Query {
     // ---------------------------------------------------------------
 
     /// Look up a single provider by address.
-    async fn provider(
-        &self,
-        ctx: &Context<'_>,
-        address: String,
-    ) -> Result<Option<GqlProvider>> {
+    async fn provider(&self, ctx: &Context<'_>, address: String) -> Result<Option<GqlProvider>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
-        let addr_bytes = hex::decode(addr_hex)
-            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+        let addr_bytes =
+            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
 
         use indexer_alt_schema::schema::soma_providers;
 
@@ -1300,11 +1271,7 @@ impl Query {
             .optional()
             .map_err(|e| Error::new(e.to_string()))?;
 
-        Ok(row.map(|r| GqlProvider {
-            address: r.0,
-            endpoint: r.1,
-            last_update_cp: r.2,
-        }))
+        Ok(row.map(|r| GqlProvider { address: r.0, endpoint: r.1, last_update_cp: r.2 }))
     }
 
     /// List providers, ordered by most recent registration / endpoint
@@ -1320,8 +1287,7 @@ impl Query {
     ) -> Result<Connection<String, GqlProvider>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit =
-            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         use indexer_alt_schema::schema::soma_providers;
@@ -1343,10 +1309,8 @@ impl Query {
             query = query.filter(soma_providers::address.gt(cursor_bytes));
         }
 
-        let rows: Vec<Row> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
         let has_next = rows.len() as i64 > limit;
         let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
         let has_previous = after.is_some();
@@ -1356,11 +1320,7 @@ impl Query {
             let cursor = format!("0x{}", hex::encode(&r.0));
             connection.edges.push(Edge::new(
                 cursor,
-                GqlProvider {
-                    address: r.0,
-                    endpoint: r.1,
-                    last_update_cp: r.2,
-                },
+                GqlProvider { address: r.0, endpoint: r.1, last_update_cp: r.2 },
             ));
         }
         Ok(connection)

@@ -19,25 +19,15 @@ use utils::logging::init_tracing;
 
 fn read_provider(test_cluster: &TestCluster, id: ObjectID) -> Option<Provider> {
     test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_object_store()
-            .get_object(&id)
-            .as_ref()
-            .and_then(Object::as_provider)
+        node.state().get_object_store().get_object(&id).as_ref().and_then(Object::as_provider)
     })
 }
 
-async fn submit_register(
-    test_cluster: &TestCluster,
-    signer: SomaAddress,
-    endpoint: &str,
-) -> bool {
+async fn submit_register(test_cluster: &TestCluster, signer: SomaAddress, endpoint: &str) -> bool {
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         signer,
-        TransactionKind::RegisterProvider(RegisterProviderArgs {
-            endpoint: endpoint.to_string(),
-        }),
+        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint: endpoint.to_string() }),
     );
     match test_cluster
         .wallet
@@ -58,11 +48,7 @@ async fn submit_register(
     }
 }
 
-async fn submit_update(
-    test_cluster: &TestCluster,
-    signer: SomaAddress,
-    endpoint: &str,
-) -> bool {
+async fn submit_update(test_cluster: &TestCluster, signer: SomaAddress, endpoint: &str) -> bool {
     let provider_id = Provider::derive_id(signer);
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
@@ -116,10 +102,7 @@ async fn provider_register_then_update_e2e() {
 
     // Update — endpoint change.
     let endpoint_2 = "https://provider-one-v2.example:8080";
-    assert!(
-        submit_update(&test_cluster, signer, endpoint_2).await,
-        "UpdateProvider must succeed"
-    );
+    assert!(submit_update(&test_cluster, signer, endpoint_2).await, "UpdateProvider must succeed");
 
     let p2 = read_provider(&test_cluster, id).expect("Provider still present");
     assert_eq!(p2.address(), signer, "address never changes");

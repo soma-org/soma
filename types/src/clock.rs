@@ -99,10 +99,7 @@ impl Object {
             "set_clock_timestamp_ms called on non-Clock object"
         );
         let cur = self.clock_timestamp_ms();
-        assert!(
-            timestamp_ms >= cur,
-            "Clock monotonicity violation: cur={cur} new={timestamp_ms}",
-        );
+        assert!(timestamp_ms >= cur, "Clock monotonicity violation: cur={cur} new={timestamp_ms}",);
         let clock = Clock { timestamp_ms };
         self.update_contents(&clock);
     }

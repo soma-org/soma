@@ -49,10 +49,8 @@ pub struct MockConnection<'c>(pub &'c MockStore);
 
 impl MockWatermark {
     fn for_init(checkpoint_hi_inclusive: Option<u64>, reader_lo: u64) -> Self {
-        let pruner_timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let pruner_timestamp =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         Self {
             epoch_hi_inclusive: 0,
             checkpoint_hi_inclusive,
@@ -104,11 +102,8 @@ impl SequentialStore for MockStore {
             &'r mut Self::Connection<'_>,
         ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<R>>,
     {
-        let snapshot: HashMap<String, MockWatermark> = self
-            .watermarks
-            .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
-            .collect();
+        let snapshot: HashMap<String, MockWatermark> =
+            self.watermarks.iter().map(|e| (e.key().clone(), e.value().clone())).collect();
 
         let mut conn = self.connect().await?;
         match f(&mut conn).await {
@@ -131,16 +126,12 @@ impl Connection for MockConnection<'_> {
         pipeline_task: &str,
         checkpoint_hi_inclusive: Option<u64>,
     ) -> anyhow::Result<Option<InitWatermark>> {
-        let watermark = self
-            .0
-            .watermarks
-            .entry(pipeline_task.to_string())
-            .or_insert_with(|| {
-                MockWatermark::for_init(
-                    checkpoint_hi_inclusive,
-                    checkpoint_hi_inclusive.map_or(0, |c| c + 1),
-                )
-            });
+        let watermark = self.0.watermarks.entry(pipeline_task.to_string()).or_insert_with(|| {
+            MockWatermark::for_init(
+                checkpoint_hi_inclusive,
+                checkpoint_hi_inclusive.map_or(0, |c| c + 1),
+            )
+        });
 
         Ok(Some(InitWatermark {
             checkpoint_hi_inclusive: watermark.checkpoint_hi_inclusive,
@@ -153,11 +144,7 @@ impl Connection for MockConnection<'_> {
         pipeline_task: &str,
         chain_id: [u8; 32],
     ) -> anyhow::Result<bool> {
-        let mut wm = self
-            .0
-            .watermarks
-            .entry(pipeline_task.to_string())
-            .or_default();
+        let mut wm = self.0.watermarks.entry(pipeline_task.to_string()).or_default();
 
         if let Some(stored_chain_id) = wm.chain_id {
             Ok(stored_chain_id == chain_id)
@@ -189,11 +176,7 @@ impl Connection for MockConnection<'_> {
         pipeline_task: &str,
         watermark: CommitterWatermark,
     ) -> anyhow::Result<bool> {
-        let mut wm = self
-            .0
-            .watermarks
-            .entry(pipeline_task.to_string())
-            .or_default();
+        let mut wm = self.0.watermarks.entry(pipeline_task.to_string()).or_default();
 
         if let Some(existing) = wm.checkpoint_hi_inclusive
             && watermark.checkpoint_hi_inclusive <= existing
@@ -220,10 +203,7 @@ impl ConcurrentConnection for MockConnection<'_> {
             return Ok(None);
         };
 
-        Ok(Some(ReaderWatermark {
-            checkpoint_hi_inclusive,
-            reader_lo: watermark.reader_lo,
-        }))
+        Ok(Some(ReaderWatermark { checkpoint_hi_inclusive, reader_lo: watermark.reader_lo }))
     }
 
     async fn pruner_watermark(
@@ -237,10 +217,7 @@ impl ConcurrentConnection for MockConnection<'_> {
         }
 
         let elapsed_ms = watermark.pruner_timestamp as i64
-            - SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64;
+            - SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
         let wait_for_ms = delay.as_millis() as i64 + elapsed_ms;
         Ok(Some(PrunerWatermark {
             pruner_hi: watermark.pruner_hi,
@@ -259,10 +236,8 @@ impl ConcurrentConnection for MockConnection<'_> {
             return Ok(false);
         }
         curr.reader_lo = reader_lo;
-        curr.pruner_timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        curr.pruner_timestamp =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         Ok(true)
     }
 

@@ -20,28 +20,14 @@ use syn::parse_macro_input;
 #[allow(non_snake_case)]
 #[proc_macro_attribute]
 pub fn DefaultConfig(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    let DeriveInput {
-        attrs,
-        vis,
-        ident,
-        generics,
-        data,
-    } = parse_macro_input!(input as DeriveInput);
+    let DeriveInput { attrs, vis, ident, generics, data } =
+        parse_macro_input!(input as DeriveInput);
 
-    let Data::Struct(DataStruct {
-        struct_token,
-        fields,
-        semi_token,
-    }) = data
-    else {
+    let Data::Struct(DataStruct { struct_token, fields, semi_token }) = data else {
         panic!("Default configs must be structs.");
     };
 
-    let Fields::Named(FieldsNamed {
-        brace_token: _,
-        named,
-    }) = fields
-    else {
+    let Fields::Named(FieldsNamed { brace_token: _, named }) = fields else {
         panic!("Default configs must have named fields.");
     };
 

@@ -13,8 +13,8 @@ use reqwest::Client;
 use crate::catalog::{ModelCard, ModelsResponse};
 use crate::http_util::{ensure_stream_options_include_usage, pass_outbound};
 use crate::openai::ChatRequest;
-use crate::server::backend::{catalog_from_offerings, Backend};
 use crate::server::Config;
+use crate::server::backend::{Backend, catalog_from_offerings};
 
 pub struct OpenRouterBackend {
     client: Client,
@@ -25,11 +25,8 @@ pub struct OpenRouterBackend {
 
 impl OpenRouterBackend {
     pub fn new(cfg: &Config) -> anyhow::Result<Arc<Self>> {
-        let env_key = cfg
-            .backend
-            .api_key_env
-            .clone()
-            .unwrap_or_else(|| "OPENROUTER_API_KEY".to_string());
+        let env_key =
+            cfg.backend.api_key_env.clone().unwrap_or_else(|| "OPENROUTER_API_KEY".to_string());
         let api_key = std::env::var(&env_key)
             .with_context(|| format!("env var {env_key} must be set for OpenRouter backend"))?;
         let upstream_url = cfg
@@ -38,9 +35,7 @@ impl OpenRouterBackend {
             .clone()
             .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string());
         let catalog = catalog_from_offerings(&cfg.offerings, &cfg.server.public_endpoint);
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .build()?;
+        let client = Client::builder().timeout(std::time::Duration::from_secs(120)).build()?;
         Ok(Arc::new(Self { client, api_key, upstream_url, catalog }))
     }
 

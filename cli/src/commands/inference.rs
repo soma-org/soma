@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use clap::Parser;
-use sdk::wallet_context::{create_wallet_context, DEFAULT_WALLET_TIMEOUT_SEC};
+use sdk::wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, create_wallet_context};
 use types::base::SomaAddress;
 use types::config::soma_config_dir;
 
@@ -113,17 +113,11 @@ pub enum InferenceCommand {
 impl InferenceCommand {
     pub async fn execute(self) -> Result<(), anyhow::Error> {
         match self {
-            InferenceCommand::Serve {
-                config,
-                address,
-                client,
-                soma_home,
-            } => {
+            InferenceCommand::Serve { config, address, client, soma_home } => {
                 let cfg = inference::server::config::load(&config)
                     .with_context(|| format!("loading {}", config.display()))?;
                 let (wallet, signer) = build_wallet(client, address).await?;
-                let soma_home =
-                    soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
+                let soma_home = soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
                 inference::server::run(cfg, wallet, signer, soma_home).await
             }
             InferenceCommand::Proxy {
@@ -140,10 +134,8 @@ impl InferenceCommand {
                 include_untrusted,
             } => {
                 let (wallet, signer) = build_wallet(client, address).await?;
-                let soma_home =
-                    soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
-                let registry =
-                    Arc::new(IndexerProviderRegistry::new(indexer_url.clone()));
+                let soma_home = soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
+                let registry = Arc::new(IndexerProviderRegistry::new(indexer_url.clone()));
                 let mode = match routing.as_str() {
                     "price" => inference::proxy::config::RoutingMode::Price,
                     "weighted" => inference::proxy::config::RoutingMode::Weighted,

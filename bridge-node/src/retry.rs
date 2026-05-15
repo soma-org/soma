@@ -77,9 +77,7 @@ where
                 tokio::time::sleep(current_interval).await;
                 // Exponential increase, capped at max_interval
                 current_interval = std::cmp::min(
-                    Duration::from_secs_f64(
-                        current_interval.as_secs_f64() * backoff.multiplier,
-                    ),
+                    Duration::from_secs_f64(current_interval.as_secs_f64() * backoff.multiplier),
                     backoff.max_interval,
                 );
             }
@@ -93,40 +91,31 @@ where
 
 /// Determine if an error is retryable.
 fn is_retryable(error: &BridgeError) -> bool {
-    matches!(
-        error,
-        BridgeError::TransientProviderError(_) | BridgeError::ProviderError(_)
-    )
+    matches!(error, BridgeError::TransientProviderError(_) | BridgeError::ProviderError(_))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[tokio::test]
     async fn test_retry_succeeds_after_transient_failures() {
         let attempt_count = Arc::new(AtomicU32::new(0));
         let count = attempt_count.clone();
 
-        let result = retry_with_backoff(
-            "test_op",
-            Duration::from_secs(10),
-            || {
-                let count = count.clone();
-                async move {
-                    let attempt = count.fetch_add(1, Ordering::Relaxed);
-                    if attempt < 2 {
-                        Err(BridgeError::TransientProviderError(
-                            "too many results".into(),
-                        ))
-                    } else {
-                        Ok(42u32)
-                    }
+        let result = retry_with_backoff("test_op", Duration::from_secs(10), || {
+            let count = count.clone();
+            async move {
+                let attempt = count.fetch_add(1, Ordering::Relaxed);
+                if attempt < 2 {
+                    Err(BridgeError::TransientProviderError("too many results".into()))
+                } else {
+                    Ok(42u32)
                 }
-            },
-        )
+            }
+        })
         .await;
 
         assert_eq!(result.unwrap(), 42);
@@ -138,18 +127,15 @@ mod tests {
         let attempt_count = Arc::new(AtomicU32::new(0));
         let count = attempt_count.clone();
 
-        let result: BridgeResult<()> = retry_with_backoff(
-            "test_op",
-            Duration::from_secs(10),
-            || {
+        let result: BridgeResult<()> =
+            retry_with_backoff("test_op", Duration::from_secs(10), || {
                 let count = count.clone();
                 async move {
                     count.fetch_add(1, Ordering::Relaxed);
                     Err(BridgeError::ConfigError("bad config".into()))
                 }
-            },
-        )
-        .await;
+            })
+            .await;
 
         assert!(result.is_err());
         // Should NOT retry on non-retryable errors
@@ -181,11 +167,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_succeeds_on_first_try() {
-        let result = retry_with_backoff(
-            "test_op",
-            Duration::from_secs(10),
-            || async { Ok::<_, BridgeError>(99u32) },
-        )
+        let result = retry_with_backoff("test_op", Duration::from_secs(10), || async {
+            Ok::<_, BridgeError>(99u32)
+        })
         .await;
 
         assert_eq!(result.unwrap(), 99);

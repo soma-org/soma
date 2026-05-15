@@ -166,10 +166,8 @@ impl GenesisConfig {
 
             // Populate USDC allocations (test environments only)
             account.usdc_amounts.iter().for_each(|a| {
-                usdc_allocations.push(UsdcAllocation {
-                    recipient_address: address,
-                    amount_microdollars: *a,
-                });
+                usdc_allocations
+                    .push(UsdcAllocation { recipient_address: address, amount_microdollars: *a });
             });
         }
 
@@ -304,7 +302,8 @@ impl GenesisCeremonyParameters {
             chain_start_timestamp_ms: Self::default_timestamp_ms(),
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
-            emission_initial_distribution_amount: Self::default_emission_initial_distribution_amount(),
+            emission_initial_distribution_amount:
+                Self::default_emission_initial_distribution_amount(),
             emission_period_length: Self::default_emission_period_length(),
             emission_decrease_rate: Self::default_emission_decrease_rate(),
             chain: Chain::default(),

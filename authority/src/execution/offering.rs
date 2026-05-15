@@ -45,13 +45,11 @@ impl OfferingExecutor {
     /// Read the protocol version off SystemState (declared as a
     /// read-only shared input by every offering tx kind).
     fn read_protocol_version(store: &TemporaryStore) -> ExecutionResult<ProtocolVersion> {
-        let state_object = store
-            .read_object(&types::SYSTEM_STATE_OBJECT_ID)
-            .ok_or(ExecutionFailureStatus::ObjectNotFound {
-                object_id: types::SYSTEM_STATE_OBJECT_ID,
-            })?;
-        let state = SystemState::deserialize(state_object.as_inner().data.contents())
-            .map_err(|e| {
+        let state_object = store.read_object(&types::SYSTEM_STATE_OBJECT_ID).ok_or(
+            ExecutionFailureStatus::ObjectNotFound { object_id: types::SYSTEM_STATE_OBJECT_ID },
+        )?;
+        let state =
+            SystemState::deserialize(state_object.as_inner().data.contents()).map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize SystemState: {}",
                     e
@@ -63,9 +61,7 @@ impl OfferingExecutor {
     /// Read the wall-clock Clock timestamp for `updated_at_ms` on the
     /// offering object.
     fn read_clock_ts(store: &TemporaryStore) -> ExecutionResult<u64> {
-        store
-            .read_clock_timestamp_ms()
-            .ok_or(ExecutionFailureStatus::ChannelClockMissing)
+        store.read_clock_timestamp_ms().ok_or(ExecutionFailureStatus::ChannelClockMissing)
     }
 
     /// Look up `model_id` in the ModelRegistry at the executor's
@@ -75,10 +71,10 @@ impl OfferingExecutor {
         let registry = ModelRegistry::for_version(version);
         match registry.get(model_id) {
             Some(_) => Ok(()),
-            None => Err(ExecutionFailureStatus::OfferingUnknownModel {
-                model_id: model_id.to_string(),
+            None => {
+                Err(ExecutionFailureStatus::OfferingUnknownModel { model_id: model_id.to_string() }
+                    .into())
             }
-            .into()),
         }
     }
 
@@ -137,9 +133,8 @@ impl OfferingExecutor {
             .read_object(&args.offering_id)
             .ok_or(ExecutionFailureStatus::OfferingNotFound)?
             .clone();
-        let mut offering = offering_object
-            .as_offering()
-            .ok_or(ExecutionFailureStatus::OfferingNotFound)?;
+        let mut offering =
+            offering_object.as_offering().ok_or(ExecutionFailureStatus::OfferingNotFound)?;
         if offering.provider() != signer {
             return Err(ExecutionFailureStatus::OfferingCallerMismatch.into());
         }
@@ -188,9 +183,8 @@ impl OfferingExecutor {
             .read_object(&args.offering_id)
             .ok_or(ExecutionFailureStatus::OfferingNotFound)?
             .clone();
-        let mut offering = offering_object
-            .as_offering()
-            .ok_or(ExecutionFailureStatus::OfferingNotFound)?;
+        let mut offering =
+            offering_object.as_offering().ok_or(ExecutionFailureStatus::OfferingNotFound)?;
         if offering.provider() != signer {
             return Err(ExecutionFailureStatus::OfferingCallerMismatch.into());
         }
@@ -261,10 +255,8 @@ mod tests {
         let mut inputs: Vec<ObjectReadResult> = Vec::new();
 
         // SystemState (read-only) for protocol version.
-        let protocol_config = ProtocolConfig::get_for_version(
-            protocol_config::ProtocolVersion::MIN,
-            Chain::Unknown,
-        );
+        let protocol_config =
+            ProtocolConfig::get_for_version(protocol_config::ProtocolVersion::MIN, Chain::Unknown);
         let state = types::system_state::SystemState::create(
             Vec::new(),
             protocol_config.version.as_u64(),
@@ -300,8 +292,7 @@ mod tests {
         ));
 
         // Clock for updated_at_ms.
-        let clock_obj =
-            types::object::Object::new_clock_with_timestamp_for_testing(clock_ts);
+        let clock_obj = types::object::Object::new_clock_with_timestamp_for_testing(clock_ts);
         inputs.push(ObjectReadResult::new(
             InputObjectKind::SharedObject {
                 id: CLOCK_OBJECT_ID,
@@ -421,12 +412,7 @@ mod tests {
     #[test]
     fn register_offering_rejects_duplicate() {
         let provider = provider_addr();
-        let existing = Offering::new(
-            provider,
-            VALID_MODEL.to_string(),
-            1, 2, 3, 4, 5, 100, 10,
-            0,
-        );
+        let existing = Offering::new(provider, VALID_MODEL.to_string(), 1, 2, 3, 4, 5, 100, 10, 0);
         let mut store = make_store(0, Some(existing));
         let mut exec = OfferingExecutor::new();
 
@@ -458,7 +444,13 @@ mod tests {
         let existing = Offering::new(
             provider,
             VALID_MODEL.to_string(),
-            1_000, 5_000, 0, 0, 0, 2_000, 100,
+            1_000,
+            5_000,
+            0,
+            0,
+            0,
+            2_000,
+            100,
             1_700_000_000_000,
         );
         let mut store = make_store(1_700_000_001_000, Some(existing));
@@ -497,12 +489,7 @@ mod tests {
         let provider = provider_addr();
         let imposter = provider_addr();
         assert_ne!(provider, imposter);
-        let existing = Offering::new(
-            provider,
-            VALID_MODEL.to_string(),
-            1, 2, 3, 4, 5, 100, 10,
-            0,
-        );
+        let existing = Offering::new(provider, VALID_MODEL.to_string(), 1, 2, 3, 4, 5, 100, 10, 0);
         let mut store = make_store(0, Some(existing));
         let mut exec = OfferingExecutor::new();
         let offering_id = Offering::derive_id(provider, VALID_MODEL);
@@ -536,7 +523,13 @@ mod tests {
         let existing = Offering::new(
             provider,
             VALID_MODEL.to_string(),
-            1, 2, 3, 4, 5, 100, 10,
+            1,
+            2,
+            3,
+            4,
+            5,
+            100,
+            10,
             1_700_000_000_000,
         );
         let mut store = make_store(1_700_000_002_000, Some(existing));
@@ -546,10 +539,7 @@ mod tests {
         exec.execute_deactivate(
             &mut store,
             provider,
-            DeactivateOfferingArgs {
-                offering_id,
-                model_id: VALID_MODEL.to_string(),
-            },
+            DeactivateOfferingArgs { offering_id, model_id: VALID_MODEL.to_string() },
             TransactionDigest::default(),
         )
         .expect("deactivate succeeds");

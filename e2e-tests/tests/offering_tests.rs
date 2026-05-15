@@ -31,11 +31,7 @@ const VALID_MODEL: &str = "anthropic/claude-sonnet-4.6";
 
 fn read_offering(test_cluster: &TestCluster, id: ObjectID) -> Option<Offering> {
     test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_object_store()
-            .get_object(&id)
-            .as_ref()
-            .and_then(Object::as_offering)
+        node.state().get_object_store().get_object(&id).as_ref().and_then(Object::as_offering)
     })
 }
 
@@ -44,11 +40,8 @@ async fn submit_register(
     signer: SomaAddress,
     args: RegisterOfferingArgs,
 ) -> Result<bool, String> {
-    let tx_data = e2e_tests::stateless_tx_data(
-        test_cluster,
-        signer,
-        TransactionKind::RegisterOffering(args),
-    );
+    let tx_data =
+        e2e_tests::stateless_tx_data(test_cluster, signer, TransactionKind::RegisterOffering(args));
     match test_cluster
         .wallet
         .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
@@ -64,11 +57,8 @@ async fn submit_update(
     signer: SomaAddress,
     args: UpdateOfferingArgs,
 ) -> Result<bool, String> {
-    let tx_data = e2e_tests::stateless_tx_data(
-        test_cluster,
-        signer,
-        TransactionKind::UpdateOffering(args),
-    );
+    let tx_data =
+        e2e_tests::stateless_tx_data(test_cluster, signer, TransactionKind::UpdateOffering(args));
     match test_cluster
         .wallet
         .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
@@ -165,10 +155,7 @@ async fn offering_lifecycle_register_update_deactivate() {
     let ok = submit_deactivate(
         &test_cluster,
         signer,
-        DeactivateOfferingArgs {
-            offering_id: id,
-            model_id: VALID_MODEL.to_string(),
-        },
+        DeactivateOfferingArgs { offering_id: id, model_id: VALID_MODEL.to_string() },
     )
     .await
     .expect("submit OK");
@@ -236,10 +223,7 @@ async fn open_channel_rejects_when_no_offering() {
         .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
         .await
         .expect("submission completes");
-    assert!(
-        !r.effects.status().is_ok(),
-        "OpenChannel without an active offering must be rejected"
-    );
+    assert!(!r.effects.status().is_ok(), "OpenChannel without an active offering must be rejected");
 }
 
 /// Localnet integration: provider registers an offering at price X →

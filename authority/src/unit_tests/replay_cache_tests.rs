@@ -33,10 +33,7 @@ fn digest(seed: u8) -> TransactionDigest {
 fn insert(store: &Arc<AuthorityStore>, epoch: u64, digest: TransactionDigest) {
     let mut batch = store.perpetual_tables.executed_transaction_digests.batch();
     batch
-        .insert_batch(
-            &store.perpetual_tables.executed_transaction_digests,
-            [((epoch, digest), ())],
-        )
+        .insert_batch(&store.perpetual_tables.executed_transaction_digests, [((epoch, digest), ())])
         .unwrap();
     batch.write().unwrap();
 }
@@ -185,11 +182,7 @@ async fn prune_keeps_current_and_previous_epoch() {
     // Current-epoch entry isn't visible via the prev-epoch lookup, but
     // it's still in the cache:
     assert!(
-        store
-            .perpetual_tables
-            .executed_transaction_digests
-            .contains_key(&(5, digest(3)))
-            .unwrap()
+        store.perpetual_tables.executed_transaction_digests.contains_key(&(5, digest(3))).unwrap()
     );
 }
 
@@ -203,11 +196,7 @@ async fn prune_drops_multiple_old_epochs() {
     store.prune_executed_transaction_digests(10).unwrap();
     assert_eq!(count_all(&store), 1, "only epoch 9 entry survives (no epoch 10 was inserted)");
     assert!(
-        store
-            .perpetual_tables
-            .executed_transaction_digests
-            .contains_key(&(9, digest(9)))
-            .unwrap()
+        store.perpetual_tables.executed_transaction_digests.contains_key(&(9, digest(9))).unwrap()
     );
 }
 

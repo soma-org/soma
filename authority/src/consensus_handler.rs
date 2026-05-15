@@ -703,11 +703,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         // For now no kind reserves anything except gas (Stage 6c+).
         // Coin-mode txs return [] from `reservations()` and fall
         // through unaffected.
-        let unit_fee = self
-            .epoch_store
-            .epoch_start_state()
-            .fee_parameters()
-            .unit_fee;
+        let unit_fee = self.epoch_store.epoch_start_state().fee_parameters().unit_fee;
         let transactions_to_schedule = self.run_reservation_prepass(user_transactions, unit_fee);
 
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
@@ -736,10 +732,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             use crate::shared_obj_version_manager::{AssignedVersions, SettlementBatchInfo};
             use fastcrypto::hash::{Blake2b256, HashFunction as _};
 
-            let tx_digests: Vec<_> = transactions_to_schedule
-                .iter()
-                .map(|tx| *tx.digest())
-                .collect();
+            let tx_digests: Vec<_> =
+                transactions_to_schedule.iter().map(|tx| *tx.digest()).collect();
 
             let mut hasher = Blake2b256::default();
             hasher.update(b"soma/settlement-key/v1");
@@ -799,10 +793,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
     ) -> Vec<VerifiedExecutableTransaction> {
         // Pre-compute reservations once per tx; pure function over
         // immutable tx data, no IO.
-        let per_tx_reservations: Vec<Vec<types::balance::WithdrawalReservation>> = txs
-            .iter()
-            .map(|tx| tx.transaction_data().reservations(unit_fee))
-            .collect();
+        let per_tx_reservations: Vec<Vec<types::balance::WithdrawalReservation>> =
+            txs.iter().map(|tx| tx.transaction_data().reservations(unit_fee)).collect();
 
         // Fast path: if no tx declares any reservation, nothing to
         // check. Saves the cache_reader hit for the common (current)
@@ -815,9 +807,10 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             per_tx_reservations.iter().map(|v| v.as_slice()).collect();
 
         let cache_reader = self.cache_reader.clone();
-        let decisions = types::balance::check_reservations(&reservation_refs, |owner, coin_type| {
-            cache_reader.get_balance(owner, coin_type)
-        });
+        let decisions =
+            types::balance::check_reservations(&reservation_refs, |owner, coin_type| {
+                cache_reader.get_balance(owner, coin_type)
+            });
 
         // Filter txs by Accept; log Drops for observability.
         txs.into_iter()

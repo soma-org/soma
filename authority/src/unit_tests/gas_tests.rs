@@ -59,19 +59,13 @@ async fn test_fee_deducted_on_success() {
     let tx_digest = effects.transaction_digest();
     let epoch = res.authority_state.epoch_store_for_testing().epoch();
     let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
-    res.authority_state
-        .get_cache_commit()
-        .commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+    res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
 
     let store = res.authority_state.database_for_testing();
     let post_usdc = store.get_balance(sender, CoinType::Usdc).unwrap();
     let post_soma = store.get_balance(sender, CoinType::Soma).unwrap();
     assert_eq!(post_usdc, starting_usdc - fee.total_fee, "USDC must drop by fee");
-    assert_eq!(
-        post_soma,
-        starting_soma - transfer_amount,
-        "SOMA must drop by transfer amount",
-    );
+    assert_eq!(post_soma, starting_soma - transfer_amount, "SOMA must drop by transfer amount",);
 }
 
 #[tokio::test]

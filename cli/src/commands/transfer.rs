@@ -49,7 +49,11 @@ pub async fn execute(
                 vec![amount]
             } else {
                 let per_each = amount / recipient_addresses.len() as u64;
-                ensure!(per_each > 0, "Amount too small to split among {} recipients", recipient_addresses.len());
+                ensure!(
+                    per_each > 0,
+                    "Amount too small to split among {} recipients",
+                    recipient_addresses.len()
+                );
                 let mut amts = vec![per_each; recipient_addresses.len()];
                 let remainder = amount - per_each * recipient_addresses.len() as u64;
                 if remainder > 0 {
@@ -61,15 +65,9 @@ pub async fn execute(
     };
 
     let coin_type = if usdc { CoinType::Usdc } else { CoinType::Soma };
-    let transfers: Vec<_> = recipient_addresses
-        .into_iter()
-        .zip(send_amounts.into_iter())
-        .collect();
+    let transfers: Vec<_> = recipient_addresses.into_iter().zip(send_amounts.into_iter()).collect();
 
-    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
-        coin_type,
-        transfers,
-    });
+    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs { coin_type, transfers });
 
     crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }

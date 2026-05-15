@@ -161,14 +161,20 @@ pub struct OwnedObjectRef {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OwnerDisplay {
-    AddressOwner { address: SomaAddress },
-    Shared { initial_shared_version: Version },
+    AddressOwner {
+        address: SomaAddress,
+    },
+    Shared {
+        initial_shared_version: Version,
+    },
     Immutable,
     /// Stage 14a: system-managed accumulator (account-balance or
     /// F1 delegation). The kind discriminator is rendered as a
     /// human-readable string ("balance" / "delegation") so JSON
     /// consumers can branch on it without parsing the SDK enum.
-    Accumulator { kind: String },
+    Accumulator {
+        kind: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]

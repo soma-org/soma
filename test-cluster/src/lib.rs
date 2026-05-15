@@ -614,7 +614,6 @@ impl TestClusterBuilder {
         self.genesis_config.as_mut().unwrap()
     }
 
-
     /// Give each genesis account USDC coins for marketplace testing.
     /// `amount_microdollars` per coin, `count` coins per account.
     pub fn with_usdc_for_accounts(mut self, amount_microdollars: u64, count: usize) -> Self {
@@ -635,8 +634,7 @@ impl TestClusterBuilder {
     /// The keypairs are stored on `TestCluster.bridge_keypairs` (in BTreeMap
     /// iteration order) so tests can sign bridge messages.
     pub fn with_bridge_committee(mut self, num_members: usize) -> Self {
-        let (committee, keypairs) =
-            types::bridge::generate_test_bridge_committee(num_members);
+        let (committee, keypairs) = types::bridge::generate_test_bridge_committee(num_members);
         self.bridge_keypairs = keypairs;
         self.get_or_init_genesis_config().bridge_committee = Some(committee);
         self

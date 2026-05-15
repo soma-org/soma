@@ -46,16 +46,9 @@ impl Processor for SomaChannelRatings {
             // Read the channel from input objects (RateChannel is a
             // read-only op so the input object IS the post object).
             let pre: Vec<&Object> = tx.input_objects(object_set).collect();
-            let Some((_id, chan)) = pre
-                .iter()
-                .find_map(|o| {
-                    if o.id() == args.channel_id {
-                        o.as_channel().map(|c| (o.id(), c))
-                    } else {
-                        None
-                    }
-                })
-            else {
+            let Some((_id, chan)) = pre.iter().find_map(|o| {
+                if o.id() == args.channel_id { o.as_channel().map(|c| (o.id(), c)) } else { None }
+            }) else {
                 continue;
             };
 
@@ -86,15 +79,12 @@ impl Handler for SomaChannelRatings {
             .on_conflict(soma_channel_ratings::channel_id)
             .do_update()
             .set((
-                soma_channel_ratings::negative.eq(diesel::dsl::sql::<diesel::sql_types::Bool>(
-                    "EXCLUDED.negative",
-                )),
-                soma_channel_ratings::rated_at_cp.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.rated_at_cp",
-                )),
-                soma_channel_ratings::rated_at_ms.eq(diesel::dsl::sql::<diesel::sql_types::Int8>(
-                    "EXCLUDED.rated_at_ms",
-                )),
+                soma_channel_ratings::negative
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Bool>("EXCLUDED.negative")),
+                soma_channel_ratings::rated_at_cp
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.rated_at_cp")),
+                soma_channel_ratings::rated_at_ms
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.rated_at_ms")),
             ))
             .execute(conn)
             .await?)

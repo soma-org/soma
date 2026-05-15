@@ -326,7 +326,6 @@ impl ProtocolConfig {
             // legitimate hot/cold-key splits or per-SKU separation,
             // tight enough to make spam unprofitable.
             max_channels_per_pair: Some(8),
-
             // When adding a new constant, set it to None in the earliest version, like this:
             // new_constant: None,
         };

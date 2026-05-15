@@ -50,13 +50,11 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
 fn metadata_json(kind: &TransactionKind) -> Option<String> {
     match kind {
         // Stage 13b: Transfer / MergeCoins variants gone.
-        TransactionKind::AddStake { validator, amount } => {
-            Some(format!(
-                r#"{{"validator":"0x{}","amount":{}}}"#,
-                hex::encode(validator.to_vec()),
-                amount,
-            ))
-        }
+        TransactionKind::AddStake { validator, amount } => Some(format!(
+            r#"{{"validator":"0x{}","amount":{}}}"#,
+            hex::encode(validator.to_vec()),
+            amount,
+        )),
         _ => None,
     }
 }

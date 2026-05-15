@@ -50,10 +50,7 @@ async fn test_rpc_ingestion_source() {
     // Genesis checkpoint must be fetchable.
     let genesis: Arc<Checkpoint> = client.fetch(0).await.expect("fetch checkpoint 0 over gRPC");
     assert_eq!(genesis.summary.sequence_number, 0);
-    info!(
-        "Fetched genesis checkpoint over gRPC: {} transactions",
-        genesis.transactions.len()
-    );
+    info!("Fetched genesis checkpoint over gRPC: {} transactions", genesis.transactions.len());
 
     // A real fetched checkpoint survives the .binpb.zst encode→decode round-trip.
     let encoded = checkpoint_blob::encode_checkpoint(&genesis).expect("encode checkpoint");

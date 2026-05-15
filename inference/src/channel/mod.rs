@@ -13,9 +13,9 @@
 pub mod header;
 pub mod running_tab;
 
-use async_trait::async_trait;
 use ::types::channel::Voucher;
 use ::types::crypto::GenericSignature;
+use async_trait::async_trait;
 
 pub use running_tab::RunningTab;
 
@@ -122,8 +122,5 @@ pub trait PaymentChannel: Send + Sync + 'static {
     /// provider for this channel — exactly what `sdk::channel::settle`
     /// needs. `None` until the first request lands and the proxy
     /// supplies a sig.
-    fn final_settlement(
-        &self,
-        state: &Self::ProviderState,
-    ) -> Option<(Voucher, GenericSignature)>;
+    fn final_settlement(&self, state: &Self::ProviderState) -> Option<(Voucher, GenericSignature)>;
 }

@@ -101,13 +101,10 @@ impl Connection for MockConnection<'_> {
         let default_next_checkpoint = checkpoint_hi_inclusive_hint.map_or(0, |c| c + 1);
         let Some(checkpoint_hi_inclusive) = default_next_checkpoint.checked_sub(1) else {
             // Do not create a watermark record with checkpoint_hi_inclusive = -1.
-            return Ok(self
-                .committer_watermark(pipeline_task)
-                .await?
-                .map(|w| InitWatermark {
-                    checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
-                    reader_lo: None,
-                }));
+            return Ok(self.committer_watermark(pipeline_task).await?.map(|w| InitWatermark {
+                checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
+                reader_lo: None,
+            }));
         };
 
         let &MockWatermark { checkpoint_hi_inclusive, .. } = self
@@ -196,13 +193,8 @@ impl ConcurrentConnection for MockConnection<'_> {
         Ok(watermark.map(|w| {
             let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
             let elapsed_since_pruner_timestamp = now_ms.saturating_sub(w.pruner_timestamp);
-            let wait_for_ms = delay.as_millis() as i64
-                - elapsed_since_pruner_timestamp as i64;
-            PrunerWatermark {
-                pruner_hi: w.pruner_hi,
-                reader_lo: w.reader_lo,
-                wait_for_ms,
-            }
+            let wait_for_ms = delay.as_millis() as i64 - elapsed_since_pruner_timestamp as i64;
+            PrunerWatermark { pruner_hi: w.pruner_hi, reader_lo: w.reader_lo, wait_for_ms }
         }))
     }
 

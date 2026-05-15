@@ -285,11 +285,7 @@ impl Client {
         mut self,
         request: impl tonic::IntoRequest<proto::ListDelegationsRequest>,
     ) -> Result<proto::ListDelegationsResponse> {
-        self.0
-            .state_client()
-            .list_delegations(request)
-            .await
-            .map(|r| r.into_inner())
+        self.0.state_client().list_delegations(request).await.map(|r| r.into_inner())
     }
 
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
@@ -397,7 +393,6 @@ impl Client {
         transaction_query_result_try_from_proto(&executed_tx)
             .map_err(|e| status_from_error_with_metadata(e, metadata))
     }
-
 }
 
 #[derive(Debug)]

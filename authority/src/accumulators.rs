@@ -99,10 +99,8 @@ impl AccumulatorSettlementTxBuilder {
 
         for effects in ckpt_effects {
             for (acc_id, write) in effects.accumulator_events() {
-                let entry = updates.entry(acc_id).or_insert(Update {
-                    address: write.address,
-                    delta: 0,
-                });
+                let entry =
+                    updates.entry(acc_id).or_insert(Update { address: write.address, delta: 0 });
                 assert_eq!(
                     entry.address, write.address,
                     "two accumulator events at the same ID with different addresses — \
@@ -403,12 +401,9 @@ mod tests {
         let row_a = Delegation::new(100, 1_000);
         let row_b = Delegation::new(70, 2_000);
         let row_c = Delegation::new(270, 3_000);
-        let e1 =
-            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_a) }]);
-        let e2 =
-            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_b) }]);
-        let e3 =
-            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_c) }]);
+        let e1 = mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_a) }]);
+        let e2 = mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_b) }]);
+        let e3 = mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_c) }]);
 
         let payload = AccumulatorSettlementTxBuilder::new(&[e1, e2, e3]).build(0, 1, None);
 

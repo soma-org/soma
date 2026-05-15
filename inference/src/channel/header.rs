@@ -10,12 +10,12 @@
 //! respective scopes) — there is no inference-local signing
 //! primitive any more. See `sdk::channel`.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
-use fastcrypto::traits::ToFromBytes as _;
 use ::types::channel::HttpVoucher;
 use ::types::crypto::GenericSignature;
 use ::types::object::ObjectID;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use fastcrypto::traits::ToFromBytes as _;
 
 use crate::channel::ChannelError;
 
@@ -42,27 +42,23 @@ impl SomaPayHeader {
             return Err(ChannelError::Malformed);
         }
         let channel_id_str = parts.next().ok_or(ChannelError::Malformed)?;
-        let channel_id = channel_id_str
-            .parse::<ObjectID>()
-            .map_err(|_| ChannelError::Malformed)?;
+        let channel_id = channel_id_str.parse::<ObjectID>().map_err(|_| ChannelError::Malformed)?;
         let voucher_b64 = parts.next().ok_or(ChannelError::Malformed)?;
         let sig_b64 = parts.next().ok_or(ChannelError::Malformed)?;
         if parts.next().is_some() {
             return Err(ChannelError::Malformed);
         }
 
-        let voucher_bytes = URL_SAFE_NO_PAD
-            .decode(voucher_b64.as_bytes())
-            .map_err(|_| ChannelError::Malformed)?;
+        let voucher_bytes =
+            URL_SAFE_NO_PAD.decode(voucher_b64.as_bytes()).map_err(|_| ChannelError::Malformed)?;
         let http_voucher: HttpVoucher =
             bcs::from_bytes(&voucher_bytes).map_err(|_| ChannelError::Malformed)?;
         if http_voucher.channel_id() != channel_id {
             return Err(ChannelError::Malformed);
         }
 
-        let sig_bytes = URL_SAFE_NO_PAD
-            .decode(sig_b64.as_bytes())
-            .map_err(|_| ChannelError::Malformed)?;
+        let sig_bytes =
+            URL_SAFE_NO_PAD.decode(sig_b64.as_bytes()).map_err(|_| ChannelError::Malformed)?;
         let http_sig =
             GenericSignature::from_bytes(&sig_bytes).map_err(|_| ChannelError::Malformed)?;
 
@@ -70,14 +66,10 @@ impl SomaPayHeader {
     }
 
     pub fn format(&self) -> String {
-        let voucher_bytes =
-            bcs::to_bytes(&self.http_voucher).expect("HttpVoucher BCS infallible");
+        let voucher_bytes = bcs::to_bytes(&self.http_voucher).expect("HttpVoucher BCS infallible");
         let voucher_b64 = URL_SAFE_NO_PAD.encode(&voucher_bytes);
         let sig_b64 = URL_SAFE_NO_PAD.encode(self.http_sig.as_ref());
-        format!(
-            "{} {} {} {} {}",
-            SCHEME, VERSION, self.channel_id, voucher_b64, sig_b64
-        )
+        format!("{} {} {} {} {}", SCHEME, VERSION, self.channel_id, voucher_b64, sig_b64)
     }
 }
 
@@ -89,9 +81,8 @@ pub fn encode_onchain_sig(sig: &GenericSignature) -> String {
 }
 
 pub fn decode_onchain_sig(value: &str) -> Result<GenericSignature, ChannelError> {
-    let bytes = URL_SAFE_NO_PAD
-        .decode(value.trim().as_bytes())
-        .map_err(|_| ChannelError::Malformed)?;
+    let bytes =
+        URL_SAFE_NO_PAD.decode(value.trim().as_bytes()).map_err(|_| ChannelError::Malformed)?;
     GenericSignature::from_bytes(&bytes).map_err(|_| ChannelError::Malformed)
 }
 

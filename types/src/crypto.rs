@@ -1801,4 +1801,3 @@ impl FromStr for GenericSignature {
         Self::decode_base64(s).map_err(|e| eyre!("Fail to decode base64 {}", e.to_string()))
     }
 }
-

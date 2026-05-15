@@ -43,7 +43,10 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectsCommand, OfferingCommand, ProviderCommand, SomaValidatorCommand, WalletCommand};
+use crate::commands::{
+    ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectsCommand, OfferingCommand,
+    ProviderCommand, SomaValidatorCommand, WalletCommand,
+};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
 use crate::usdc_amount::UsdcAmount;
@@ -704,29 +707,29 @@ impl SomaCommand {
 
                 // Parse the positional amount based on token type
                 let base_amount: u64 = if usdc {
-                    amount
-                        .parse::<UsdcAmount>()
-                        .map_err(|e| anyhow!("{}", e))?
-                        .microdollars()
+                    amount.parse::<UsdcAmount>().map_err(|e| anyhow!("{}", e))?.microdollars()
                 } else {
-                    amount
-                        .parse::<SomaAmount>()
-                        .map_err(|e| anyhow!("{}", e))?
-                        .shannons()
+                    amount.parse::<SomaAmount>().map_err(|e| anyhow!("{}", e))?.shannons()
                 };
 
                 // Parse per-recipient amounts if provided
-                let per_recipient_amounts: Option<Vec<u64>> = amounts.map(|strs| {
-                    strs.into_iter()
-                        .map(|s| {
-                            if usdc {
-                                s.parse::<UsdcAmount>().map(|a| a.microdollars()).map_err(|e| anyhow!("{}", e))
-                            } else {
-                                s.parse::<SomaAmount>().map(|a| a.shannons()).map_err(|e| anyhow!("{}", e))
-                            }
-                        })
-                        .collect::<Result<Vec<u64>, _>>()
-                }).transpose()?;
+                let per_recipient_amounts: Option<Vec<u64>> = amounts
+                    .map(|strs| {
+                        strs.into_iter()
+                            .map(|s| {
+                                if usdc {
+                                    s.parse::<UsdcAmount>()
+                                        .map(|a| a.microdollars())
+                                        .map_err(|e| anyhow!("{}", e))
+                                } else {
+                                    s.parse::<SomaAmount>()
+                                        .map(|a| a.shannons())
+                                        .map_err(|e| anyhow!("{}", e))
+                                }
+                            })
+                            .collect::<Result<Vec<u64>, _>>()
+                    })
+                    .transpose()?;
 
                 // Stage 13b: balance-mode only — `coins` arg dropped.
                 let _ = coins;
@@ -748,8 +751,14 @@ impl SomaCommand {
 
             SomaCommand::TransferObject { to, object_id, gas, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::transfer::execute_transfer_object(&mut context, to, object_id, gas, tx_args).await?;
+                let result = commands::transfer::execute_transfer_object(
+                    &mut context,
+                    to,
+                    object_id,
+                    gas,
+                    tx_args,
+                )
+                .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -786,13 +795,9 @@ impl SomaCommand {
                 let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
                 // Stage 13b: balance-mode only — `coins` arg dropped.
                 let _ = coins;
-                let result = commands::pay::execute(
-                    &mut context,
-                    recipients,
-                    amounts_shannons,
-                    tx_args,
-                )
-                .await?;
+                let result =
+                    commands::pay::execute(&mut context, recipients, amounts_shannons, tx_args)
+                        .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -1629,4 +1634,3 @@ fn update_wallet_config_rpc(
 
     Ok(wallet_context)
 }
-

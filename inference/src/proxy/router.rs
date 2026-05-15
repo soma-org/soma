@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use ::types::base::SomaAddress;
+use ::types::object::{CoinType, ObjectID};
 use anyhow::Context as _;
 use reqwest::Client;
 use tokio::sync::RwLock;
-use ::types::base::SomaAddress;
-use ::types::object::{CoinType, ObjectID};
 
 use crate::catalog::{ModelCard, ModelsResponse};
-use crate::chain::{ChannelSurface, ProviderRegistry, ProviderRecord};
+use crate::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
 use crate::proxy::config::{Config, RoutingMode, RoutingWeights};
 use crate::proxy::state::{ChannelSlot, ClientStore};
 use crate::reputation::{IndexerClient, ProviderReputation};
@@ -43,11 +43,7 @@ fn price_score(card: &ModelCard) -> u128 {
 /// — absence of complaints is not a positive signal but also not a
 /// negative one. Pulled out of [`Router::weighted_score`] for
 /// unit-testability.
-fn weighted_score(
-    w: &RoutingWeights,
-    card: &ModelCard,
-    rep: Option<ProviderReputation>,
-) -> f64 {
+fn weighted_score(w: &RoutingWeights, card: &ModelCard, rep: Option<ProviderReputation>) -> f64 {
     let price = price_score(card) as f64;
     let mut score = -w.price * price;
     if let Some(r) = rep {
@@ -101,15 +97,9 @@ impl Router {
         cfg: Arc<Config>,
         client_address: SomaAddress,
     ) -> Self {
-        let http = Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .expect("build http client");
-        let indexer = cfg
-            .routing
-            .indexer_url
-            .as_ref()
-            .map(|url| IndexerClient::new(url.clone()));
+        let http =
+            Client::builder().timeout(Duration::from_secs(120)).build().expect("build http client");
+        let indexer = cfg.routing.indexer_url.as_ref().map(|url| IndexerClient::new(url.clone()));
         let trusted = if cfg.trusted_providers_only {
             cfg.trusted_providers_url.as_ref().map(|url| {
                 let t = Arc::new(crate::proxy::TrustedProviders::new(
@@ -129,10 +119,7 @@ impl Router {
             store,
             cfg,
             client_address,
-            cache: Arc::new(RwLock::new(CacheState {
-                last_refresh: None,
-                providers: Vec::new(),
-            })),
+            cache: Arc::new(RwLock::new(CacheState { last_refresh: None, providers: Vec::new() })),
             indexer,
             trusted,
         }
@@ -165,27 +152,15 @@ impl Router {
     async fn fetch_provider_info(&self, endpoint: &str) -> anyhow::Result<ProviderInfo> {
         let info_url = format!("{}/soma/info", endpoint.trim_end_matches('/'));
         let info: serde_json::Value = self.http.get(info_url).send().await?.json().await?;
-        let pubkey_hex = info
-            .get("pubkey_hex")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let address_str = info
-            .get("address")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let pubkey_hex = info.get("pubkey_hex").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let address_str = info.get("address").and_then(|v| v.as_str()).unwrap_or("");
         let address = SomaAddress::from_hex_literal(address_str)
             .or_else(|_| SomaAddress::from_hex(address_str))
             .map_err(|e| anyhow::anyhow!("provider /soma/info bad address {address_str}: {e}"))?;
 
         let models_url = format!("{}/v1/models", endpoint.trim_end_matches('/'));
         let mr: ModelsResponse = self.http.get(models_url).send().await?.json().await?;
-        Ok(ProviderInfo {
-            address,
-            pubkey_hex,
-            endpoint: endpoint.to_string(),
-            catalog: mr.data,
-        })
+        Ok(ProviderInfo { address, pubkey_hex, endpoint: endpoint.to_string(), catalog: mr.data })
     }
 
     pub async fn ensure_cache(&self) -> anyhow::Result<()> {
@@ -233,9 +208,7 @@ impl Router {
 
         match self.cfg.routing.mode {
             RoutingMode::Price => {
-                candidates.sort_by(|a, b| {
-                    self.price_score(&a.1).cmp(&self.price_score(&b.1))
-                });
+                candidates.sort_by(|a, b| self.price_score(&a.1).cmp(&self.price_score(&b.1)));
                 Ok(Some(candidates.remove(0)))
             }
             RoutingMode::Weighted => {
@@ -243,9 +216,7 @@ impl Router {
                     tracing::warn!(
                         "routing.mode = weighted but no indexer_url configured; falling back to price"
                     );
-                    candidates.sort_by(|a, b| {
-                        self.price_score(&a.1).cmp(&self.price_score(&b.1))
-                    });
+                    candidates.sort_by(|a, b| self.price_score(&a.1).cmp(&self.price_score(&b.1)));
                     return Ok(Some(candidates.remove(0)));
                 };
                 let addrs: Vec<_> = candidates.iter().map(|(p, _)| p.address).collect();
@@ -392,11 +363,7 @@ impl Router {
         endpoint: &str,
         channel_id: ObjectID,
     ) -> Option<u64> {
-        let url = format!(
-            "{}/soma/channel/{}",
-            endpoint.trim_end_matches('/'),
-            channel_id
-        );
+        let url = format!("{}/soma/channel/{}", endpoint.trim_end_matches('/'), channel_id);
         let resp = self.http.get(url).send().await.ok()?;
         if !resp.status().is_success() {
             return None;
@@ -600,10 +567,7 @@ mod tests {
         let s_hi = weighted_score(&w, &c, Some(rep(1_000_000, 0, 0.0)));
         let delta = s_hi - s_lo;
         // ln(1_000_001) - ln(2) ≈ 13.13. Generous bounds.
-        assert!(
-            delta > 5.0 && delta < 20.0,
-            "log-scale delta out of expected band: {delta}"
-        );
+        assert!(delta > 5.0 && delta < 20.0, "log-scale delta out of expected band: {delta}");
     }
 
     /// `negative_rate_30d` lowers the score in proportion to the
@@ -622,10 +586,7 @@ mod tests {
         let clean = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.0, 8)));
         let mid = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.5, 8)));
         let bad = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 1.0, 8)));
-        assert!(
-            clean > mid && mid > bad,
-            "monotonic penalty: clean={clean}, mid={mid}, bad={bad}",
-        );
+        assert!(clean > mid && mid > bad, "monotonic penalty: clean={clean}, mid={mid}, bad={bad}",);
         // Exact: clean - bad = w.negative_rate * 1.0 = 10.0.
         assert!(((clean - bad) - 10.0).abs() < 1e-9);
     }

@@ -9,13 +9,6 @@ use std::time::UNIX_EPOCH;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use object_store::Error as ObjectStoreError;
-use object_store::ObjectStore as _;
-use object_store::PutMode;
-use object_store::PutPayload;
-use object_store::path::Path as ObjectPath;
-use serde::Deserialize;
-use serde::Serialize;
 use indexer_store_traits::CommitterWatermark;
 use indexer_store_traits::ConcurrentConnection;
 use indexer_store_traits::ConcurrentStore;
@@ -24,6 +17,13 @@ use indexer_store_traits::InitWatermark;
 use indexer_store_traits::PrunerWatermark;
 use indexer_store_traits::ReaderWatermark;
 use indexer_store_traits::Store;
+use object_store::Error as ObjectStoreError;
+use object_store::ObjectStore as _;
+use object_store::PutMode;
+use object_store::PutPayload;
+use object_store::path::Path as ObjectPath;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Clone)]
 pub struct ObjectStore {
@@ -89,9 +89,8 @@ impl ObjectStoreConnection {
                 format!("Failed to parse watermark from object store pipeline={pipeline}")
             })?;
         // Hide watermarks where `checkpoint_hi_inclusive < reader_lo`.
-        let Some(checkpoint_hi_inclusive) = watermark
-            .checkpoint_hi_inclusive
-            .filter(|&cp| watermark.reader_lo <= cp)
+        let Some(checkpoint_hi_inclusive) =
+            watermark.checkpoint_hi_inclusive.filter(|&cp| watermark.reader_lo <= cp)
         else {
             return Ok(None);
         };
@@ -149,9 +148,7 @@ impl Store for ObjectStore {
     type Connection<'c> = ObjectStoreConnection;
 
     async fn connect<'c>(&'c self) -> anyhow::Result<Self::Connection<'c>> {
-        Ok(ObjectStoreConnection {
-            object_store: self.object_store.clone(),
-        })
+        Ok(ObjectStoreConnection { object_store: self.object_store.clone() })
     }
 }
 
@@ -210,21 +207,14 @@ impl Connection for ObjectStoreConnection {
                         timestamp_ms_hi_inclusive: legacy_watermark.timestamp_ms_hi_inclusive,
                         ..watermark
                     };
-                    self.set_watermark(pipeline_task, watermark, e_tag, version)
-                        .await?;
+                    self.set_watermark(pipeline_task, watermark, e_tag, version).await?;
                 }
 
-                (
-                    legacy_watermark.checkpoint_hi_inclusive,
-                    legacy_watermark.reader_lo,
-                )
+                (legacy_watermark.checkpoint_hi_inclusive, legacy_watermark.reader_lo)
             }
             Err(e) => return Err(e.into()),
         };
-        Ok(Some(InitWatermark {
-            checkpoint_hi_inclusive,
-            reader_lo,
-        }))
+        Ok(Some(InitWatermark { checkpoint_hi_inclusive, reader_lo }))
     }
 
     async fn accepts_chain_id(
@@ -239,15 +229,14 @@ impl Connection for ObjectStoreConnection {
         &mut self,
         pipeline_task: &str,
     ) -> anyhow::Result<Option<CommitterWatermark>> {
-        Ok(self
-            .get_watermark_for_read(pipeline_task)
-            .await?
-            .map(|(w, checkpoint_hi_inclusive)| CommitterWatermark {
+        Ok(self.get_watermark_for_read(pipeline_task).await?.map(|(w, checkpoint_hi_inclusive)| {
+            CommitterWatermark {
                 epoch_hi_inclusive: w.epoch_hi_inclusive,
                 checkpoint_hi_inclusive,
                 tx_hi: w.tx_hi,
                 timestamp_ms_hi_inclusive: w.timestamp_ms_hi_inclusive,
-            }))
+            }
+        }))
     }
 
     async fn set_committer_watermark(
@@ -272,8 +261,7 @@ impl Connection for ObjectStoreConnection {
             timestamp_ms_hi_inclusive: watermark.timestamp_ms_hi_inclusive,
             ..current_watermark
         };
-        self.set_watermark(pipeline_task, new_watermark, e_tag, version)
-            .await?;
+        self.set_watermark(pipeline_task, new_watermark, e_tag, version).await?;
         Ok(true)
     }
 }
@@ -284,13 +272,9 @@ impl ConcurrentConnection for ObjectStoreConnection {
         &mut self,
         pipeline: &str,
     ) -> anyhow::Result<Option<ReaderWatermark>> {
-        Ok(self
-            .get_watermark_for_read(pipeline)
-            .await?
-            .map(|(w, checkpoint_hi_inclusive)| ReaderWatermark {
-                checkpoint_hi_inclusive,
-                reader_lo: w.reader_lo,
-            }))
+        Ok(self.get_watermark_for_read(pipeline).await?.map(|(w, checkpoint_hi_inclusive)| {
+            ReaderWatermark { checkpoint_hi_inclusive, reader_lo: w.reader_lo }
+        }))
     }
 
     async fn pruner_watermark(
@@ -322,12 +306,8 @@ impl ConcurrentConnection for ObjectStoreConnection {
             return Ok(false);
         }
 
-        let new_watermark = ObjectStoreWatermark {
-            reader_lo,
-            ..current_watermark
-        };
-        self.set_watermark(pipeline, new_watermark, e_tag, version)
-            .await?;
+        let new_watermark = ObjectStoreWatermark { reader_lo, ..current_watermark };
+        self.set_watermark(pipeline, new_watermark, e_tag, version).await?;
         Ok(true)
     }
 
@@ -342,12 +322,8 @@ impl ConcurrentConnection for ObjectStoreConnection {
             return Ok(false);
         }
 
-        let new_watermark = ObjectStoreWatermark {
-            pruner_hi,
-            ..current_watermark
-        };
-        self.set_watermark(pipeline, new_watermark, e_tag, version)
-            .await?;
+        let new_watermark = ObjectStoreWatermark { pruner_hi, ..current_watermark };
+        self.set_watermark(pipeline, new_watermark, e_tag, version).await?;
         Ok(true)
     }
 }
@@ -370,10 +346,7 @@ pub async fn accepts_chain_id(
         .put_opts(
             &path,
             chain_id.to_vec().into(),
-            object_store::PutOptions {
-                mode: PutMode::Create,
-                ..Default::default()
-            },
+            object_store::PutOptions { mode: PutMode::Create, ..Default::default() },
         )
         .await
     {
@@ -381,11 +354,7 @@ pub async fn accepts_chain_id(
         Err(ObjectStoreError::AlreadyExists { .. }) => {
             let bytes = object_store.get(&path).await?.bytes().await?;
             let stored: [u8; 32] = bytes.as_ref().try_into().ok().with_context(|| {
-                format!(
-                    "stored chain_id at {} has wrong length: {}",
-                    path,
-                    bytes.len()
-                )
+                format!("stored chain_id at {} has wrong length: {}", path, bytes.len())
             })?;
             Ok(stored == chain_id)
         }
@@ -395,10 +364,10 @@ pub async fn accepts_chain_id(
 
 #[cfg(test)]
 mod tests {
-    use object_store::memory::InMemory;
     use indexer_store_traits::concurrent_connection_tests;
     use indexer_store_traits::connection_tests;
     use indexer_store_traits::testing::Harness;
+    use object_store::memory::InMemory;
 
     use super::*;
 
@@ -411,9 +380,7 @@ mod tests {
         type Store = ObjectStore;
 
         async fn new() -> Self {
-            Self {
-                store: ObjectStore::new(Arc::new(InMemory::new())),
-            }
+            Self { store: ObjectStore::new(Arc::new(InMemory::new())) }
         }
 
         fn store(&self) -> &Self::Store {
@@ -424,4 +391,3 @@ mod tests {
     connection_tests!(ObjectStoreHarness);
     concurrent_connection_tests!(ObjectStoreHarness);
 }
-

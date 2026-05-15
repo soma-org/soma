@@ -33,21 +33,12 @@ async fn test_handle_transfer_transaction_ok() {
     let object_id = ObjectID::random();
 
     let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
 
-    let data = TransactionData::new_transfer(
-        recipient,
-        obj.compute_object_reference(),
-        sender,
-        vec![],
-    );
+    let data =
+        TransactionData::new_transfer(recipient, obj.compute_object_reference(), sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -64,12 +55,7 @@ async fn test_handle_transfer_receiver_equal_sender() {
     let object_id = ObjectID::random();
 
     let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
 
@@ -100,22 +86,13 @@ async fn test_handle_transfer_double_spend() {
     let object_id = ObjectID::random();
 
     let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
 
     // First transfer succeeds
-    let data1 = TransactionData::new_transfer(
-        recipient1,
-        obj.compute_object_reference(),
-        sender,
-        vec![],
-    );
+    let data1 =
+        TransactionData::new_transfer(recipient1, obj.compute_object_reference(), sender, vec![]);
     let tx1 = to_sender_signed_transaction(data1, &sender_key);
     let result1 = send_and_confirm_transaction(&authority_state, tx1).await;
     assert!(result1.is_ok(), "First transfer should succeed");
@@ -160,11 +137,8 @@ async fn test_effects_internal_consistency() {
         10_000_000,
     );
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        recipient,
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
     let effects = effects.into_data();
@@ -218,11 +192,8 @@ async fn test_effects_retrievable_after_execution() {
         10_000_000,
     );
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        recipient,
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
 
     let (cert, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
@@ -264,13 +235,10 @@ async fn test_object_version_increments_after_mutation() {
         .expect("SystemState exists")
         .version();
 
-    let validator_address = authority_state
-        .get_system_state_object_for_testing()
-        .unwrap()
-        .validators()
-        .validators[0]
-        .metadata
-        .soma_address;
+    let validator_address =
+        authority_state.get_system_state_object_for_testing().unwrap().validators().validators[0]
+            .metadata
+            .soma_address;
 
     let data = TransactionData::new(
         TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
@@ -306,11 +274,8 @@ async fn test_bad_signature_rejected() {
     let (sender, _sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let (_, wrong_key): (_, Ed25519KeyPair) = get_key_pair();
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
     // Sign with wrong key
     let tx = to_sender_signed_transaction(data, &wrong_key);
 
@@ -326,11 +291,8 @@ async fn test_no_signature_rejected() {
 
     let (sender, _sender_key): (_, Ed25519KeyPair) = get_key_pair();
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
 
     // Create a transaction with no signatures
     let signed_data = SenderSignedData::new(data, vec![] as Vec<GenericSignature>);
@@ -394,12 +356,7 @@ async fn test_transfer_objects_success() {
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj.clone()).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -433,12 +390,7 @@ async fn test_transfer_objects_wrong_owner() {
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj.clone()).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -486,12 +438,7 @@ async fn test_transfer_objects_rejects_accumulator() {
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(acc_obj.clone()).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -544,12 +491,7 @@ async fn test_transfer_multiple_objects() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj1.clone()).await;
     authority_state.insert_genesis_object(obj2.clone()).await;
-    crate::authority_test_utils::seed_balance_mode_funds(
-        &authority_state,
-        sender,
-        0,
-        10_000_000,
-    );
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -596,10 +538,7 @@ async fn test_staking_creates_shared_object_mutation() {
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         vec![],
     );

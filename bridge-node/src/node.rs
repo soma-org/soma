@@ -22,7 +22,6 @@ use types::crypto::SomaKeyPair;
 use crate::action_executor::{
     BridgeActionExecutionWrapper, BridgeActionExecutor, submit_to_executor,
 };
-use crate::types::BridgeAction;
 use crate::aggregator::BridgeAuthorityAggregator;
 use crate::checkpoint_watcher::{CheckpointEvent, CheckpointWatcher};
 use crate::config::BridgeNodeConfig;
@@ -31,6 +30,7 @@ use crate::eth_client::EthClient;
 use crate::eth_syncer::EthSyncer;
 use crate::soma_client::SomaBridgeClient;
 use crate::storage::BridgeOrchestratorTables;
+use crate::types::BridgeAction;
 
 /// The bridge node orchestrator.
 pub struct BridgeNode {
@@ -59,12 +59,7 @@ impl BridgeNode {
         bridge_keypair: Secp256k1KeyPair,
         committee: BridgeCommittee,
     ) -> Self {
-        Self {
-            config,
-            bridge_keypair: Arc::new(bridge_keypair),
-            committee,
-            relayer: None,
-        }
+        Self { config, bridge_keypair: Arc::new(bridge_keypair), committee, relayer: None }
     }
 
     /// Enable on-chain action submission. Without calling this, the
@@ -100,11 +95,8 @@ impl BridgeNode {
 
         // 1. Create Ethereum client
         let eth_client = Arc::new(
-            EthClient::new(
-                self.config.eth_rpc_urls.clone(),
-                &self.config.bridge_contract_address,
-            )
-            .await?,
+            EthClient::new(self.config.eth_rpc_urls.clone(), &self.config.bridge_contract_address)
+                .await?,
         );
 
         // 2. Sig exchange happens over HTTP (spawned below once
@@ -124,299 +116,275 @@ impl BridgeNode {
         // boundary → CommitteeUpdate) can read the live committee
         // without a fresh RPC call.
         let mut committee_snapshot: Option<Arc<arc_swap::ArcSwap<BridgeCommittee>>> = None;
-        let executor_signing_tx: Option<mpsc::Sender<BridgeActionExecutionWrapper>> =
-            match self.relayer.clone() {
-                Some(relayer) => {
-                    match SomaBridgeClient::new_rpc(
-                        &self.config.soma_rpc_url,
-                        relayer.soma_chain_id,
-                    )
+        let executor_signing_tx: Option<mpsc::Sender<BridgeActionExecutionWrapper>> = match self
+            .relayer
+            .clone()
+        {
+            Some(relayer) => {
+                match SomaBridgeClient::new_rpc(&self.config.soma_rpc_url, relayer.soma_chain_id)
                     .await
-                    {
-                        Ok(client) => {
-                            // Spawn the bridge state monitor — it polls
-                            // pause state + committee on a timer and
-                            // publishes changes to in-memory channels.
-                            // Subsystems read from the channels rather
-                            // than re-polling the RPC themselves.
-                            let (monitor, monitor_channels) = crate::monitor::BridgeMonitor::new(
-                                Arc::clone(&client),
-                                false, // assume unpaused at startup; first
-                                       // poll corrects this immediately.
-                                self.committee.clone(),
-                                crate::monitor::DEFAULT_POLL_INTERVAL,
-                            );
-                            handles.push(monitor.run());
+                {
+                    Ok(client) => {
+                        // Spawn the bridge state monitor — it polls
+                        // pause state + committee on a timer and
+                        // publishes changes to in-memory channels.
+                        // Subsystems read from the channels rather
+                        // than re-polling the RPC themselves.
+                        let (monitor, monitor_channels) = crate::monitor::BridgeMonitor::new(
+                            Arc::clone(&client),
+                            false, // assume unpaused at startup; first
+                            // poll corrects this immediately.
+                            self.committee.clone(),
+                            crate::monitor::DEFAULT_POLL_INTERVAL,
+                        );
+                        handles.push(monitor.run());
 
-                            // Spawn the HTTP REST sig-exchange server
-                            // (Sui parity). Peers fetch signatures by
-                            // GETing the action-specific route; the
-                            // handler re-verifies each action against
-                            // chain state (via eth_client / soma client)
-                            // before signing. The gRPC server below
-                            // remains for now as a transitional dual
-                            // surface — Phase 4b will switch the
-                            // executor's aggregator to peer-broadcast
-                            // and the gRPC path can be retired.
-                            //
-                            // Construction can only fail if the operator
-                            // put a token-transfer action in the
-                            // governance whitelist (config mistake); if
-                            // so we log and run without the HTTP
-                            // surface rather than crashing the node.
-                            match crate::handler::BridgeRequestHandler::new(
-                                (*self.bridge_keypair).copy(),
-                                Arc::clone(&eth_client),
-                                Arc::clone(&client),
-                                self.config.approved_governance_actions.clone(),
-                            ) {
-                                Ok(handler) => {
-                                    let metadata = Arc::new(
-                                        crate::http_server::BridgeNodePublicMetadata::new(
-                                            env!("CARGO_PKG_VERSION"),
-                                        ),
-                                    );
-                                    let http_addr = self.config.http_listen_address;
-                                    info!(%http_addr, "bridge HTTP server starting");
-                                    handles.push(crate::http_server::run_server(
-                                        &http_addr,
-                                        handler,
-                                        metadata,
+                        // Spawn the HTTP REST sig-exchange server
+                        // (Sui parity). Peers fetch signatures by
+                        // GETing the action-specific route; the
+                        // handler re-verifies each action against
+                        // chain state (via eth_client / soma client)
+                        // before signing. The gRPC server below
+                        // remains for now as a transitional dual
+                        // surface — Phase 4b will switch the
+                        // executor's aggregator to peer-broadcast
+                        // and the gRPC path can be retired.
+                        //
+                        // Construction can only fail if the operator
+                        // put a token-transfer action in the
+                        // governance whitelist (config mistake); if
+                        // so we log and run without the HTTP
+                        // surface rather than crashing the node.
+                        match crate::handler::BridgeRequestHandler::new(
+                            (*self.bridge_keypair).copy(),
+                            Arc::clone(&eth_client),
+                            Arc::clone(&client),
+                            self.config.approved_governance_actions.clone(),
+                        ) {
+                            Ok(handler) => {
+                                let metadata =
+                                    Arc::new(crate::http_server::BridgeNodePublicMetadata::new(
+                                        env!("CARGO_PKG_VERSION"),
                                     ));
+                                let http_addr = self.config.http_listen_address;
+                                info!(%http_addr, "bridge HTTP server starting");
+                                handles.push(crate::http_server::run_server(
+                                    &http_addr, handler, metadata,
+                                ));
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    "approved_governance_actions invalid; HTTP server NOT spawned"
+                                );
+                            }
+                        }
+
+                        // Peer-broadcast aggregator. Fans out HTTP
+                        // sig requests to each non-blocklisted
+                        // committee member's registered `http_url`
+                        // and assembles a cert as responses arrive.
+                        // Reads committee state directly from the
+                        // monitor's `ArcSwap` so rotations propagate
+                        // without a restart and without a glue task.
+                        let aggregator: Arc<dyn BridgeAuthorityAggregator> =
+                            Arc::new(crate::peer_aggregator::PeerBroadcastAggregator::new(
+                                Arc::clone(&monitor_channels.committee),
+                            ));
+
+                        // Executor reads pause state from the
+                        // monitor's watch channel and the live
+                        // committee from its `ArcSwap` snapshot —
+                        // no per-attempt RPC polling, no glue task.
+                        let executor = BridgeActionExecutor::new(
+                            Arc::clone(&client),
+                            aggregator,
+                            Arc::clone(&wal),
+                            relayer.address,
+                            relayer.keypair,
+                            Arc::clone(&monitor_channels.committee),
+                            monitor_channels.bridge_paused_rx.clone(),
+                        );
+                        let (executor_handles, signing_tx) = executor.run();
+                        handles.extend(executor_handles);
+
+                        // Drain any pending actions left in the WAL
+                        // by a previous run (crash recovery). Each
+                        // gets re-attempted with a fresh attempt
+                        // counter from zero.
+                        let pending = wal.get_all_pending_actions()?;
+                        info!(
+                            count = pending.len(),
+                            "replaying pending bridge actions to executor",
+                        );
+                        for action in pending {
+                            if let Err(e) = submit_to_executor(&signing_tx, action).await {
+                                warn!("WAL replay submit failed: {e}");
+                            }
+                        }
+
+                        info!("Bridge action executor wired up");
+
+                        // Hand the live committee snapshot out so
+                        // the epoch-boundary handler can read it
+                        // when emitting CommitteeUpdate actions.
+                        committee_snapshot = Some(Arc::clone(&monitor_channels.committee));
+
+                        // Spawn the conservation-invariant watchdog
+                        // if configured. It polls Eth vault balance
+                        // + Soma USDC supply on a timer and emits
+                        // an auto-pause action via the executor's
+                        // signing queue on sustained violation.
+                        //
+                        // Eligible only when both the relayer and a
+                        // watchdog config are present — the
+                        // watchdog needs both the Eth client (to
+                        // read vault balance) and the executor's
+                        // signing_tx (to fire pause actions).
+                        if let Some(wd_cfg) = self.config.watchdog.clone() {
+                            let poll_interval = wd_cfg.poll_interval();
+                            let usdc_addr = wd_cfg.usdc_contract_address.clone();
+                            let bridge_addr = wd_cfg.eth_bridge_contract_address.clone();
+
+                            // Real Soma supply reader — closures over
+                            // the production SomaBridgeClient. Replaces
+                            // the stub-at-0 from before PR A landed
+                            // BridgeState.total_usdc_supply.
+                            let soma_supply: crate::watchdog::SomaSupplyReader = {
+                                let c = Arc::clone(&client);
+                                Arc::new(move || {
+                                    let c = Arc::clone(&c);
+                                    Box::pin(async move { c.get_total_usdc_supply().await })
+                                })
+                            };
+                            let soma_paused: crate::watchdog::SomaPausedReader = {
+                                let c = Arc::clone(&client);
+                                Arc::new(move || {
+                                    let c = Arc::clone(&c);
+                                    Box::pin(async move { c.is_bridge_paused().await })
+                                })
+                            };
+
+                            // Real reader: read the on-chain
+                            // BridgeState.system_message_seq_nums[EmergencyOp]
+                            // every time the watchdog fires an
+                            // auto-pause. Re-read each time so a
+                            // pause cert that landed since the
+                            // last watchdog tick (manual op or
+                            // peer-fired) doesn't get the same
+                            // nonce as our about-to-fire cert.
+                            let expected_pause_nonce: crate::watchdog::ExpectedPauseNonceReader = {
+                                let c = Arc::clone(&client);
+                                Arc::new(move || {
+                                    let c = Arc::clone(&c);
+                                    Box::pin(async move {
+                                        c.get_next_system_message_seq(
+                                            types::bridge::BridgeMessageType::EmergencyOp,
+                                        )
+                                        .await
+                                    })
+                                })
+                            };
+
+                            let watchdog = crate::watchdog::BridgeWatchdog::new()
+                                .with(Box::new(crate::watchdog::EthVaultBalanceObservable::new(
+                                    Arc::clone(&eth_client),
+                                    usdc_addr.clone(),
+                                    bridge_addr.clone(),
+                                    poll_interval,
+                                )))
+                                .with(Box::new(crate::watchdog::SomaUsdcSupplyObservable::new(
+                                    Arc::clone(&soma_supply),
+                                    poll_interval,
+                                )))
+                                .with(Box::new(crate::watchdog::EthBridgeStatusObservable::new(
+                                    Arc::clone(&eth_client),
+                                    bridge_addr.clone(),
+                                    poll_interval,
+                                )))
+                                .with(Box::new(crate::watchdog::SomaBridgeStatusObservable::new(
+                                    soma_paused,
+                                    poll_interval,
+                                )))
+                                .with(Box::new(
+                                    crate::watchdog::ConservationInvariantObservable::new(
+                                        Arc::clone(&eth_client),
+                                        soma_supply,
+                                        usdc_addr,
+                                        bridge_addr.clone(),
+                                        poll_interval,
+                                        wd_cfg.failure_threshold,
+                                        wd_cfg.in_flight_tolerance_micro,
+                                        signing_tx.clone(),
+                                        expected_pause_nonce,
+                                    ),
+                                ));
+                            handles.extend(watchdog.start());
+                            info!(
+                                eth_contract = %bridge_addr,
+                                "BridgeWatchdog spawned (5 observables)"
+                            );
+                        } else {
+                            info!("no watchdog configured; auto-pause disabled");
+                        }
+
+                        // Spawn the Eth-side outbound relayer if
+                        // configured. Polls Soma for cert-attached
+                        // PendingWithdrawals and submits release
+                        // txs to Ethereum via the operator wallet.
+                        if let Some(or_cfg) = self.config.outbound_relayer.clone() {
+                            match build_outbound_relayer(
+                                &or_cfg,
+                                &self.config.eth_rpc_urls,
+                                Arc::clone(&client),
+                                Arc::clone(&wal),
+                            ) {
+                                Ok(relayer) => {
+                                    handles.push(relayer.start());
+                                    info!(
+                                        bridge_contract = %or_cfg.bridge_contract_address,
+                                        poll_ms = or_cfg.poll_interval_ms,
+                                        scan_window = or_cfg.scan_window,
+                                        "OutboundRelayer spawned — Eth submission live"
+                                    );
                                 }
                                 Err(e) => {
                                     warn!(
                                         error = %e,
-                                        "approved_governance_actions invalid; HTTP server NOT spawned"
+                                        "OutboundRelayer config invalid; Eth-side release disabled"
                                     );
                                 }
                             }
-
-                            // Peer-broadcast aggregator. Fans out HTTP
-                            // sig requests to each non-blocklisted
-                            // committee member's registered `http_url`
-                            // and assembles a cert as responses arrive.
-                            // Reads committee state directly from the
-                            // monitor's `ArcSwap` so rotations propagate
-                            // without a restart and without a glue task.
-                            let aggregator: Arc<dyn BridgeAuthorityAggregator> =
-                                Arc::new(crate::peer_aggregator::PeerBroadcastAggregator::new(
-                                    Arc::clone(&monitor_channels.committee),
-                                ));
-
-                            // Executor reads pause state from the
-                            // monitor's watch channel and the live
-                            // committee from its `ArcSwap` snapshot —
-                            // no per-attempt RPC polling, no glue task.
-                            let executor = BridgeActionExecutor::new(
-                                Arc::clone(&client),
-                                aggregator,
-                                Arc::clone(&wal),
-                                relayer.address,
-                                relayer.keypair,
-                                Arc::clone(&monitor_channels.committee),
-                                monitor_channels.bridge_paused_rx.clone(),
-                            );
-                            let (executor_handles, signing_tx) = executor.run();
-                            handles.extend(executor_handles);
-
-                            // Drain any pending actions left in the WAL
-                            // by a previous run (crash recovery). Each
-                            // gets re-attempted with a fresh attempt
-                            // counter from zero.
-                            let pending = wal.get_all_pending_actions()?;
-                            info!(
-                                count = pending.len(),
-                                "replaying pending bridge actions to executor",
-                            );
-                            for action in pending {
-                                if let Err(e) = submit_to_executor(&signing_tx, action).await {
-                                    warn!("WAL replay submit failed: {e}");
-                                }
-                            }
-
-                            info!("Bridge action executor wired up");
-
-                            // Hand the live committee snapshot out so
-                            // the epoch-boundary handler can read it
-                            // when emitting CommitteeUpdate actions.
-                            committee_snapshot =
-                                Some(Arc::clone(&monitor_channels.committee));
-
-                            // Spawn the conservation-invariant watchdog
-                            // if configured. It polls Eth vault balance
-                            // + Soma USDC supply on a timer and emits
-                            // an auto-pause action via the executor's
-                            // signing queue on sustained violation.
-                            //
-                            // Eligible only when both the relayer and a
-                            // watchdog config are present — the
-                            // watchdog needs both the Eth client (to
-                            // read vault balance) and the executor's
-                            // signing_tx (to fire pause actions).
-                            if let Some(wd_cfg) = self.config.watchdog.clone() {
-                                let poll_interval = wd_cfg.poll_interval();
-                                let usdc_addr = wd_cfg.usdc_contract_address.clone();
-                                let bridge_addr =
-                                    wd_cfg.eth_bridge_contract_address.clone();
-
-                                // Real Soma supply reader — closures over
-                                // the production SomaBridgeClient. Replaces
-                                // the stub-at-0 from before PR A landed
-                                // BridgeState.total_usdc_supply.
-                                let soma_supply: crate::watchdog::SomaSupplyReader = {
-                                    let c = Arc::clone(&client);
-                                    Arc::new(move || {
-                                        let c = Arc::clone(&c);
-                                        Box::pin(async move {
-                                            c.get_total_usdc_supply().await
-                                        })
-                                    })
-                                };
-                                let soma_paused: crate::watchdog::SomaPausedReader = {
-                                    let c = Arc::clone(&client);
-                                    Arc::new(move || {
-                                        let c = Arc::clone(&c);
-                                        Box::pin(async move {
-                                            c.is_bridge_paused().await
-                                        })
-                                    })
-                                };
-
-                                // Real reader: read the on-chain
-                                // BridgeState.system_message_seq_nums[EmergencyOp]
-                                // every time the watchdog fires an
-                                // auto-pause. Re-read each time so a
-                                // pause cert that landed since the
-                                // last watchdog tick (manual op or
-                                // peer-fired) doesn't get the same
-                                // nonce as our about-to-fire cert.
-                                let expected_pause_nonce: crate::watchdog::ExpectedPauseNonceReader = {
-                                    let c = Arc::clone(&client);
-                                    Arc::new(move || {
-                                        let c = Arc::clone(&c);
-                                        Box::pin(async move {
-                                            c.get_next_system_message_seq(
-                                                types::bridge::BridgeMessageType::EmergencyOp,
-                                            )
-                                            .await
-                                        })
-                                    })
-                                };
-
-                                let watchdog = crate::watchdog::BridgeWatchdog::new()
-                                    .with(Box::new(
-                                        crate::watchdog::EthVaultBalanceObservable::new(
-                                            Arc::clone(&eth_client),
-                                            usdc_addr.clone(),
-                                            bridge_addr.clone(),
-                                            poll_interval,
-                                        ),
-                                    ))
-                                    .with(Box::new(
-                                        crate::watchdog::SomaUsdcSupplyObservable::new(
-                                            Arc::clone(&soma_supply),
-                                            poll_interval,
-                                        ),
-                                    ))
-                                    .with(Box::new(
-                                        crate::watchdog::EthBridgeStatusObservable::new(
-                                            Arc::clone(&eth_client),
-                                            bridge_addr.clone(),
-                                            poll_interval,
-                                        ),
-                                    ))
-                                    .with(Box::new(
-                                        crate::watchdog::SomaBridgeStatusObservable::new(
-                                            soma_paused,
-                                            poll_interval,
-                                        ),
-                                    ))
-                                    .with(Box::new(
-                                        crate::watchdog::ConservationInvariantObservable::new(
-                                            Arc::clone(&eth_client),
-                                            soma_supply,
-                                            usdc_addr,
-                                            bridge_addr.clone(),
-                                            poll_interval,
-                                            wd_cfg.failure_threshold,
-                                            wd_cfg.in_flight_tolerance_micro,
-                                            signing_tx.clone(),
-                                            expected_pause_nonce,
-                                        ),
-                                    ));
-                                handles.extend(watchdog.start());
-                                info!(
-                                    eth_contract = %bridge_addr,
-                                    "BridgeWatchdog spawned (5 observables)"
-                                );
-                            } else {
-                                info!("no watchdog configured; auto-pause disabled");
-                            }
-
-                            // Spawn the Eth-side outbound relayer if
-                            // configured. Polls Soma for cert-attached
-                            // PendingWithdrawals and submits release
-                            // txs to Ethereum via the operator wallet.
-                            if let Some(or_cfg) = self.config.outbound_relayer.clone() {
-                                match build_outbound_relayer(
-                                    &or_cfg,
-                                    &self.config.eth_rpc_urls,
-                                    Arc::clone(&client),
-                                    Arc::clone(&wal),
-                                ) {
-                                    Ok(relayer) => {
-                                        handles.push(relayer.start());
-                                        info!(
-                                            bridge_contract = %or_cfg.bridge_contract_address,
-                                            poll_ms = or_cfg.poll_interval_ms,
-                                            scan_window = or_cfg.scan_window,
-                                            "OutboundRelayer spawned — Eth submission live"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            error = %e,
-                                            "OutboundRelayer config invalid; Eth-side release disabled"
-                                        );
-                                    }
-                                }
-                            } else {
-                                info!("no outbound relayer configured; Eth-side release disabled");
-                            }
-
-                            Some(signing_tx)
+                        } else {
+                            info!("no outbound relayer configured; Eth-side release disabled");
                         }
-                        Err(e) => {
-                            warn!(
-                                error = %e,
-                                "could not connect to Soma RPC; running in sig-cache-only mode"
-                            );
-                            None
-                        }
+
+                        Some(signing_tx)
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            "could not connect to Soma RPC; running in sig-cache-only mode"
+                        );
+                        None
                     }
                 }
-                None => {
-                    info!("no relayer configured; running in sig-cache-only mode");
-                    None
-                }
-            };
+            }
+            None => {
+                info!("no relayer configured; running in sig-cache-only mode");
+                None
+            }
+        };
 
         // 4. Start Ethereum syncer. Resume from the persisted cursor if
         // present (Sui parity: stored value is "last processed", so we
         // start from cursor + 1). Otherwise fall back to the configured
         // `eth_start_block_fallback`.
-        let poll_interval =
-            Duration::from_millis(self.config.eth_poll_interval_ms);
-        let syncer = EthSyncer::new(
-            Arc::clone(&eth_client),
-            poll_interval,
-            self.config.max_log_query_range,
-        );
-        let bridge_contract_bytes: [u8; 20] = parse_eth_addr(
-            &self.config.bridge_contract_address,
-        )
-        .unwrap_or([0u8; 20]);
+        let poll_interval = Duration::from_millis(self.config.eth_poll_interval_ms);
+        let syncer =
+            EthSyncer::new(Arc::clone(&eth_client), poll_interval, self.config.max_log_query_range);
+        let bridge_contract_bytes: [u8; 20] =
+            parse_eth_addr(&self.config.bridge_contract_address).unwrap_or([0u8; 20]);
         let start_block = match wal.get_eth_cursor(&bridge_contract_bytes)? {
             Some(last_processed) => last_processed.saturating_add(1),
             None => self.config.eth_start_block_fallback,
@@ -556,7 +524,10 @@ impl BridgeNode {
                         // gives operators a fast lever to neutralize
                         // an individual member without rotation. So
                         // epoch boundaries are a no-op here.
-                        info!(epoch, "epoch boundary observed (no-op: Eth committee rotation is via UUPS upgrade)");
+                        info!(
+                            epoch,
+                            "epoch boundary observed (no-op: Eth committee rotation is via UUPS upgrade)"
+                        );
                     }
                 }
             }
@@ -604,9 +575,8 @@ fn build_outbound_relayer<C: crate::soma_client::SomaBridgeClientInner + 'static
     })?;
     let bridge_addr = alloy::primitives::Address::from(bridge_addr_bytes);
 
-    let submitter = Arc::new(crate::eth_submitter::EthSubmitter::new(
-        &rpc_url, bridge_addr, wallet,
-    )?);
+    let submitter =
+        Arc::new(crate::eth_submitter::EthSubmitter::new(&rpc_url, bridge_addr, wallet)?);
     // WAL-backed tracker: a restart sees the same relayed set the
     // previous run finished with, so already-landed withdrawals don't
     // re-submit and burn operator gas on Eth-side reverts.

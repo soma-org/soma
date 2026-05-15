@@ -530,25 +530,16 @@ pub trait RpcIndexes: Send + Sync {
     -> Result<Option<CheckpointSequenceNumber>>;
 
     /// Get all bid object IDs for a given ask.
-    fn bids_for_ask(
-        &self,
-        ask_id: &ObjectID,
-    ) -> Result<Vec<ObjectID>>;
+    fn bids_for_ask(&self, ask_id: &ObjectID) -> Result<Vec<ObjectID>>;
 
     /// Get all open ask object IDs.
     fn open_asks(&self) -> Result<Vec<ObjectID>>;
 
     /// Get all settlement object IDs for a given buyer.
-    fn settlements_by_buyer(
-        &self,
-        buyer: &SomaAddress,
-    ) -> Result<Vec<ObjectID>>;
+    fn settlements_by_buyer(&self, buyer: &SomaAddress) -> Result<Vec<ObjectID>>;
 
     /// Get all settlement object IDs for a given seller.
-    fn settlements_by_seller(
-        &self,
-        seller: &SomaAddress,
-    ) -> Result<Vec<ObjectID>>;
+    fn settlements_by_seller(&self, seller: &SomaAddress) -> Result<Vec<ObjectID>>;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

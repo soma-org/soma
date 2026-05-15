@@ -460,7 +460,6 @@ async fn test_multiple_transactions() {
     assert_eq!(cps[0].epoch, 1);
 }
 
-
 // ===========================================================================
 // soma_bridge_deposits
 // ===========================================================================
@@ -482,10 +481,7 @@ async fn test_soma_bridge_deposits_process() {
             .build(),
     );
 
-    let values = soma_bridge_deposits::SomaBridgeDeposits
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = soma_bridge_deposits::SomaBridgeDeposits.process(&cp).await.unwrap();
 
     assert_eq!(values.len(), 2);
     assert_eq!(values[0].recipient, recipient_a.to_vec());
@@ -516,16 +512,11 @@ async fn test_soma_bridge_deposits_commit() {
             .add_bridge_deposit(SomaAddress::random(), 1_000_000, [0x42u8; 32], 1)
             .build(),
     );
-    let values = soma_bridge_deposits::SomaBridgeDeposits
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = soma_bridge_deposits::SomaBridgeDeposits.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
 
     let mut conn = db.connect().await.unwrap();
-    let rows = soma_bridge_deposits::SomaBridgeDeposits::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = soma_bridge_deposits::SomaBridgeDeposits::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 
     // Round-trip: read it back.
@@ -566,10 +557,7 @@ async fn test_soma_bridge_deposits_skips_non_bridge_txs() {
             .build(),
     );
 
-    let values = soma_bridge_deposits::SomaBridgeDeposits
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = soma_bridge_deposits::SomaBridgeDeposits.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1, "non-bridge tx must not be picked up");
     assert_eq!(values[0].recipient, bridge_recipient.to_vec());
 }

@@ -51,11 +51,7 @@ pub fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> std::io::Resul
     }
     let tmp: PathBuf = path.with_extension("json.tmp");
     {
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&tmp)?;
+        let mut f = OpenOptions::new().write(true).create(true).truncate(true).open(&tmp)?;
         let s = serde_json::to_string_pretty(value)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         f.write_all(s.as_bytes())?;

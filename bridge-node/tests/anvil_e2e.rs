@@ -185,52 +185,37 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
     // _disableInitializers, so direct calls to initialize on the impl
     // would revert; the proxy delegatecalls initialize into its own
     // storage, which is what we want.
-    let committee_impl = BridgeCommittee::deploy(&provider)
-        .await
-        .expect("deploy BridgeCommittee impl");
+    let committee_impl =
+        BridgeCommittee::deploy(&provider).await.expect("deploy BridgeCommittee impl");
     let stake: Vec<u16> = vec![2500, 2500, 2500, 2500];
     let committee_init_calldata = committee_impl
         .initialize(committee_eth_addresses.clone(), stake, ETH_CHAIN_ID)
         .calldata()
         .clone();
-    let committee_proxy = ERC1967Proxy::deploy(
-        &provider,
-        *committee_impl.address(),
-        committee_init_calldata,
-    )
-    .await
-    .expect("deploy committee proxy");
+    let committee_proxy =
+        ERC1967Proxy::deploy(&provider, *committee_impl.address(), committee_init_calldata)
+            .await
+            .expect("deploy committee proxy");
     let committee = BridgeCommittee::new(*committee_proxy.address(), &provider);
     println!("[anvil_e2e] BridgeCommittee proxy @ {:?}", committee.address());
 
     // BridgeVault — non-upgradeable, takes USDC in constructor.
-    let vault = BridgeVault::deploy(&provider, *usdc.address())
-        .await
-        .expect("deploy BridgeVault");
+    let vault = BridgeVault::deploy(&provider, *usdc.address()).await.expect("deploy BridgeVault");
     println!("[anvil_e2e] BridgeVault @ {:?}", vault.address());
 
     // BridgeLimiter — proxy-deployed.
-    let limiter_impl = BridgeLimiter::deploy(&provider)
-        .await
-        .expect("deploy BridgeLimiter impl");
-    let limiter_init_calldata = limiter_impl
-        .initialize(*committee.address(), 1_000_000_000_000u64)
-        .calldata()
-        .clone();
-    let limiter_proxy = ERC1967Proxy::deploy(
-        &provider,
-        *limiter_impl.address(),
-        limiter_init_calldata,
-    )
-    .await
-    .expect("deploy limiter proxy");
+    let limiter_impl = BridgeLimiter::deploy(&provider).await.expect("deploy BridgeLimiter impl");
+    let limiter_init_calldata =
+        limiter_impl.initialize(*committee.address(), 1_000_000_000_000u64).calldata().clone();
+    let limiter_proxy =
+        ERC1967Proxy::deploy(&provider, *limiter_impl.address(), limiter_init_calldata)
+            .await
+            .expect("deploy limiter proxy");
     let limiter = BridgeLimiter::new(*limiter_proxy.address(), &provider);
     println!("[anvil_e2e] BridgeLimiter proxy @ {:?}", limiter.address());
 
     // SomaBridge — proxy-deployed.
-    let bridge_impl = SomaBridge::deploy(&provider)
-        .await
-        .expect("deploy SomaBridge impl");
+    let bridge_impl = SomaBridge::deploy(&provider).await.expect("deploy SomaBridge impl");
     let supported_chains: Vec<u8> = vec![SOMA_CHAIN_ID];
     let bridge_init_calldata = bridge_impl
         .initialize(
@@ -242,42 +227,19 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
         )
         .calldata()
         .clone();
-    let bridge_proxy = ERC1967Proxy::deploy(
-        &provider,
-        *bridge_impl.address(),
-        bridge_init_calldata,
-    )
-    .await
-    .expect("deploy bridge proxy");
+    let bridge_proxy =
+        ERC1967Proxy::deploy(&provider, *bridge_impl.address(), bridge_init_calldata)
+            .await
+            .expect("deploy bridge proxy");
     let bridge = SomaBridge::new(*bridge_proxy.address(), &provider);
     println!("[anvil_e2e] SomaBridge proxy @ {:?}", bridge.address());
 
-    vault
-        .transferOwnership(*bridge.address())
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    limiter
-        .transferOwnership(*bridge.address())
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+    vault.transferOwnership(*bridge.address()).send().await.unwrap().watch().await.unwrap();
+    limiter.transferOwnership(*bridge.address()).send().await.unwrap().watch().await.unwrap();
 
     // ---- fund the vault with USDC so there's something to release ----
     let amount: u64 = 2_000_000; // 2 USDC raw
-    usdc.mint(*vault.address(), U256::from(amount))
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+    usdc.mint(*vault.address(), U256::from(amount)).send().await.unwrap().watch().await.unwrap();
 
     // ---- build a quorum-signed withdrawal cert off-chain ----
     let recipient: [u8; 20] = [0xCA; 20];
@@ -293,10 +255,7 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
         timestamp_ms: 1_000, // ~1970-ish — definitely mature
     };
     let msg_bytes = action.to_message_bytes();
-    println!(
-        "[anvil_e2e] off-chain canonical msg len={}",
-        msg_bytes.len()
-    );
+    println!("[anvil_e2e] off-chain canonical msg len={}", msg_bytes.len());
 
     // Sign via the production path: same `sign_bridge_message` the
     // off-chain peer-broadcast aggregator uses. Two signers
@@ -314,8 +273,8 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
     }
 
     // ---- submit via the bridge-node's EthSubmitter ----
-    let submitter = EthSubmitter::new(&rpc, *bridge.address(), operator)
-        .expect("EthSubmitter::new");
+    let submitter =
+        EthSubmitter::new(&rpc, *bridge.address(), operator).expect("EthSubmitter::new");
     let withdrawal = OutboundWithdrawal {
         nonce: 1,
         recipient_eth_address: recipient,
@@ -324,10 +283,7 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
         message_bytes: msg_bytes,
         certificate: cert,
     };
-    let tx_hash = submitter
-        .submit_withdrawal(&withdrawal)
-        .await
-        .expect("submit_withdrawal");
+    let tx_hash = submitter.submit_withdrawal(&withdrawal).await.expect("submit_withdrawal");
     println!("[anvil_e2e] release tx submitted: {:?}", tx_hash);
 
     // Wait for receipt + assert success. EthSubmitter returns as soon
@@ -358,11 +314,7 @@ async fn e2e_withdrawal_releases_usdc_on_anvil() {
     );
 
     let vault_bal = usdc.balanceOf(*vault.address()).call().await.unwrap();
-    assert_eq!(
-        vault_bal,
-        U256::ZERO,
-        "vault should be drained by the release"
-    );
+    assert_eq!(vault_bal, U256::ZERO, "vault should be drained by the release");
 
     println!("[anvil_e2e] ✓ end-to-end withdrawal completed");
 }

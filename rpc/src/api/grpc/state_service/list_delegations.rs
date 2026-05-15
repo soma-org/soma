@@ -57,8 +57,5 @@ pub fn list_delegations(
         });
     }
 
-    Ok(ListDelegationsResponse {
-        delegations,
-        total_principal: Some(total),
-    })
+    Ok(ListDelegationsResponse { delegations, total_principal: Some(total) })
 }

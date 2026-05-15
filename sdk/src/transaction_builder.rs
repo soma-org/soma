@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use anyhow::Result;
 use fastcrypto::encoding::Encoding as _;
 use types::base::SomaAddress;
-use types::digests::{CheckpointDigest, ChainIdentifier};
+use types::digests::{ChainIdentifier, CheckpointDigest};
 use types::transaction::{Transaction, TransactionData, TransactionExpiration, TransactionKind};
 
 use crate::wallet_context::WalletContext;
@@ -124,10 +124,7 @@ impl<'a> TransactionBuilder<'a> {
     ///     considers any tx with empty gas "stateless" for replay
     ///     purposes regardless of shared inputs (see
     ///     `authority::handle_transaction_*` Stage 5.5c check).
-    async fn expiration_for_kind(
-        &self,
-        kind: &TransactionKind,
-    ) -> Result<TransactionExpiration> {
+    async fn expiration_for_kind(&self, kind: &TransactionKind) -> Result<TransactionExpiration> {
         // System txs handle replay protection internally — pass-through.
         if kind.is_system_tx() {
             return Ok(TransactionExpiration::None);
@@ -169,7 +166,8 @@ fn parse_chain_identifier(s: &str) -> Result<ChainIdentifier> {
     use std::str::FromStr as _;
     let digest = rpc::types::Digest::from_str(s)
         .map_err(|e| anyhow::anyhow!("invalid chain_id digest {s:?}: {e}"))?;
-    let bytes: [u8; 32] = (*<rpc::types::Digest as AsRef<[u8; rpc::types::Digest::LENGTH]>>::as_ref(&digest)).into();
+    let bytes: [u8; 32] =
+        (*<rpc::types::Digest as AsRef<[u8; rpc::types::Digest::LENGTH]>>::as_ref(&digest)).into();
     let cp_digest = CheckpointDigest::new(bytes);
     Ok(ChainIdentifier::from(cp_digest))
 }

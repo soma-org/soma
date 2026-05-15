@@ -16,9 +16,7 @@ use indexer_kvstore::{
 };
 use types::base::SomaAddress;
 use types::committee::Committee;
-use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state,
-};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state};
 
 #[tokio::test]
 async fn test_checkpoints_pipeline_process() {
@@ -90,4 +88,3 @@ async fn test_epoch_end_without_boundary() {
     let entries = EpochEndPipeline.process(&Arc::new(checkpoint)).await.unwrap();
     assert_eq!(entries.len(), 0, "normal checkpoint should produce no epoch-end entries");
 }
-

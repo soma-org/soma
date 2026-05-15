@@ -109,7 +109,6 @@ fn test_send_help() {
     insta::assert_snapshot!("send_help", stdout);
 }
 
-
 #[test]
 fn test_status_help() {
     let output =
@@ -203,7 +202,6 @@ fn test_tx_help() {
     insta::assert_snapshot!("tx_help", stdout);
 }
 
-
 #[test]
 fn test_network_help() {
     let output =
@@ -255,7 +253,6 @@ fn test_unknown_command() {
 fn test_send_missing_required_args() {
     soma_cmd().args(["send"]).assert().failure().stderr(predicate::str::contains("--to"));
 }
-
 
 // =============================================================================
 // Error formatting tests (via the library)

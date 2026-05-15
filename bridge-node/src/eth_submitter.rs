@@ -63,24 +63,14 @@ impl EthSubmitter {
     /// and an operator wallet. The wallet's address is captured up
     /// front for logging; the actual signing happens inside alloy at
     /// every `send_transaction`.
-    pub fn new(
-        rpc_url: &str,
-        bridge_contract: Address,
-        wallet: EthWallet,
-    ) -> BridgeResult<Self> {
+    pub fn new(rpc_url: &str, bridge_contract: Address, wallet: EthWallet) -> BridgeResult<Self> {
         let wallet_address = wallet.address();
         let alloy_wallet: EthereumWallet = wallet.into_alloy_wallet();
         let url = rpc_url
             .parse()
             .map_err(|e| BridgeError::ConfigError(format!("Bad Eth RPC URL: {e}")))?;
-        let provider = ProviderBuilder::new()
-            .wallet(alloy_wallet)
-            .connect_http(url);
-        Ok(Self {
-            bridge_contract,
-            provider: Arc::new(provider),
-            wallet_address,
-        })
+        let provider = ProviderBuilder::new().wallet(alloy_wallet).connect_http(url);
+        Ok(Self { bridge_contract, provider: Arc::new(provider), wallet_address })
     }
 
     /// Submit a fully signed `transferBridgedTokensWithSignatures` tx
@@ -97,19 +87,14 @@ impl EthSubmitter {
         recipient = ?withdrawal.recipient_eth_address,
         amount = withdrawal.amount,
     ))]
-    pub async fn submit_withdrawal(
-        &self,
-        withdrawal: &OutboundWithdrawal,
-    ) -> BridgeResult<TxHash> {
+    pub async fn submit_withdrawal(&self, withdrawal: &OutboundWithdrawal) -> BridgeResult<TxHash> {
         // CRITICAL: use the message bytes the committee actually
         // signed — DON'T reconstruct from the wrapper fields. Any
         // field difference (sender, timestamp_ms, ...) makes the
         // on-chain `ecrecover` recover the wrong address and the
         // contract rejects the cert as below-threshold.
-        let calldata = eth_abi::encode_release_calldata(
-            &withdrawal.message_bytes,
-            &withdrawal.certificate,
-        )?;
+        let calldata =
+            eth_abi::encode_release_calldata(&withdrawal.message_bytes, &withdrawal.certificate)?;
 
         // EIP-1559 request — alloy fills nonce/fees/gasLimit from the
         // connected provider. `value = 0` because the release function
@@ -139,10 +124,7 @@ impl EthSubmitter {
     /// Wait for the tx receipt + assert `status == 1`. Useful for
     /// tests and operator-grade waits; production may prefer to
     /// fire-and-forget and observe via event monitoring.
-    pub async fn wait_for_success(
-        &self,
-        tx_hash: TxHash,
-    ) -> BridgeResult<B256> {
+    pub async fn wait_for_success(&self, tx_hash: TxHash) -> BridgeResult<B256> {
         let receipt = self
             .provider
             .get_transaction_receipt(tx_hash)
@@ -151,9 +133,7 @@ impl EthSubmitter {
             .ok_or_else(|| BridgeError::ProviderError("receipt not yet available".into()))?;
         if !receipt.status() {
             warn!(?tx_hash, "release tx reverted on chain");
-            return Err(BridgeError::Internal(format!(
-                "tx {tx_hash:?} reverted on chain"
-            )));
+            return Err(BridgeError::Internal(format!("tx {tx_hash:?} reverted on chain")));
         }
         Ok(receipt.transaction_hash)
     }
@@ -173,7 +153,9 @@ mod tests {
         let anvil = match Anvil::new().try_spawn() {
             Ok(a) => a,
             Err(e) => {
-                eprintln!("skipping submitter_constructs_against_local_rpc: anvil unavailable ({e})");
+                eprintln!(
+                    "skipping submitter_constructs_against_local_rpc: anvil unavailable ({e})"
+                );
                 return;
             }
         };
@@ -181,15 +163,8 @@ mod tests {
             "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
         )
         .unwrap();
-        let s = EthSubmitter::new(
-            &anvil.endpoint(),
-            Address::ZERO,
-            wallet,
-        )
-        .expect("EthSubmitter::new");
-        assert_eq!(
-            format!("{:?}", s.wallet_address),
-            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-        );
+        let s =
+            EthSubmitter::new(&anvil.endpoint(), Address::ZERO, wallet).expect("EthSubmitter::new");
+        assert_eq!(format!("{:?}", s.wallet_address), "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     }
 }

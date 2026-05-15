@@ -210,9 +210,9 @@ impl RpcIngestionClient {
 #[async_trait]
 impl IngestionClientTrait for RpcIngestionClient {
     async fn fetch(&self, checkpoint: u64) -> FetchResult {
+        use rpc::proto::soma::GetCheckpointRequest;
         use rpc::proto::soma::get_checkpoint_request::CheckpointId;
         use rpc::proto::soma::ledger_service_client::LedgerServiceClient;
-        use rpc::proto::soma::GetCheckpointRequest;
 
         let mut client = LedgerServiceClient::new(self.channel.clone())
             .max_decoding_message_size(256 * 1024 * 1024);
@@ -237,36 +237,32 @@ impl IngestionClientTrait for RpcIngestionClient {
         });
         request.checkpoint_id = Some(CheckpointId::SequenceNumber(checkpoint));
 
-        let response = client.get_checkpoint(request).await.map_err(|status| {
-            match status.code() {
+        let response =
+            client.get_checkpoint(request).await.map_err(|status| match status.code() {
                 tonic::Code::NotFound => FetchError::NotFound,
-                _ => FetchError::Transient {
-                    reason: "grpc",
-                    error: anyhow::anyhow!(status),
-                },
-            }
-        })?;
+                _ => FetchError::Transient { reason: "grpc", error: anyhow::anyhow!(status) },
+            })?;
 
-        let proto_checkpoint = response.into_inner().checkpoint.ok_or_else(|| {
-            FetchError::Permanent {
+        let proto_checkpoint =
+            response.into_inner().checkpoint.ok_or_else(|| FetchError::Permanent {
                 reason: "missing_checkpoint",
                 error: anyhow::anyhow!("get_checkpoint response had no checkpoint"),
-            }
-        })?;
+            })?;
 
         // Proto→Checkpoint conversion is multi-ms of CPU; offload to the blocking pool so it
         // doesn't stall the reactor. A conversion failure is permanent — the bytes are what
         // they are (mirrors the decode-as-permanent fix on the object-store path).
-        let checkpoint = tokio::task::spawn_blocking(move || Checkpoint::try_from(&proto_checkpoint))
-            .await
-            .map_err(|e| FetchError::Transient {
-                reason: "decode_task",
-                error: anyhow::anyhow!("proto conversion task panicked: {e}"),
-            })?
-            .map_err(|e| FetchError::Permanent {
-                reason: "proto_conversion",
-                error: e.into(),
-            })?;
+        let checkpoint =
+            tokio::task::spawn_blocking(move || Checkpoint::try_from(&proto_checkpoint))
+                .await
+                .map_err(|e| FetchError::Transient {
+                    reason: "decode_task",
+                    error: anyhow::anyhow!("proto conversion task panicked: {e}"),
+                })?
+                .map_err(|e| FetchError::Permanent {
+                    reason: "proto_conversion",
+                    error: e.into(),
+                })?;
 
         Ok(FetchData::Checkpoint(checkpoint))
     }
@@ -328,8 +324,8 @@ impl StreamingIngestionClient {
     /// Background task: keep a `subscribe_checkpoints` stream open, reconnecting forever on
     /// error, and feed every checkpoint it yields into the shared buffer.
     async fn subscription_loop(endpoint: tonic::transport::Endpoint, buffer: Arc<StreamBuffer>) {
-        use rpc::proto::soma::subscription_service_client::SubscriptionServiceClient;
         use rpc::proto::soma::SubscribeCheckpointsRequest;
+        use rpc::proto::soma::subscription_service_client::SubscriptionServiceClient;
 
         loop {
             let channel = match endpoint.connect().await {
@@ -596,11 +592,7 @@ impl IngestionClient {
                         // PR the fix there once we have stability data.
                         decode::checkpoint(&bytes).map_err(|e| {
                             let reason = e.reason();
-                            error!(
-                                checkpoint,
-                                reason,
-                                "Permanent decode error: {e}"
-                            );
+                            error!(checkpoint, reason, "Permanent decode error: {e}");
                             self.metrics
                                 .total_ingested_permanent_errors
                                 .with_label_values(&[reason])
@@ -677,19 +669,15 @@ mod tests {
         });
 
         let metrics = test_ingestion_metrics();
-        let ingestion_client =
-            IngestionClient::new_impl(client.clone(), metrics.clone());
+        let ingestion_client = IngestionClient::new_impl(client.clone(), metrics.clone());
 
         // If decode were transient (the bug), the exponential backoff would retry up to
         // MAX_TRANSIENT_RETRY_INTERVAL forever. Cap the test with a deadline that is more
         // than enough for a permanent error to short-circuit, but small enough that the
         // bug-regressed code would visibly hang against it.
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            ingestion_client.fetch(42),
-        )
-        .await
-        .expect("fetch should terminate quickly on decode failure, not retry forever");
+        let result = tokio::time::timeout(Duration::from_secs(5), ingestion_client.fetch(42))
+            .await
+            .expect("fetch should terminate quickly on decode failure, not retry forever");
 
         let err = result.expect_err("expected decode failure");
         assert!(

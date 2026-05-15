@@ -403,11 +403,7 @@ impl Object {
             bcs::to_bytes(&accumulator)
                 .expect("BCS serialization of BalanceAccumulator is infallible"),
         );
-        Self::new(
-            data,
-            Owner::Accumulator { kind: AccumulatorKind::Balance },
-            previous_transaction,
-        )
+        Self::new(data, Owner::Accumulator { kind: AccumulatorKind::Balance }, previous_transaction)
     }
 
     /// Construct a fresh `DelegationAccumulator` object at `Version::MIN`.
@@ -456,7 +452,10 @@ impl Object {
     /// Overwrite a `BalanceAccumulator` object's contents in-place.
     /// Caller must ensure the object actually IS one; debug-asserts the
     /// type.
-    pub fn set_balance_accumulator(&mut self, accumulator: &crate::accumulator::BalanceAccumulator) {
+    pub fn set_balance_accumulator(
+        &mut self,
+        accumulator: &crate::accumulator::BalanceAccumulator,
+    ) {
         debug_assert_eq!(
             *self.data.object_type(),
             ObjectType::BalanceAccumulator,
@@ -1164,9 +1163,7 @@ pub enum Owner {
     /// of the mutating system transaction — same as how `Shared`
     /// objects' versions are sequenced — so all validators reach
     /// identical post-state digests deterministically.
-    Accumulator {
-        kind: AccumulatorKind,
-    },
+    Accumulator { kind: AccumulatorKind },
 }
 
 impl Owner {

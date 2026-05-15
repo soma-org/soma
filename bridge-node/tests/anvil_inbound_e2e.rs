@@ -107,20 +107,17 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     // default on dev chains — good.
 
     // operator-as-deployer wallet (anvil dev key #0)
-    let deployer_signer =
-        PrivateKeySigner::from_slice(&anvil.keys()[0].to_bytes()).unwrap();
-    let deployer = ProviderBuilder::new()
-        .wallet(deployer_signer.clone())
-        .connect_http(rpc.parse().unwrap());
+    let deployer_signer = PrivateKeySigner::from_slice(&anvil.keys()[0].to_bytes()).unwrap();
+    let deployer =
+        ProviderBuilder::new().wallet(deployer_signer.clone()).connect_http(rpc.parse().unwrap());
 
     // user wallet (anvil dev key #1) — separate identity that calls
     // deposit() so the captured event's `sender` is unambiguously the
     // user, not the deployer.
     let user_signer = PrivateKeySigner::from_slice(&anvil.keys()[1].to_bytes()).unwrap();
     let user_address = user_signer.address();
-    let user_provider = ProviderBuilder::new()
-        .wallet(user_signer)
-        .connect_http(rpc.parse().unwrap());
+    let user_provider =
+        ProviderBuilder::new().wallet(user_signer).connect_http(rpc.parse().unwrap());
 
     // ---- deploy ----
     let usdc = MockUSDC::deploy(&deployer).await.unwrap();
@@ -129,34 +126,21 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     // their constructors, so initialize must run via delegatecall
     // through a proxy).
     let committee_impl = BridgeCommittee::deploy(&deployer).await.unwrap();
-    let members: Vec<Address> = (0..4)
-        .map(|i| Address::from_slice(&[i as u8 + 0x10; 20]))
-        .collect();
+    let members: Vec<Address> =
+        (0..4).map(|i| Address::from_slice(&[i as u8 + 0x10; 20])).collect();
     let stake: Vec<u16> = vec![2500, 2500, 2500, 2500];
-    let committee_init = committee_impl
-        .initialize(members, stake, ETH_CHAIN_ID)
-        .calldata()
-        .clone();
-    let committee_proxy = ERC1967Proxy::deploy(
-        &deployer,
-        *committee_impl.address(),
-        committee_init,
-    )
-    .await
-    .unwrap();
+    let committee_init = committee_impl.initialize(members, stake, ETH_CHAIN_ID).calldata().clone();
+    let committee_proxy =
+        ERC1967Proxy::deploy(&deployer, *committee_impl.address(), committee_init).await.unwrap();
     let committee = BridgeCommittee::new(*committee_proxy.address(), &deployer);
 
     let vault = BridgeVault::deploy(&deployer, *usdc.address()).await.unwrap();
 
     let limiter_impl = BridgeLimiter::deploy(&deployer).await.unwrap();
-    let limiter_init = limiter_impl
-        .initialize(*committee.address(), 1_000_000_000_000u64)
-        .calldata()
-        .clone();
+    let limiter_init =
+        limiter_impl.initialize(*committee.address(), 1_000_000_000_000u64).calldata().clone();
     let limiter_proxy =
-        ERC1967Proxy::deploy(&deployer, *limiter_impl.address(), limiter_init)
-            .await
-            .unwrap();
+        ERC1967Proxy::deploy(&deployer, *limiter_impl.address(), limiter_init).await.unwrap();
     let limiter = BridgeLimiter::new(*limiter_proxy.address(), &deployer);
 
     let bridge_impl = SomaBridge::deploy(&deployer).await.unwrap();
@@ -172,26 +156,10 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
         .calldata()
         .clone();
     let bridge_proxy =
-        ERC1967Proxy::deploy(&deployer, *bridge_impl.address(), bridge_init)
-            .await
-            .unwrap();
+        ERC1967Proxy::deploy(&deployer, *bridge_impl.address(), bridge_init).await.unwrap();
     let bridge = SomaBridge::new(*bridge_proxy.address(), &deployer);
-    vault
-        .transferOwnership(*bridge.address())
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
-    limiter
-        .transferOwnership(*bridge.address())
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+    vault.transferOwnership(*bridge.address()).send().await.unwrap().watch().await.unwrap();
+    limiter.transferOwnership(*bridge.address()).send().await.unwrap().watch().await.unwrap();
 
     let bridge_contract_str = format!("{:?}", bridge.address());
     println!("[anvil_inbound] SomaBridge @ {bridge_contract_str}");
@@ -206,13 +174,7 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     ];
 
     // Deployer mints USDC into the user. User approves the bridge.
-    usdc.mint(user_address, U256::from(amount))
-        .send()
-        .await
-        .unwrap()
-        .watch()
-        .await
-        .unwrap();
+    usdc.mint(user_address, U256::from(amount)).send().await.unwrap().watch().await.unwrap();
 
     let usdc_as_user = MockUSDC::new(*usdc.address(), &user_provider);
     let bridge_as_user = SomaBridge::new(*bridge.address(), &user_provider);
@@ -227,11 +189,7 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
         .unwrap();
 
     let pending = bridge_as_user
-        .deposit(
-            SOMA_CHAIN_ID,
-            alloy::primitives::FixedBytes::from(soma_recipient_bytes),
-            amount,
-        )
+        .deposit(SOMA_CHAIN_ID, alloy::primitives::FixedBytes::from(soma_recipient_bytes), amount)
         .send()
         .await
         .unwrap();
@@ -253,10 +211,7 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
         }
     }
     assert!(found, "no TokensDeposited log emitted by bridge");
-    println!(
-        "[anvil_inbound] deposit tx={:?} event_idx={}",
-        tx_hash, event_idx
-    );
+    println!("[anvil_inbound] deposit tx={:?} event_idx={}", tx_hash, event_idx);
 
     // ---- bridge-node side: parse the event ----
     // Use `get_deposit_events_in_range` (the eth_syncer's production
@@ -267,12 +222,8 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     // through `parse_deposit_log`); only the finalization gate
     // differs. Finalization is exercised in unit tests with mocked
     // `eth_getBlockByNumber` responses.
-    let eth_client = EthClient::new(vec![rpc], &bridge_contract_str)
-        .await
-        .unwrap();
-    let receipt_block = receipt
-        .block_number
-        .expect("receipt has a block number");
+    let eth_client = EthClient::new(vec![rpc], &bridge_contract_str).await.unwrap();
+    let receipt_block = receipt.block_number.expect("receipt has a block number");
     let events = eth_client
         .get_deposit_events_in_range(receipt_block, receipt_block)
         .await
@@ -304,10 +255,7 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
             assert_eq!(recipient.as_ref(), &soma_recipient_bytes);
             assert_eq!(token_type, types::bridge::USDC_TOKEN_TYPE);
             assert_eq!(got_amount, amount);
-            assert!(
-                timestamp_ms > 0,
-                "block-time timestamp_ms should have been emitted (got 0)"
-            );
+            assert!(timestamp_ms > 0, "block-time timestamp_ms should have been emitted (got 0)");
         }
         other => panic!("expected Deposit, got {other:?}"),
     }

@@ -61,11 +61,8 @@ async fn test_epoch_store_signed_transaction_storage() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     seed_balance_mode_funds(&authority_state, sender, 10_000_000, 10_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let tx_digest = *tx.digest();
 
@@ -108,11 +105,8 @@ async fn test_epoch_store_effects_signatures() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     seed_balance_mode_funds(&authority_state, sender, 10_000_000, 10_000_000);
 
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let tx_digest = *tx.digest();
 

@@ -264,10 +264,12 @@ async fn test_settlement_digest_agrees_across_validators() {
                     .find(|d| {
                         cache
                             .get_transaction_block(d)
-                            .map(|tx| matches!(
-                                tx.transaction_data().kind(),
-                                types::transaction::TransactionKind::Settlement(_)
-                            ))
+                            .map(|tx| {
+                                matches!(
+                                    tx.transaction_data().kind(),
+                                    types::transaction::TransactionKind::Settlement(_)
+                                )
+                            })
                             .unwrap_or(false)
                     })
                     .expect("a balance transfer must produce a Settlement TX in its cp");

@@ -14,15 +14,12 @@ use std::sync::Arc;
 use indexer_framework::pipeline::Processor;
 use indexer_kvstore::{
     BigTableClient, CheckpointsByDigestPipeline, CheckpointsPipeline, EpochEndPipeline,
-    EpochStartPipeline, KeyValueStoreReader, ObjectsPipeline,
-    TransactionsPipeline, Watermark,
+    EpochStartPipeline, KeyValueStoreReader, ObjectsPipeline, TransactionsPipeline, Watermark,
 };
 use types::base::SomaAddress;
 use types::committee::Committee;
 use types::full_checkpoint_content::Checkpoint;
-use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state,
-};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state};
 
 /// Set watermarks for all pipelines to the given values.
 async fn set_watermarks(client: &mut BigTableClient, wm: &Watermark) {
@@ -33,9 +30,7 @@ async fn set_watermarks(client: &mut BigTableClient, wm: &Watermark) {
 
 /// Build a genesis checkpoint with system state.
 fn genesis_checkpoint() -> Checkpoint {
-    TestCheckpointBuilder::new(0)
-        .with_genesis_system_state(default_test_system_state())
-        .build()
+    TestCheckpointBuilder::new(0).with_genesis_system_state(default_test_system_state()).build()
 }
 
 /// Build a checkpoint at sequence_number=1 with a transfer.

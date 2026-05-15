@@ -59,8 +59,8 @@ pub async fn execute_list_stakes(
 ) -> Result<()> {
     let client = context.get_client().await?;
 
-    let request = rpc::proto::soma::ListDelegationsRequest::default()
-        .with_staker(staker.to_string());
+    let request =
+        rpc::proto::soma::ListDelegationsRequest::default().with_staker(staker.to_string());
     let response = client
         .list_delegations(request)
         .await
@@ -90,16 +90,9 @@ pub async fn execute_list_stakes(
         println!("Stakes for {}:", staker);
         println!("  {:<66}  {}", "POOL", "PRINCIPAL");
         for d in &response.delegations {
-            println!(
-                "  {:<66}  {}",
-                d.pool_id.as_deref().unwrap_or(""),
-                d.principal.unwrap_or(0),
-            );
+            println!("  {:<66}  {}", d.pool_id.as_deref().unwrap_or(""), d.principal.unwrap_or(0),);
         }
-        println!(
-            "Total principal: {} shannons",
-            response.total_principal.unwrap_or(0)
-        );
+        println!("Total principal: {} shannons", response.total_principal.unwrap_or(0));
     }
     Ok(())
 }

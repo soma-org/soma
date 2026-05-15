@@ -57,11 +57,7 @@ async fn openrouter_round_trip_chat_completion() {
         .send()
         .await
         .expect("openrouter /models reachable");
-    assert!(
-        probe.status().is_success(),
-        "openrouter /models returned {}",
-        probe.status()
-    );
+    assert!(probe.status().is_success(), "openrouter /models returned {}", probe.status());
 
     // 2. Chat completion via the OpenAI-compatible endpoint.
     let payload = serde_json::json!({
@@ -85,8 +81,7 @@ async fn openrouter_round_trip_chat_completion() {
         .expect("send chat completion");
 
     let status = resp.status();
-    let body: serde_json::Value =
-        resp.json().await.expect("response is JSON");
+    let body: serde_json::Value = resp.json().await.expect("response is JSON");
     assert!(
         status.is_success(),
         "openrouter responded {}: {}",
@@ -95,9 +90,7 @@ async fn openrouter_round_trip_chat_completion() {
     );
 
     // 3. Validate the response shape.
-    let content = body["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or_default();
+    let content = body["choices"][0]["message"]["content"].as_str().unwrap_or_default();
     assert!(!content.is_empty(), "completion content must be non-empty");
 
     let usage = &body["usage"];
@@ -167,14 +160,6 @@ async fn seeded_models_exist_on_openrouter() {
         "mistralai/mistral-medium-3-5",
         "minimax/minimax-m2.7",
     ];
-    let missing: Vec<&str> = seeded
-        .iter()
-        .copied()
-        .filter(|m| !known.contains(*m))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "seeded models missing from openrouter: {:?}",
-        missing
-    );
+    let missing: Vec<&str> = seeded.iter().copied().filter(|m| !known.contains(*m)).collect();
+    assert!(missing.is_empty(), "seeded models missing from openrouter: {:?}", missing);
 }

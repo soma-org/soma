@@ -350,10 +350,14 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 sender_eth_address: Some(args.sender_eth_address.clone().into()),
                 target_chain: Some(args.target_chain as u32),
                 token_type: Some(args.token_type as u32),
-                signatures: args.signatures.iter().map(|s| super::PubkeySig {
-                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
-                    signature: Some(s.signature.clone().into()),
-                }).collect(),
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| super::PubkeySig {
+                        signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                        signature: Some(s.signature.clone().into()),
+                    })
+                    .collect(),
             }),
             BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
                 amount: Some(args.amount),
@@ -362,25 +366,39 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             }),
             BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(super::BridgeEmergencyPause {
                 nonce: Some(args.nonce),
-                signatures: args.signatures.iter().map(|s| super::PubkeySig {
-                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
-                    signature: Some(s.signature.clone().into()),
-                }).collect(),
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| super::PubkeySig {
+                        signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                        signature: Some(s.signature.clone().into()),
+                    })
+                    .collect(),
             }),
-            BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(super::BridgeEmergencyUnpause {
-                nonce: Some(args.nonce),
-                signatures: args.signatures.iter().map(|s| super::PubkeySig {
-                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
-                    signature: Some(s.signature.clone().into()),
-                }).collect(),
-            }),
+            BridgeEmergencyUnpause(args) => {
+                Kind::BridgeEmergencyUnpause(super::BridgeEmergencyUnpause {
+                    nonce: Some(args.nonce),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
+                })
+            }
             BridgeAttachWithdrawalSignatures(args) => {
                 Kind::BridgeAttachWithdrawalSignatures(super::BridgeAttachWithdrawalSignatures {
                     nonce: Some(args.nonce),
-                    signatures: args.signatures.iter().map(|s| super::PubkeySig {
-                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
-                    signature: Some(s.signature.clone().into()),
-                }).collect(),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
                 })
             }
             BridgeUpdateCommitteeBlocklist(args) => {
@@ -392,10 +410,14 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     nonce: Some(args.nonce),
                     is_blocklist: Some(args.is_blocklist),
                     eth_addresses: Some(flat.into()),
-                    signatures: args.signatures.iter().map(|s| super::PubkeySig {
-                    signer_pubkey: Some(s.signer_pubkey.clone().into()),
-                    signature: Some(s.signature.clone().into()),
-                }).collect(),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
                 })
             }
             BridgeRegisterBridgeKey(args) => {
@@ -459,16 +481,12 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     .iter()
                     .map(|ev| {
                         let (owner, coin_type, amount, is_credit) = match ev {
-                            types::balance::BalanceEvent::Deposit {
-                                owner,
-                                coin_type,
-                                amount,
-                            } => (*owner, *coin_type, *amount, true),
-                            types::balance::BalanceEvent::Withdraw {
-                                owner,
-                                coin_type,
-                                amount,
-                            } => (*owner, *coin_type, *amount, false),
+                            types::balance::BalanceEvent::Deposit { owner, coin_type, amount } => {
+                                (*owner, *coin_type, *amount, true)
+                            }
+                            types::balance::BalanceEvent::Withdraw { owner, coin_type, amount } => {
+                                (*owner, *coin_type, *amount, false)
+                            }
                         };
                         super::SettlementChange {
                             owner: Some(owner.to_string()),
@@ -607,9 +625,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("validator"))?
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("validator", e))?,
-                amount: stake
-                    .amount
-                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+                amount: stake.amount.ok_or_else(|| TryFromProtoError::missing("amount"))?,
             },
 
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
@@ -790,7 +806,9 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             Kind::BridgeDeposit(args) => Self::BridgeDeposit(crate::types::BridgeDepositArgs {
                 nonce: args.nonce.unwrap_or(0),
                 eth_tx_hash: args.eth_tx_hash.as_deref().unwrap_or_default().to_vec(),
-                recipient: args.recipient.as_ref()
+                recipient: args
+                    .recipient
+                    .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("recipient"))?
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
@@ -799,63 +817,92 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 sender_eth_address: args.sender_eth_address.as_deref().unwrap_or_default().to_vec(),
                 target_chain: args.target_chain.unwrap_or(0) as u8,
                 token_type: args.token_type.unwrap_or(0) as u8,
-                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
-                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
-                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
-                }).collect(),
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| crate::types::PubkeySig {
+                        signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                        signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                    })
+                    .collect(),
             }),
             Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
                 amount: args.amount.unwrap_or(0),
-                recipient_eth_address: args.recipient_eth_address.as_deref().unwrap_or_default().to_vec(),
+                recipient_eth_address: args
+                    .recipient_eth_address
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_vec(),
                 target_chain: args.target_chain.unwrap_or(0) as u8,
             }),
-            Kind::BridgeEmergencyPause(args) => Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
-                nonce: args.nonce.unwrap_or(0),
-                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
-                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
-                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
-                }).collect(),
-            }),
-            Kind::BridgeEmergencyUnpause(args) => Self::BridgeEmergencyUnpause(crate::types::BridgeEmergencyUnpauseArgs {
-                nonce: args.nonce.unwrap_or(0),
-                signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
-                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
-                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
-                }).collect(),
-            }),
+            Kind::BridgeEmergencyPause(args) => {
+                Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
+                })
+            }
+            Kind::BridgeEmergencyUnpause(args) => {
+                Self::BridgeEmergencyUnpause(crate::types::BridgeEmergencyUnpauseArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
+                })
+            }
             Kind::BridgeAttachWithdrawalSignatures(args) => Self::BridgeAttachWithdrawalSignatures(
                 crate::types::BridgeAttachWithdrawalSignaturesArgs {
                     nonce: args.nonce.unwrap_or(0),
-                    signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
-                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
-                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
-                }).collect(),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
                 },
             ),
             Kind::BridgeUpdateCommitteeBlocklist(args) => {
                 let flat = args.eth_addresses.as_deref().unwrap_or_default();
-                let eth_addresses = flat
-                    .chunks_exact(20)
-                    .map(|c| c.to_vec())
-                    .collect::<Vec<_>>();
+                let eth_addresses = flat.chunks_exact(20).map(|c| c.to_vec()).collect::<Vec<_>>();
                 Self::BridgeUpdateCommitteeBlocklist(
                     crate::types::BridgeUpdateCommitteeBlocklistArgs {
                         nonce: args.nonce.unwrap_or(0),
                         is_blocklist: args.is_blocklist.unwrap_or(false),
                         eth_addresses,
-                        signatures: args.signatures.iter().map(|s| crate::types::PubkeySig {
-                    signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
-                    signature: s.signature.as_deref().unwrap_or_default().to_vec(),
-                }).collect(),
+                        signatures: args
+                            .signatures
+                            .iter()
+                            .map(|s| crate::types::PubkeySig {
+                                signer_pubkey: s
+                                    .signer_pubkey
+                                    .as_deref()
+                                    .unwrap_or_default()
+                                    .to_vec(),
+                                signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                            })
+                            .collect(),
                     },
                 )
             }
-            Kind::BridgeRegisterBridgeKey(args) => Self::BridgeRegisterBridgeKey(
-                crate::types::BridgeRegisterBridgeKeyArgs {
+            Kind::BridgeRegisterBridgeKey(args) => {
+                Self::BridgeRegisterBridgeKey(crate::types::BridgeRegisterBridgeKeyArgs {
                     bridge_pubkey: args.bridge_pubkey.as_deref().unwrap_or_default().to_vec(),
                     http_url: args.http_url.clone().unwrap_or_default(),
-                },
-            ),
+                })
+            }
 
             // Challenge variants removed — reject if received from proto
             Kind::InitiateChallenge(_)
@@ -967,9 +1014,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("coin_type"))?
                     .parse::<types::object::CoinType>()
                     .map_err(|e| TryFromProtoError::invalid("coin_type", e))?,
-                amount: args
-                    .amount
-                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+                amount: args.amount.ok_or_else(|| TryFromProtoError::missing("amount"))?,
             }),
 
             Kind::RateChannel(args) => Self::RateChannel(crate::types::RateChannelArgs {
@@ -979,9 +1024,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
-                negative: args
-                    .negative
-                    .ok_or_else(|| TryFromProtoError::missing("negative"))?,
+                negative: args.negative.ok_or_else(|| TryFromProtoError::missing("negative"))?,
                 reason_code: args.reason_code.unwrap_or(0) as u8,
             }),
 
@@ -1025,8 +1068,8 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 ttot_bound_ms: args.ttot_bound_ms.unwrap_or(0),
             }),
 
-            Kind::DeactivateOffering(args) => Self::DeactivateOffering(
-                crate::types::DeactivateOfferingArgs {
+            Kind::DeactivateOffering(args) => {
+                Self::DeactivateOffering(crate::types::DeactivateOfferingArgs {
                     offering_id: args
                         .offering_id
                         .as_ref()
@@ -1037,8 +1080,8 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .model_id
                         .clone()
                         .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
-                },
-            ),
+                })
+            }
 
             Kind::RegisterProvider(args) => {
                 Self::RegisterProvider(crate::types::RegisterProviderArgs {
@@ -1074,9 +1117,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     let coin_type_label = change
                         .coin_type
                         .as_ref()
-                        .ok_or_else(|| {
-                            TryFromProtoError::missing("settlement.changes.coin_type")
-                        })?
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.coin_type"))?
                         .as_str();
                     let coin_type = match coin_type_label {
                         "USDC" => types::object::CoinType::Usdc,
@@ -1091,9 +1132,9 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     let amount = change
                         .amount
                         .ok_or_else(|| TryFromProtoError::missing("settlement.changes.amount"))?;
-                    let is_credit = change
-                        .is_credit
-                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.is_credit"))?;
+                    let is_credit = change.is_credit.ok_or_else(|| {
+                        TryFromProtoError::missing("settlement.changes.is_credit")
+                    })?;
                     changes.push(if is_credit {
                         types::balance::BalanceEvent::deposit(owner, coin_type, amount)
                     } else {
@@ -1127,9 +1168,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("balance_transfer.coin_type"))?
                     .parse::<types::object::CoinType>()
-                    .map_err(|e| {
-                        TryFromProtoError::invalid("balance_transfer.coin_type", e)
-                    })?;
+                    .map_err(|e| TryFromProtoError::invalid("balance_transfer.coin_type", e))?;
                 let mut transfers = Vec::with_capacity(args.transfers.len());
                 for entry in &args.transfers {
                     let recipient = entry
@@ -1140,20 +1179,14 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         })?
                         .parse()
                         .map_err(|e| {
-                            TryFromProtoError::invalid(
-                                "balance_transfer.transfers.recipient",
-                                e,
-                            )
+                            TryFromProtoError::invalid("balance_transfer.transfers.recipient", e)
                         })?;
                     let amount = entry.amount.ok_or_else(|| {
                         TryFromProtoError::missing("balance_transfer.transfers.amount")
                     })?;
                     transfers.push((recipient, amount));
                 }
-                Self::BalanceTransfer(crate::types::BalanceTransferArgs {
-                    coin_type,
-                    transfers,
-                })
+                Self::BalanceTransfer(crate::types::BalanceTransferArgs { coin_type, transfers })
             }
         }
         .pipe(Ok)
@@ -1456,10 +1489,7 @@ pub struct AddStakeArgs {
 
 impl From<AddStakeArgs> for AddStake {
     fn from(args: AddStakeArgs) -> Self {
-        Self {
-            validator: Some(args.validator.to_string()),
-            amount: Some(args.amount),
-        }
+        Self { validator: Some(args.validator.to_string()), amount: Some(args.amount) }
     }
 }
 
@@ -1471,9 +1501,6 @@ pub struct WithdrawStakeArgs {
 
 impl From<WithdrawStakeArgs> for WithdrawStake {
     fn from(args: WithdrawStakeArgs) -> Self {
-        Self {
-            pool_id: Some(args.pool_id.to_string()),
-            amount: args.amount,
-        }
+        Self { pool_id: Some(args.pool_id.to_string()), amount: args.amount }
     }
 }

@@ -31,9 +31,7 @@ impl Processor for EpochsPipeline {
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> anyhow::Result<Vec<Self::Value>> {
         if checkpoint.summary.is_last_checkpoint_of_epoch() {
-            Ok(vec![EpochCheckpoint {
-                checkpoint_number: checkpoint.summary.sequence_number,
-            }])
+            Ok(vec![EpochCheckpoint { checkpoint_number: checkpoint.summary.sequence_number }])
         } else {
             Ok(vec![])
         }
@@ -102,9 +100,7 @@ impl Handler for EpochsPipeline {
                 )
                 .await?;
         } else {
-            store
-                .put_opts(&path, payload, PutMode::Create.into())
-                .await?;
+            store.put_opts(&path, payload, PutMode::Create.into()).await?;
         }
 
         Ok(1)

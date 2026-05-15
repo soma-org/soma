@@ -167,15 +167,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             // Payment-channel typed errors.
             E::ChannelCallerNotPayee { expected, actual } => (
                 ExecutionErrorKind::ChannelCallerNotPayee,
-                Some(ErrorDetails::OtherError(format!(
-                    "expected={expected}, actual={actual}"
-                ))),
+                Some(ErrorDetails::OtherError(format!("expected={expected}, actual={actual}"))),
             ),
             E::ChannelCallerNotPayer { expected, actual } => (
                 ExecutionErrorKind::ChannelCallerNotPayer,
-                Some(ErrorDetails::OtherError(format!(
-                    "expected={expected}, actual={actual}"
-                ))),
+                Some(ErrorDetails::OtherError(format!("expected={expected}, actual={actual}"))),
             ),
             E::ChannelVoucherNotMonotonic { cumulative, settled } => (
                 ExecutionErrorKind::ChannelVoucherNotMonotonic,
@@ -202,10 +198,9 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 Some(ErrorDetails::OtherError(reason)),
             ),
             E::ChannelAmountZero => (ExecutionErrorKind::ChannelAmountZero, None),
-            E::ChannelInvalidInput { reason } => (
-                ExecutionErrorKind::ChannelInvalidInput,
-                Some(ErrorDetails::OtherError(reason)),
-            ),
+            E::ChannelInvalidInput { reason } => {
+                (ExecutionErrorKind::ChannelInvalidInput, Some(ErrorDetails::OtherError(reason)))
+            }
             E::ChannelCoinTypeMismatch => (ExecutionErrorKind::ChannelCoinTypeMismatch, None),
             E::NotAChannel { object_id } => (
                 ExecutionErrorKind::NotAChannel,
@@ -224,17 +219,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
             E::ChannelTooManyOpenForPair { current, max } => (
                 ExecutionErrorKind::ChannelTooManyOpenForPair,
-                Some(ErrorDetails::OtherError(format!(
-                    "current={}, max={}",
-                    current, max
-                ))),
+                Some(ErrorDetails::OtherError(format!("current={}, max={}", current, max))),
             ),
             E::ChannelInboxPayeeMismatch { declared, actual } => (
                 ExecutionErrorKind::ChannelInboxPayeeMismatch,
-                Some(ErrorDetails::OtherError(format!(
-                    "declared={}, actual={}",
-                    declared, actual
-                ))),
+                Some(ErrorDetails::OtherError(format!("declared={}, actual={}", declared, actual))),
             ),
             E::NotAProviderInbox { object_id } => (
                 ExecutionErrorKind::NotAProviderInbox,
@@ -250,10 +239,7 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             ),
             E::ChannelOfferingMissing { payee, model_id } => (
                 ExecutionErrorKind::ChannelOfferingMissing,
-                Some(ErrorDetails::OtherError(format!(
-                    "payee={}, model_id={}",
-                    payee, model_id
-                ))),
+                Some(ErrorDetails::OtherError(format!("payee={}, model_id={}", payee, model_id))),
             ),
         };
 
@@ -451,7 +437,10 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             }
             K::DistanceExceedsThreshold => {
                 // Deprecated variant - map to OtherError
-                let msg = value.description.clone().unwrap_or_else(|| "Distance exceeds threshold (deprecated)".to_string());
+                let msg = value
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| "Distance exceeds threshold (deprecated)".to_string());
                 Ok(Self::OtherError(msg))
             }
             K::InsufficientBond => {
@@ -591,12 +580,8 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             }
             K::ProviderClockMissing => Ok(Self::ProviderClockMissing),
             K::ChannelTooManyOpenForPair => {
-                let (current, max) =
-                    parse_two_u64s(&value.error_details, "current", "max");
-                Ok(Self::ChannelTooManyOpenForPair {
-                    current: current as u32,
-                    max: max as u32,
-                })
+                let (current, max) = parse_two_u64s(&value.error_details, "current", "max");
+                Ok(Self::ChannelTooManyOpenForPair { current: current as u32, max: max as u32 })
             }
             K::ChannelInboxPayeeMismatch => {
                 let (declared, actual) =
@@ -620,12 +605,11 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::OfferingNotFound => Ok(Self::OfferingNotFound),
             K::OfferingCallerMismatch => Ok(Self::OfferingCallerMismatch),
             K::OfferingUnknownModel => {
-                let model_id =
-                    if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
-                        s.strip_prefix("model_id=").unwrap_or(s).to_string()
-                    } else {
-                        String::new()
-                    };
+                let model_id = if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                    s.strip_prefix("model_id=").unwrap_or(s).to_string()
+                } else {
+                    String::new()
+                };
                 Ok(Self::OfferingUnknownModel { model_id })
             }
             K::ChannelOfferingMissing => {

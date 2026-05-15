@@ -261,12 +261,7 @@ pub enum ReservationFailure {
     /// `(owner, coin_type)` pair. `available` reflects the balance
     /// **after** accumulating all earlier-accepted txs in the same
     /// commit; the underlying chain-state balance may be higher.
-    InsufficientBalance {
-        owner: SomaAddress,
-        coin_type: CoinType,
-        requested: u64,
-        available: u64,
-    },
+    InsufficientBalance { owner: SomaAddress, coin_type: CoinType, requested: u64, available: u64 },
     /// Two or more reservations on the *same* tx targeting the same
     /// `(owner, coin_type)` summed to more than `u64::MAX`. Pure
     /// pathological-input defense; will never happen with realistic
@@ -358,12 +353,9 @@ where
         // Collect the deltas we'd apply on success — we only mutate
         // `running` after every key is verified, so a partially-
         // failing tx doesn't poison earlier-accepted balances.
-        let mut to_apply: Vec<((SomaAddress, CoinType), u64)> =
-            Vec::with_capacity(tx_total.len());
+        let mut to_apply: Vec<((SomaAddress, CoinType), u64)> = Vec::with_capacity(tx_total.len());
         for (key, requested) in &tx_total {
-            let available = *running
-                .entry(*key)
-                .or_insert_with(|| balance_at(key.0, key.1));
+            let available = *running.entry(*key).or_insert_with(|| balance_at(key.0, key.1));
             if available < *requested {
                 decisions.push(ReservationDecision::Drop {
                     reason: ReservationFailure::InsufficientBalance {
@@ -749,8 +741,7 @@ mod tests {
         ];
 
         let agg = aggregate_events(&events);
-        let changes =
-            aggregated_events_to_settlement_changes(agg).expect("magnitudes fit in u64");
+        let changes = aggregated_events_to_settlement_changes(agg).expect("magnitudes fit in u64");
 
         assert_eq!(changes.len(), 2, "net-zero entries must be dropped");
 
@@ -785,8 +776,7 @@ mod tests {
             BalanceEvent::deposit(alice, CoinType::Usdc, 30),
             BalanceEvent::withdraw(alice, CoinType::Usdc, 100),
         ];
-        let changes =
-            aggregated_events_to_settlement_changes(aggregate_events(&events)).unwrap();
+        let changes = aggregated_events_to_settlement_changes(aggregate_events(&events)).unwrap();
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0], BalanceEvent::withdraw(alice, CoinType::Usdc, 70));
     }
@@ -796,8 +786,7 @@ mod tests {
     /// for ordering predictability.
     #[test]
     fn settlement_changes_empty_input_returns_empty() {
-        let changes =
-            aggregated_events_to_settlement_changes(aggregate_events(&[])).unwrap();
+        let changes = aggregated_events_to_settlement_changes(aggregate_events(&[])).unwrap();
         assert!(changes.is_empty());
     }
 
@@ -853,11 +842,7 @@ mod tests {
         entries: &[(SomaAddress, CoinType, u64)],
     ) -> impl FnMut(SomaAddress, CoinType) -> u64 + '_ {
         move |o, c| {
-            entries
-                .iter()
-                .find(|(eo, ec, _)| *eo == o && *ec == c)
-                .map(|(_, _, v)| *v)
-                .unwrap_or(0)
+            entries.iter().find(|(eo, ec, _)| *eo == o && *ec == c).map(|(_, _, v)| *v).unwrap_or(0)
         }
     }
 
@@ -884,10 +869,7 @@ mod tests {
     fn reservations_single_tx_sufficient() {
         let alice = addr(1);
         let r = WithdrawalReservation::new(alice, CoinType::Usdc, 50);
-        let decisions = check_reservations(
-            &[&[r]],
-            oracle(&[(alice, CoinType::Usdc, 100)]),
-        );
+        let decisions = check_reservations(&[&[r]], oracle(&[(alice, CoinType::Usdc, 100)]));
         assert_eq!(decisions, vec![ReservationDecision::Accept]);
     }
 
@@ -896,10 +878,7 @@ mod tests {
     fn reservations_single_tx_insufficient_balance_drops() {
         let alice = addr(1);
         let r = WithdrawalReservation::new(alice, CoinType::Usdc, 100);
-        let decisions = check_reservations(
-            &[&[r]],
-            oracle(&[(alice, CoinType::Usdc, 50)]),
-        );
+        let decisions = check_reservations(&[&[r]], oracle(&[(alice, CoinType::Usdc, 50)]));
         assert_eq!(
             decisions,
             vec![ReservationDecision::Drop {
@@ -922,10 +901,8 @@ mod tests {
         let alice = addr(1);
         let r1 = WithdrawalReservation::new(alice, CoinType::Usdc, 60);
         let r2 = WithdrawalReservation::new(alice, CoinType::Usdc, 60);
-        let decisions = check_reservations(
-            &[&[r1], &[r2]],
-            oracle(&[(alice, CoinType::Usdc, 100)]),
-        );
+        let decisions =
+            check_reservations(&[&[r1], &[r2]], oracle(&[(alice, CoinType::Usdc, 100)]));
         assert_eq!(decisions[0], ReservationDecision::Accept);
         match decisions[1] {
             ReservationDecision::Drop {
@@ -951,19 +928,15 @@ mod tests {
         let r_small = WithdrawalReservation::new(alice, CoinType::Usdc, 30);
 
         // Big first: big accepts (80/100), small drops (20 < 30).
-        let d1 = check_reservations(
-            &[&[r_big], &[r_small]],
-            oracle(&[(alice, CoinType::Usdc, 100)]),
-        );
+        let d1 =
+            check_reservations(&[&[r_big], &[r_small]], oracle(&[(alice, CoinType::Usdc, 100)]));
         assert!(matches!(d1[0], ReservationDecision::Accept));
         assert!(matches!(d1[1], ReservationDecision::Drop { .. }));
 
         // Small first: both fit (30 + 80 ≤ 110, but available is 100;
         // small accepts leaving 70, big drops because 70 < 80).
-        let d2 = check_reservations(
-            &[&[r_small], &[r_big]],
-            oracle(&[(alice, CoinType::Usdc, 100)]),
-        );
+        let d2 =
+            check_reservations(&[&[r_small], &[r_big]], oracle(&[(alice, CoinType::Usdc, 100)]));
         assert!(matches!(d2[0], ReservationDecision::Accept));
         assert!(matches!(d2[1], ReservationDecision::Drop { .. }));
     }
@@ -978,34 +951,24 @@ mod tests {
         let r_soma = WithdrawalReservation::new(alice, CoinType::Soma, 200);
         let decisions = check_reservations(
             &[&[r_usdc, r_soma]],
-            oracle(&[
-                (alice, CoinType::Usdc, 1_000_000),
-                (alice, CoinType::Soma, 100),
-            ]),
+            oracle(&[(alice, CoinType::Usdc, 1_000_000), (alice, CoinType::Soma, 100)]),
         );
         // Tx must drop because SOMA is insufficient. USDC running balance
         // must NOT have been debited.
         assert!(matches!(
             decisions[0],
             ReservationDecision::Drop {
-                reason: ReservationFailure::InsufficientBalance {
-                    coin_type: CoinType::Soma,
-                    ..
-                }
+                reason: ReservationFailure::InsufficientBalance { coin_type: CoinType::Soma, .. }
             }
         ));
 
         // Verify the no-poison property by following up with a USDC-only
         // tx that needs the full 1M balance — it should still pass
         // because the prior tx didn't debit USDC.
-        let r_usdc_full =
-            WithdrawalReservation::new(alice, CoinType::Usdc, 1_000_000);
+        let r_usdc_full = WithdrawalReservation::new(alice, CoinType::Usdc, 1_000_000);
         let decisions = check_reservations(
             &[&[r_usdc, r_soma], &[r_usdc_full]],
-            oracle(&[
-                (alice, CoinType::Usdc, 1_000_000),
-                (alice, CoinType::Soma, 100),
-            ]),
+            oracle(&[(alice, CoinType::Usdc, 1_000_000), (alice, CoinType::Soma, 100)]),
         );
         assert!(matches!(decisions[0], ReservationDecision::Drop { .. }));
         assert!(matches!(decisions[1], ReservationDecision::Accept));
@@ -1022,10 +985,7 @@ mod tests {
         let r_bob = WithdrawalReservation::new(bob, CoinType::Usdc, 200);
         let decisions = check_reservations(
             &[&[r_alice], &[r_bob]],
-            oracle(&[
-                (alice, CoinType::Usdc, 100),
-                (bob, CoinType::Usdc, 100),
-            ]),
+            oracle(&[(alice, CoinType::Usdc, 100), (bob, CoinType::Usdc, 100)]),
         );
         assert_eq!(decisions[0], ReservationDecision::Accept);
         assert!(matches!(decisions[1], ReservationDecision::Drop { .. }));
@@ -1040,17 +1000,13 @@ mod tests {
         let r_gas = WithdrawalReservation::new(alice, CoinType::Usdc, 30);
         let r_value = WithdrawalReservation::new(alice, CoinType::Usdc, 60);
         // 30 + 60 = 90 ≤ 100 → accept.
-        let d_ok = check_reservations(
-            &[&[r_gas, r_value]],
-            oracle(&[(alice, CoinType::Usdc, 100)]),
-        );
+        let d_ok =
+            check_reservations(&[&[r_gas, r_value]], oracle(&[(alice, CoinType::Usdc, 100)]));
         assert_eq!(d_ok, vec![ReservationDecision::Accept]);
 
         // Same reservations against 80 → drop with requested = 90.
-        let d_drop = check_reservations(
-            &[&[r_gas, r_value]],
-            oracle(&[(alice, CoinType::Usdc, 80)]),
-        );
+        let d_drop =
+            check_reservations(&[&[r_gas, r_value]], oracle(&[(alice, CoinType::Usdc, 80)]));
         match d_drop[0] {
             ReservationDecision::Drop {
                 reason: ReservationFailure::InsufficientBalance { requested, available, .. },
@@ -1071,10 +1027,8 @@ mod tests {
         let alice = addr(1);
         let r1 = WithdrawalReservation::new(alice, CoinType::Usdc, u64::MAX);
         let r2 = WithdrawalReservation::new(alice, CoinType::Usdc, 1);
-        let decisions = check_reservations(
-            &[&[r1, r2]],
-            oracle(&[(alice, CoinType::Usdc, u64::MAX)]),
-        );
+        let decisions =
+            check_reservations(&[&[r1, r2]], oracle(&[(alice, CoinType::Usdc, u64::MAX)]));
         assert_eq!(
             decisions[0],
             ReservationDecision::Drop {
@@ -1154,8 +1108,7 @@ mod tests {
 
         let alice = addr(1);
         let bob = addr(2);
-        let calls: RefCell<HashMap<(SomaAddress, CoinType), usize>> =
-            RefCell::new(HashMap::new());
+        let calls: RefCell<HashMap<(SomaAddress, CoinType), usize>> = RefCell::new(HashMap::new());
 
         // Three txs all touching alice's USDC, plus one for bob.
         let txs: Vec<Vec<WithdrawalReservation>> = vec![
@@ -1164,8 +1117,7 @@ mod tests {
             vec![WithdrawalReservation::new(alice, CoinType::Usdc, 10)],
             vec![WithdrawalReservation::new(bob, CoinType::Usdc, 5)],
         ];
-        let tx_refs: Vec<&[WithdrawalReservation]> =
-            txs.iter().map(|v| v.as_slice()).collect();
+        let tx_refs: Vec<&[WithdrawalReservation]> = txs.iter().map(|v| v.as_slice()).collect();
 
         check_reservations(&tx_refs, |o, c| {
             *calls.borrow_mut().entry((o, c)).or_insert(0) += 1;

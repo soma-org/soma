@@ -138,4 +138,3 @@ pub fn simulate_transaction(
     let response = SimulateTransactionResponse { transaction, ..Default::default() };
     Ok(response)
 }
-

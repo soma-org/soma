@@ -14,14 +14,14 @@ pub mod ledger;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ::types::base::SomaAddress;
 use anyhow::Context as _;
 use sdk::wallet_context::WalletContext;
-use ::types::base::SomaAddress;
 
 pub use config::Config;
 
-use crate::chain::chain::ChainChannelSurface;
 use crate::chain::ChannelSurface;
+use crate::chain::chain::ChainChannelSurface;
 use crate::channel::RunningTab;
 
 /// Run the provider until shutdown (SIGTERM / SIGINT).
@@ -49,11 +49,8 @@ pub async fn run(
         other => anyhow::bail!("unsupported backend kind: {other}"),
     };
 
-    let mut catalog: Vec<crate::catalog::ModelCard> = backend
-        .list_models()
-        .await
-        .context("backend list_models on boot")?
-        .data;
+    let mut catalog: Vec<crate::catalog::ModelCard> =
+        backend.list_models().await.context("backend list_models on boot")?.data;
     backend::fill_soma_info(&mut catalog, &address.to_string());
     if !cfg.offerings.is_empty() {
         catalog = cfg.offerings.clone();
@@ -71,12 +68,9 @@ pub async fn run(
     // boot and only re-runs if the operator restarts the server.
     // Failure is logged but not fatal — the proxy can still discover
     // the provider on the next refresh once the local node is up.
-    if let Err(e) = sdk::provider::register_or_update(
-        &wallet,
-        address,
-        cfg.server.public_endpoint.clone(),
-    )
-    .await
+    if let Err(e) =
+        sdk::provider::register_or_update(&wallet, address, cfg.server.public_endpoint.clone())
+            .await
     {
         tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
     }
@@ -138,8 +132,7 @@ fn spawn_settle_ticker(
     }
     tracing::info!(interval_secs, "auto-settle ticker armed");
     tokio::spawn(async move {
-        let mut ticker =
-            tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
         // Skip the immediate first tick — server boot already touches
         // the chain, no need to pile on.
         ticker.tick().await;
@@ -237,7 +230,9 @@ async fn shutdown_signal(
             continue;
         };
         match chain.settle(voucher, sig).await {
-            Ok(()) => tracing::info!(channel = %id, cumulative = state.cumulative_authorized_micros, "settled on shutdown"),
+            Ok(()) => {
+                tracing::info!(channel = %id, cumulative = state.cumulative_authorized_micros, "settled on shutdown")
+            }
             Err(e) => tracing::warn!(channel = %id, err = %e, "settle on shutdown failed"),
         }
     }
@@ -247,10 +242,10 @@ async fn shutdown_signal(
 mod tests {
     use std::sync::Mutex as StdMutex;
 
-    use async_trait::async_trait;
     use ::types::channel::{Channel, Voucher};
     use ::types::crypto::GenericSignature;
     use ::types::object::{CoinType, ObjectID};
+    use async_trait::async_trait;
     use fastcrypto::traits::ToFromBytes;
 
     use crate::chain::{ChainError, ChannelSurface};
@@ -279,15 +274,8 @@ mod tests {
         async fn get(&self, _id: ObjectID) -> Result<Channel, ChainError> {
             unimplemented!()
         }
-        async fn settle(
-            &self,
-            voucher: Voucher,
-            _sig: GenericSignature,
-        ) -> Result<(), ChainError> {
-            self.settles
-                .lock()
-                .unwrap()
-                .push((voucher.channel_id(), voucher.cumulative_amount()));
+        async fn settle(&self, voucher: Voucher, _sig: GenericSignature) -> Result<(), ChainError> {
+            self.settles.lock().unwrap().push((voucher.channel_id(), voucher.cumulative_amount()));
             Ok(())
         }
         async fn top_up(

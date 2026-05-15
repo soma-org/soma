@@ -91,4 +91,3 @@ pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
 /// rule as SystemState — created with Version::new() and rewritten to the
 /// genesis lamport timestamp (1) before being persisted.
 pub const CLOCK_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
-

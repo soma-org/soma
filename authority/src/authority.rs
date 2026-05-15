@@ -526,8 +526,7 @@ impl AuthorityState {
         // Accept executed transactions, instead of voting to reject them.
         // Execution is limited to the current epoch. Otherwise there can be a race where
         // the transaction is accepted but the executed effects are pruned.
-        if let Some(effects) =
-            self.get_transaction_cache_reader().get_executed_effects(&tx_digest)
+        if let Some(effects) = self.get_transaction_cache_reader().get_executed_effects(&tx_digest)
         {
             if effects.executed_epoch() == current_epoch {
                 return Ok(());
@@ -591,8 +590,6 @@ impl AuthorityState {
 
         Ok(())
     }
-
-
 
     /// Wait for a certificate to be executed.
     /// For consensus transactions, it needs to be sequenced by the consensus.
@@ -1245,11 +1242,7 @@ impl AuthorityState {
             set
         };
 
-        Ok(SimulateTransactionResult {
-            objects: object_set,
-            effects,
-            execution_result,
-        })
+        Ok(SimulateTransactionResult { objects: object_set, effects, execution_result })
     }
 
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> bool {

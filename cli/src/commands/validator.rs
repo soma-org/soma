@@ -27,6 +27,7 @@ use tap::tap::TapOptional;
 use tokio::time::Duration;
 use tracing::info;
 use types::base::SomaAddress;
+use types::bridge::BridgePubkey;
 use types::config::PersistedConfig;
 use types::config::node_config::{DEFAULT_COMMISSION_RATE, NodeConfig};
 use types::crypto::{
@@ -38,7 +39,6 @@ use types::multiaddr::Multiaddr;
 use types::object::{ObjectID, ObjectRef, Owner};
 use types::system_state::validator::Validator;
 use types::system_state::{SystemState, SystemStateTrait as _};
-use types::bridge::BridgePubkey;
 use types::transaction::{
     AddValidatorArgs, BridgeRegisterBridgeKeyArgs, RemoveValidatorArgs, Transaction,
     TransactionData, TransactionKind, UpdateValidatorMetadataArgs,
@@ -298,12 +298,10 @@ impl SomaValidatorCommand {
                 // Build the tx args. The signer (this CLI's active address)
                 // is implicit — the executor reads it from the tx sender
                 // and uses it as the BTreeMap key in `bridge_registrations`.
-                let kind = TransactionKind::BridgeRegisterBridgeKey(
-                    BridgeRegisterBridgeKeyArgs {
-                        bridge_pubkey: pubkey,
-                        http_url: http_url.clone(),
-                    },
-                );
+                let kind = TransactionKind::BridgeRegisterBridgeKey(BridgeRegisterBridgeKeyArgs {
+                    bridge_pubkey: pubkey,
+                    http_url: http_url.clone(),
+                });
 
                 // Show the operator exactly what's about to go on chain so
                 // they can sanity-check before the tx is signed/submitted.
@@ -408,8 +406,7 @@ async fn execute_tx(
     tx_args: TxProcessingArgs,
 ) -> Result<ValidatorCommandResponse> {
     let result =
-        crate::client_commands::execute_or_serialize(context, sender, kind, tx_args)
-            .await?;
+        crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await?;
 
     // Convert ClientCommandResponse to ValidatorCommandResponse
     match result {
@@ -576,12 +573,8 @@ fn load_bridge_pubkey(path: &PathBuf) -> Result<(BridgePubkey, String)> {
     // `BridgePubkey::from_bytes` round-trips through the secp256k1
     // curve check, so this rejects e.g. an all-zero pubkey or a
     // 33-byte string whose first byte isn't a valid tag (0x02/0x03).
-    let pubkey = BridgePubkey::from_bytes(&bytes).map_err(|e| {
-        anyhow!(
-            "bridge pubkey is not a valid secp256k1 compressed point: {}",
-            e
-        )
-    })?;
+    let pubkey = BridgePubkey::from_bytes(&bytes)
+        .map_err(|e| anyhow!("bridge pubkey is not a valid secp256k1 compressed point: {}", e))?;
 
     let hex_str = hex::encode(pubkey.as_bytes());
     Ok((pubkey, hex_str))

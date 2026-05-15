@@ -35,22 +35,14 @@ mod tests {
         let store = ObjectStore::new(Arc::new(InMemory::new()));
         let mut conn = store.connect().await.unwrap();
 
-        let blob = CheckpointBlob {
-            sequence_number: 100,
-            proto_bytes: Bytes::from(vec![1, 2, 3, 4, 5]),
-        };
+        let blob =
+            CheckpointBlob { sequence_number: 100, proto_bytes: Bytes::from(vec![1, 2, 3, 4, 5]) };
 
-        let pipeline = CheckpointBlobPipeline {
-            compression_level: None,
-        };
+        let pipeline = CheckpointBlobPipeline { compression_level: None };
         let count = pipeline.commit(&Some(blob), &mut conn).await.unwrap();
         assert_eq!(count, 1);
 
-        let result = conn
-            .object_store()
-            .get(&ObjectPath::from("100.binpb"))
-            .await
-            .unwrap();
+        let result = conn.object_store().get(&ObjectPath::from("100.binpb")).await.unwrap();
         let bytes = result.bytes().await.unwrap();
         assert_eq!(bytes.as_ref(), &[1, 2, 3, 4, 5]);
     }
@@ -65,22 +57,14 @@ mod tests {
         let mut conn = store.connect().await.unwrap();
 
         let test_data = vec![7u8; 4096];
-        let blob = CheckpointBlob {
-            sequence_number: 200,
-            proto_bytes: Bytes::from(test_data.clone()),
-        };
+        let blob =
+            CheckpointBlob { sequence_number: 200, proto_bytes: Bytes::from(test_data.clone()) };
 
-        let pipeline = CheckpointBlobPipeline {
-            compression_level: Some(3),
-        };
+        let pipeline = CheckpointBlobPipeline { compression_level: Some(3) };
         let count = pipeline.commit(&Some(blob), &mut conn).await.unwrap();
         assert_eq!(count, 1);
 
-        let result = conn
-            .object_store()
-            .get(&ObjectPath::from("200.binpb.zst"))
-            .await
-            .unwrap();
+        let result = conn.object_store().get(&ObjectPath::from("200.binpb.zst")).await.unwrap();
         let compressed = result.bytes().await.unwrap();
 
         let decompressed = zstd::decode_all(&compressed[..]).unwrap();

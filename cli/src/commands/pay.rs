@@ -37,8 +37,7 @@ pub async fn execute(
         .map(|r| context.get_identity_address(Some(r)))
         .collect::<Result<Vec<_>>>()?;
 
-    let transfers: Vec<_> =
-        recipient_addresses.into_iter().zip(amounts.into_iter()).collect();
+    let transfers: Vec<_> = recipient_addresses.into_iter().zip(amounts.into_iter()).collect();
 
     let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
         coin_type: CoinType::Soma,

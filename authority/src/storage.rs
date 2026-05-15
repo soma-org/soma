@@ -485,9 +485,8 @@ impl RpcIndexes for RestReadStore {
     fn list_delegations(
         &self,
         staker: &SomaAddress,
-    ) -> types::storage::storage_error::Result<
-        Vec<types::storage::read_store::DelegationInfo>,
-    > {
+    ) -> types::storage::storage_error::Result<Vec<types::storage::read_store::DelegationInfo>>
+    {
         let store = self.state.database_for_testing();
         let rows = store
             .iter_delegations_for_staker(*staker)
@@ -517,9 +516,7 @@ impl RpcIndexes for RestReadStore {
         Ok(vec![])
     }
 
-    fn open_asks(
-        &self,
-    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+    fn open_asks(&self) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
         Ok(vec![])
     }
 

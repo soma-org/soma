@@ -48,10 +48,7 @@ fn wallet_for_path(path: &std::path::Path) -> WalletContext {
 
 /// Submit a `RegisterOffering` for `payee` against `TEST_MODEL` so the
 /// OpenChannel path can find an offering to snapshot.
-async fn register_test_offering(
-    test_cluster: &test_cluster::TestCluster,
-    payee: SomaAddress,
-) {
+async fn register_test_offering(test_cluster: &test_cluster::TestCluster, payee: SomaAddress) {
     use types::offering::Offering;
     let offering_id = Offering::derive_id(payee, TEST_MODEL);
     if test_cluster
@@ -82,11 +79,7 @@ async fn register_test_offering(
         ),
     );
     let r = test_cluster.sign_and_execute_transaction(&tx_data).await;
-    assert!(
-        r.effects.status().is_ok(),
-        "RegisterOffering: {:?}",
-        r.effects.status()
-    );
+    assert!(r.effects.status().is_ok(), "RegisterOffering: {:?}", r.effects.status());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -220,10 +213,7 @@ async fn openrouter_full_stack_round_trip() {
     wait_for_url(&format!("http://127.0.0.1:{proxy_port}/v1/models")).await;
 
     // 6. Live chat completion through the full stack.
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .unwrap();
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().unwrap();
     let resp = client
         .post(format!("http://127.0.0.1:{proxy_port}/v1/chat/completions"))
         .json(&json!({
@@ -241,14 +231,9 @@ async fn openrouter_full_stack_round_trip() {
         .unwrap();
     let status = resp.status();
     let body_text = resp.text().await.unwrap();
-    assert!(
-        status.is_success(),
-        "chat must succeed via proxy: {status}: {body_text}",
-    );
+    assert!(status.is_success(), "chat must succeed via proxy: {status}: {body_text}",);
     let body: serde_json::Value = serde_json::from_str(&body_text).unwrap();
-    let content = body["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or_default();
+    let content = body["choices"][0]["message"]["content"].as_str().unwrap_or_default();
     assert!(!content.is_empty(), "non-empty completion: {body}");
     let prompt_tokens = body["usage"]["prompt_tokens"].as_u64().unwrap_or(0);
     let completion_tokens = body["usage"]["completion_tokens"].as_u64().unwrap_or(0);
@@ -333,11 +318,7 @@ fn pick_free_port() -> u16 {
 
 async fn wait_for_url(url: &str) {
     for _ in 0..200 {
-        if reqwest::get(url)
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
-        {
+        if reqwest::get(url).await.map(|r| r.status().is_success()).unwrap_or(false) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -354,9 +335,8 @@ fn read_first_provider_slot(
             continue;
         }
         let bytes = std::fs::read(e.path()).ok()?;
-        if let Ok(s) = serde_json::from_slice::<
-            inference::channel::running_tab::TabProviderState,
-        >(&bytes)
+        if let Ok(s) =
+            serde_json::from_slice::<inference::channel::running_tab::TabProviderState>(&bytes)
         {
             return Some(s);
         }

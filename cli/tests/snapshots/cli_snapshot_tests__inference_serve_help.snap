@@ -1,6 +1,5 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 89
 expression: stdout
 ---
 Run the provider-side server.
@@ -21,11 +20,6 @@ Options:
 
       --soma-home <SOMA_HOME>
           Soma home (for the per-channel provider ledger). Defaults to ~/.soma
-
-      --heartbeat-interval-secs <HEARTBEAT_INTERVAL_SECS>
-          Heartbeat interval — `UpdateProvider` is sent on chain at this cadence so off-chain liveness watchers see a fresh `registered_at_ms`
-          
-          [default: 600]
 
   -h, --help
           Print help (see a summary with '-h')

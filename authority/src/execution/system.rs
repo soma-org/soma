@@ -137,11 +137,7 @@ mod tests {
         let initial_shared_version = clock.owner.start_version().expect("clock is shared");
 
         let read_result = ObjectReadResult::new(
-            InputObjectKind::SharedObject {
-                id: oref.0,
-                initial_shared_version,
-                mutable: true,
-            },
+            InputObjectKind::SharedObject { id: oref.0, initial_shared_version, mutable: true },
             ObjectReadResultKind::Object(clock),
         );
 
@@ -283,12 +279,8 @@ mod tests {
         let mut store = make_store_with_clock(0);
         let mut executor = ConsensusCommitExecutor::new();
         let bogus = TransactionKind::SetCommissionRate { new_rate: 0 };
-        let result = executor.execute(
-            &mut store,
-            SomaAddress::ZERO,
-            bogus,
-            TransactionDigest::default(),
-        );
+        let result =
+            executor.execute(&mut store, SomaAddress::ZERO, bogus, TransactionDigest::default());
         assert!(result.is_err(), "non-prologue kind must be rejected");
     }
 }

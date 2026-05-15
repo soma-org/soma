@@ -6,7 +6,7 @@
 //! 10% input safety margin in [`crate::pricing::worst_case_cost_micros`].
 
 use once_cell::sync::Lazy;
-use tiktoken_rs::{cl100k_base, CoreBPE};
+use tiktoken_rs::{CoreBPE, cl100k_base};
 
 use crate::openai::chat::{ChatMessage, MessageContent};
 

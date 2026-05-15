@@ -64,13 +64,10 @@ pub trait ConcurrentConnection: Connection {
         &mut self,
         pipeline_task: &str,
     ) -> anyhow::Result<Option<InitWatermark>> {
-        Ok(self
-            .reader_watermark(pipeline_task)
-            .await?
-            .map(|w| InitWatermark {
-                checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
-                reader_lo: Some(w.reader_lo),
-            }))
+        Ok(self.reader_watermark(pipeline_task).await?.map(|w| InitWatermark {
+            checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
+            reader_lo: Some(w.reader_lo),
+        }))
     }
 
     /// Given a pipeline, return the reader watermark from the database. This is used by the
@@ -116,13 +113,10 @@ pub trait SequentialConnection: Connection {
         pipeline_task: &str,
         _checkpoint_hi_inclusive: Option<u64>,
     ) -> anyhow::Result<Option<InitWatermark>> {
-        Ok(self
-            .committer_watermark(pipeline_task)
-            .await?
-            .map(|w| InitWatermark {
-                checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
-                reader_lo: None,
-            }))
+        Ok(self.committer_watermark(pipeline_task).await?.map(|w| InitWatermark {
+            checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
+            reader_lo: None,
+        }))
     }
 }
 
@@ -276,60 +270,36 @@ mod tests {
 
     #[test]
     fn test_pruner_watermark_wait_for_positive() {
-        let watermark = PrunerWatermark {
-            wait_for_ms: 5000,
-            reader_lo: 1000,
-            pruner_hi: 500,
-        };
+        let watermark = PrunerWatermark { wait_for_ms: 5000, reader_lo: 1000, pruner_hi: 500 };
         assert_eq!(watermark.wait_for(), Some(Duration::from_millis(5000)));
     }
 
     #[test]
     fn test_pruner_watermark_wait_for_zero() {
-        let watermark = PrunerWatermark {
-            wait_for_ms: 0,
-            reader_lo: 1000,
-            pruner_hi: 500,
-        };
+        let watermark = PrunerWatermark { wait_for_ms: 0, reader_lo: 1000, pruner_hi: 500 };
         assert_eq!(watermark.wait_for(), None);
     }
 
     #[test]
     fn test_pruner_watermark_wait_for_negative() {
-        let watermark = PrunerWatermark {
-            wait_for_ms: -5000,
-            reader_lo: 1000,
-            pruner_hi: 500,
-        };
+        let watermark = PrunerWatermark { wait_for_ms: -5000, reader_lo: 1000, pruner_hi: 500 };
         assert_eq!(watermark.wait_for(), None);
     }
 
     #[test]
     fn test_pruner_watermark_no_more_chunks() {
-        let mut watermark = PrunerWatermark {
-            wait_for_ms: 0,
-            reader_lo: 1000,
-            pruner_hi: 1000,
-        };
+        let mut watermark = PrunerWatermark { wait_for_ms: 0, reader_lo: 1000, pruner_hi: 1000 };
         assert_eq!(watermark.next_chunk(100), None);
     }
 
     #[test]
     fn test_pruner_watermark_chunk_boundaries() {
-        let mut watermark = PrunerWatermark {
-            wait_for_ms: 0,
-            reader_lo: 1000,
-            pruner_hi: 100,
-        };
+        let mut watermark = PrunerWatermark { wait_for_ms: 0, reader_lo: 1000, pruner_hi: 100 };
         assert_eq!(watermark.next_chunk(100), Some((100, 200)));
         assert_eq!(watermark.pruner_hi, 200);
         assert_eq!(watermark.next_chunk(100), Some((200, 300)));
 
-        let mut watermark = PrunerWatermark {
-            wait_for_ms: 0,
-            reader_lo: 1000,
-            pruner_hi: 500,
-        };
+        let mut watermark = PrunerWatermark { wait_for_ms: 0, reader_lo: 1000, pruner_hi: 500 };
         assert_eq!(watermark.next_chunk(2000), Some((500, 1000)));
         assert_eq!(watermark.pruner_hi, 1000);
         assert_eq!(watermark.next_chunk(2000), None);

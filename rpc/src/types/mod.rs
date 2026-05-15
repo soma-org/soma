@@ -40,18 +40,15 @@ pub use fee::TransactionFee;
 pub use object::{AccumulatorKind, Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
-    AddValidatorArgs, BalanceTransferArgs, BridgeAttachWithdrawalSignaturesArgs,
-    BridgeDepositArgs, BridgeEmergencyPauseArgs, BridgeEmergencyUnpauseArgs,
-    BridgeRegisterBridgeKeyArgs, BridgeUpdateCommitteeBlocklistArgs, BridgeWithdrawArgs,
-    ChangeEpoch, ClaimRewardsArgs,
-    CommitModelArgs, ConsensusCommitPrologue, CreateModelArgs,
-    DeactivateOfferingArgs,
+    AddValidatorArgs, BalanceTransferArgs, BridgeAttachWithdrawalSignaturesArgs, BridgeDepositArgs,
+    BridgeEmergencyPauseArgs, BridgeEmergencyUnpauseArgs, BridgeRegisterBridgeKeyArgs,
+    BridgeUpdateCommitteeBlocklistArgs, BridgeWithdrawArgs, ChangeEpoch, ClaimRewardsArgs,
+    CommitModelArgs, ConsensusCommitPrologue, CreateModelArgs, DeactivateOfferingArgs,
     GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
     OpenChannelArgs, PubkeySig, RateChannelArgs, RegisterOfferingArgs, RegisterProviderArgs,
     RemoveValidatorArgs, RequestCloseArgs, RevealModelArgs, SettleArgs, SettlementTransaction,
-    SignedTransaction, SubmissionManifest, SubmitDataArgs, TopUpArgs, Transaction,
-    TransactionKind, UpdateOfferingArgs, UpdateProviderArgs, UpdateValidatorMetadataArgs,
-    WithdrawAfterTimeoutArgs,
+    SignedTransaction, SubmissionManifest, SubmitDataArgs, TopUpArgs, Transaction, TransactionKind,
+    UpdateOfferingArgs, UpdateProviderArgs, UpdateValidatorMetadataArgs, WithdrawAfterTimeoutArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

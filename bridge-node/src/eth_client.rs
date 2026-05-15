@@ -123,9 +123,7 @@ where
     match opt {
         Some(s) => {
             let s = s.strip_prefix("0x").unwrap_or(&s);
-            Ok(Some(
-                u64::from_str_radix(s, 16).map_err(serde::de::Error::custom)?,
-            ))
+            Ok(Some(u64::from_str_radix(s, 16).map_err(serde::de::Error::custom)?))
         }
         None => Ok(None),
     }
@@ -159,10 +157,8 @@ async fn single_call<T: serde::de::DeserializeOwned>(
     // Read the body as raw `Value` first so we can hash a canonical
     // form. Going straight to `T` loses information about how other
     // providers represented the same logical value.
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| BridgeError::ProviderError(format!("{url}: {e}")))?;
+    let bytes =
+        resp.bytes().await.map_err(|e| BridgeError::ProviderError(format!("{url}: {e}")))?;
     let raw: JsonRpcResponse<serde_json::Value> = serde_json::from_slice(&bytes)
         .map_err(|e| BridgeError::ProviderError(format!("{url}: bad json: {e}")))?;
 
@@ -177,14 +173,12 @@ async fn single_call<T: serde::de::DeserializeOwned>(
         return Err(BridgeError::ProviderError(msg));
     }
 
-    let value = raw
-        .result
-        .ok_or_else(|| BridgeError::ProviderError(format!("{url}: null result")))?;
+    let value =
+        raw.result.ok_or_else(|| BridgeError::ProviderError(format!("{url}: null result")))?;
     let canonical = serde_json::to_string(&value)
         .map_err(|e| BridgeError::Internal(format!("re-encode: {e}")))?;
-    let typed: T = serde_json::from_value(value).map_err(|e| {
-        BridgeError::ProviderError(format!("{url}: response type mismatch: {e}"))
-    })?;
+    let typed: T = serde_json::from_value(value)
+        .map_err(|e| BridgeError::ProviderError(format!("{url}: response type mismatch: {e}")))?;
     Ok((canonical, typed))
 }
 
@@ -197,14 +191,9 @@ fn default_quorum(n: usize) -> usize {
 
 impl EthClient {
     /// Create a new EthClient.
-    pub async fn new(
-        rpc_urls: Vec<String>,
-        bridge_contract_address: &str,
-    ) -> BridgeResult<Self> {
+    pub async fn new(rpc_urls: Vec<String>, bridge_contract_address: &str) -> BridgeResult<Self> {
         if rpc_urls.is_empty() {
-            return Err(BridgeError::ConfigError(
-                "At least one RPC URL required".into(),
-            ));
+            return Err(BridgeError::ConfigError("At least one RPC URL required".into()));
         }
 
         let n = rpc_urls.len();
@@ -316,12 +305,7 @@ impl EthClient {
     ) -> BridgeResult<T> {
         use std::collections::HashMap;
 
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            method,
-            params,
-            id: 1,
-        };
+        let req = JsonRpcRequest { jsonrpc: "2.0", method, params, id: 1 };
         let body = serde_json::to_vec(&req)
             .map_err(|e| BridgeError::Internal(format!("encode JSON-RPC: {e}")))?;
 
@@ -399,16 +383,10 @@ impl EthClient {
         }
 
         // No quorum: summarize what we saw, surface as ProviderError.
-        let ok_vote_str = ok_tally
-            .iter()
-            .map(|(_, (_, c))| c.to_string())
-            .collect::<Vec<_>>()
-            .join("/");
-        let err_vote_str = err_tally
-            .iter()
-            .map(|(_, (_, c))| c.to_string())
-            .collect::<Vec<_>>()
-            .join("/");
+        let ok_vote_str =
+            ok_tally.iter().map(|(_, (_, c))| c.to_string()).collect::<Vec<_>>().join("/");
+        let err_vote_str =
+            err_tally.iter().map(|(_, (_, c))| c.to_string()).collect::<Vec<_>>().join("/");
         Err(BridgeError::ProviderError(format!(
             "no quorum on {method}: {} of {} providers responded ({} ok-groups: [{ok_vote_str}], {} err-groups: [{err_vote_str}]); need {}",
             total,
@@ -421,9 +399,7 @@ impl EthClient {
 
     /// Get the Ethereum chain ID.
     pub async fn get_chain_id(&self) -> BridgeResult<u64> {
-        let result: String = self
-            .rpc_call("eth_chainId", serde_json::json!([]))
-            .await?;
+        let result: String = self.rpc_call("eth_chainId", serde_json::json!([])).await?;
         let s = result.strip_prefix("0x").unwrap_or(&result);
         u64::from_str_radix(s, 16)
             .map_err(|e| BridgeError::ProviderError(format!("Invalid chain ID: {e}")))
@@ -477,8 +453,7 @@ impl EthClient {
         }
         if bytes[..16].iter().any(|&b| b != 0) {
             return Err(BridgeError::ProviderError(
-                "ERC20 balance exceeds u128 (impossible for USDC; check token contract)"
-                    .into(),
+                "ERC20 balance exceeds u128 (impossible for USDC; check token contract)".into(),
             ));
         }
         let mut buf = [0u8; 16];
@@ -530,12 +505,8 @@ impl EthClient {
 
     /// Get the latest finalized block number.
     pub async fn get_last_finalized_block_id(&self) -> BridgeResult<u64> {
-        let block: EthBlock = self
-            .rpc_call(
-                "eth_getBlockByNumber",
-                serde_json::json!(["finalized", false]),
-            )
-            .await?;
+        let block: EthBlock =
+            self.rpc_call("eth_getBlockByNumber", serde_json::json!(["finalized", false])).await?;
         Ok(block.number)
     }
 
@@ -559,20 +530,15 @@ impl EthClient {
 
         // 2. Fetch the receipt. JSON-RPC returns `null` if the tx isn't found.
         let tx_hash_hex = format!("0x{}", hex::encode(tx_hash));
-        let receipt: Option<EthTransactionReceipt> = self
-            .rpc_call(
-                "eth_getTransactionReceipt",
-                serde_json::json!([&tx_hash_hex]),
-            )
-            .await?;
-        let receipt = receipt.ok_or(BridgeError::Internal(format!(
-            "eth tx not found: {tx_hash_hex}"
-        )))?;
+        let receipt: Option<EthTransactionReceipt> =
+            self.rpc_call("eth_getTransactionReceipt", serde_json::json!([&tx_hash_hex])).await?;
+        let receipt =
+            receipt.ok_or(BridgeError::Internal(format!("eth tx not found: {tx_hash_hex}")))?;
 
         // 3. Finalization check.
-        let receipt_block = receipt.block_number.ok_or_else(|| {
-            BridgeError::Internal("receipt missing blockNumber".into())
-        })?;
+        let receipt_block = receipt
+            .block_number
+            .ok_or_else(|| BridgeError::Internal("receipt missing blockNumber".into()))?;
         if receipt_block > last_finalized {
             return Err(BridgeError::Internal(format!(
                 "tx not finalized: receipt block {receipt_block} > finalized {last_finalized}"
@@ -600,9 +566,7 @@ impl EthClient {
         //    decode (e.g. emitted from the same contract but a different
         //    event signature).
         let deposit = self.parse_deposit_log(log)?.ok_or_else(|| {
-            BridgeError::Internal(
-                "log at event_idx is not a recognized bridge event".into(),
-            )
+            BridgeError::Internal("log at event_idx is not a recognized bridge event".into())
         })?;
 
         // 7. Force the tx_hash from the receipt-derived deposit to equal
@@ -747,19 +711,14 @@ impl EthClient {
         let failures = count.fetch_add(1, Ordering::Relaxed) + 1;
 
         if failures >= failure_threshold {
-            warn!(
-                endpoint = current,
-                failures, "Endpoint exceeded failure threshold"
-            );
+            warn!(endpoint = current, failures, "Endpoint exceeded failure threshold");
         }
 
         let next = (current + 1) % self.rpc_urls.len() as u32;
         self.current_endpoint_idx.store(next, Ordering::Relaxed);
 
         // Check if ALL endpoints have exceeded threshold
-        self.failure_counts
-            .iter()
-            .all(|c| c.load(Ordering::Relaxed) >= failure_threshold)
+        self.failure_counts.iter().all(|c| c.load(Ordering::Relaxed) >= failure_threshold)
     }
 
     /// Reset failure count for the current endpoint (on success).
@@ -773,11 +732,9 @@ impl EthClient {
         &self,
         max_elapsed: std::time::Duration,
     ) -> BridgeResult<u64> {
-        crate::retry::retry_with_backoff(
-            "get_last_finalized_block_id",
-            max_elapsed,
-            || self.get_last_finalized_block_id(),
-        )
+        crate::retry::retry_with_backoff("get_last_finalized_block_id", max_elapsed, || {
+            self.get_last_finalized_block_id()
+        })
         .await
     }
 
@@ -788,11 +745,9 @@ impl EthClient {
         to_block: u64,
         max_elapsed: std::time::Duration,
     ) -> BridgeResult<Vec<DepositEvent>> {
-        crate::retry::retry_with_backoff(
-            "get_deposit_events_in_range",
-            max_elapsed,
-            || self.get_deposit_events_in_range(from_block, to_block),
-        )
+        crate::retry::retry_with_backoff("get_deposit_events_in_range", max_elapsed, || {
+            self.get_deposit_events_in_range(from_block, to_block)
+        })
         .await
     }
 }
@@ -843,10 +798,7 @@ mod tests {
         let event = client.parse_deposit_log(&log).unwrap().unwrap();
         assert_eq!(event.nonce, 42);
         assert_eq!(event.eth_sender, [0xAA; 20]);
-        assert_eq!(
-            event.destination_chain_id,
-            types::bridge::BridgeChainId::SomaCustom
-        );
+        assert_eq!(event.destination_chain_id, types::bridge::BridgeChainId::SomaCustom);
         assert_eq!(event.soma_recipient, [0xBB; 32]);
         assert_eq!(event.token_type, types::bridge::USDC_TOKEN_TYPE);
         assert_eq!(event.amount, 1_000_000);
@@ -925,9 +877,7 @@ mod tests {
 
         // Mock finalized block
         Mock::given(method("POST"))
-            .and(body_partial_json(
-                json!({"method": "eth_getBlockByNumber"}),
-            ))
+            .and(body_partial_json(json!({"method": "eth_getBlockByNumber"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "jsonrpc": "2.0", "id": 1,
                 "result": { "number": "0x1a4" }
@@ -935,9 +885,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], "0x0001")
-            .await
-            .unwrap();
+        let client = EthClient::new(vec![server.uri()], "0x0001").await.unwrap();
         let block = client.get_last_finalized_block_id().await.unwrap();
         assert_eq!(block, 0x1a4); // 420
     }
@@ -985,13 +933,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], contract_addr)
-            .await
-            .unwrap();
-        let events = client
-            .get_deposit_events_in_range(100, 200)
-            .await
-            .unwrap();
+        let client = EthClient::new(vec![server.uri()], contract_addr).await.unwrap();
+        let events = client.get_deposit_events_in_range(100, 200).await.unwrap();
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].nonce, 7);
@@ -1028,9 +971,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], "0x0001")
-            .await
-            .unwrap();
+        let client = EthClient::new(vec![server.uri()], "0x0001").await.unwrap();
         let result = client.get_deposit_events_in_range(0, 10000).await;
 
         assert!(
@@ -1046,16 +987,8 @@ mod tests {
             client: reqwest::Client::new(),
             bridge_contract: "0x0000".to_string(),
             current_endpoint_idx: AtomicU32::new(0),
-            rpc_urls: vec![
-                "http://rpc1".into(),
-                "http://rpc2".into(),
-                "http://rpc3".into(),
-            ],
-            failure_counts: vec![
-                AtomicU32::new(0),
-                AtomicU32::new(0),
-                AtomicU32::new(0),
-            ],
+            rpc_urls: vec!["http://rpc1".into(), "http://rpc2".into(), "http://rpc3".into()],
+            failure_counts: vec![AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
             quorum_threshold: 2,
             rpc_deadline: std::time::Duration::from_secs(2),
         };
@@ -1068,10 +1001,7 @@ mod tests {
 
         // Reset and check
         client.reset_failure_count();
-        assert_eq!(
-            client.failure_counts[1].load(Ordering::Relaxed),
-            0
-        );
+        assert_eq!(client.failure_counts[1].load(Ordering::Relaxed), 0);
     }
 
     // -----------------------------------------------------------------------
@@ -1187,17 +1117,11 @@ mod tests {
         // 127.0.0.1:1 is conventionally refused, used as "endpoint down".
         let client = EthClient::new_for_test_with_endpoints(
             "0x0".to_string(),
-            vec![
-                s1.uri(),
-                "http://127.0.0.1:1".to_string(),
-                "http://127.0.0.1:1".to_string(),
-            ],
+            vec![s1.uri(), "http://127.0.0.1:1".to_string(), "http://127.0.0.1:1".to_string()],
             2,
         );
-        let err = client
-            .get_chain_id()
-            .await
-            .expect_err("must not succeed on a single honest provider");
+        let err =
+            client.get_chain_id().await.expect_err("must not succeed on a single honest provider");
         // Either error variant is acceptable — both correctly signal
         // "can't be trusted; retry".
         match err {
@@ -1213,11 +1137,7 @@ mod tests {
     async fn quorum_one_provider_with_threshold_one() {
         let s1 = MockServer::start().await;
         mount_chain_id(&s1, "0x42").await;
-        let client = EthClient::new_for_test_with_endpoints(
-            "0x0".to_string(),
-            vec![s1.uri()],
-            1,
-        );
+        let client = EthClient::new_for_test_with_endpoints("0x0".to_string(), vec![s1.uri()], 1);
         let id = client.get_chain_id().await.unwrap();
         assert_eq!(id, 0x42);
     }

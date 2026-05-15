@@ -58,10 +58,8 @@ async fn test_balance_transfer_two_recipients_succeeds() {
     let recipient_a = SomaAddress::random();
     let recipient_b = SomaAddress::random();
 
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
 
     let initial_sender = read_usdc(&test_cluster, sender);
     let initial_a = read_usdc(&test_cluster, recipient_a);
@@ -138,10 +136,8 @@ async fn test_balance_transfer_self_recipient_rejected() {
     let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     let sender = test_cluster.get_addresses()[0];
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
 
     let initial_sender = read_usdc(&test_cluster, sender);
 
@@ -189,10 +185,8 @@ async fn test_balance_transfer_underfunded_dropped_by_prepass() {
 
     let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
 
     // Synthesize a fresh, unfunded address. Sign manually and submit
     // via the may-fail wallet path.

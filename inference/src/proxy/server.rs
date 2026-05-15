@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -12,7 +12,7 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use crate::pricing;
-use crate::proxy::relay::{forward_chat_completion, RelayCtx};
+use crate::proxy::relay::{RelayCtx, forward_chat_completion};
 use crate::proxy::router::Router as InnerRouter;
 
 pub struct ClientState {
@@ -61,35 +61,27 @@ async fn chat_completions(
     };
     let chat: crate::openai::ChatRequest = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
-        Err(e) => return err(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            &format!("invalid chat body: {e}"),
-        ),
+        Err(e) => {
+            return err(StatusCode::BAD_REQUEST, "bad_request", &format!("invalid chat body: {e}"));
+        }
     };
     let model = chat.model.clone();
     let pick = match state.router.pick_provider_for_model(&model).await {
         Ok(Some(p)) => p,
-        Ok(None) => return err(
-            StatusCode::NOT_FOUND,
-            "no_provider",
-            &format!("no provider exposes model {model}"),
-        ),
-        Err(e) => return err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "router_error",
-            &format!("{e}"),
-        ),
+        Ok(None) => {
+            return err(
+                StatusCode::NOT_FOUND,
+                "no_provider",
+                &format!("no provider exposes model {model}"),
+            );
+        }
+        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "router_error", &format!("{e}")),
     };
     let (provider, card) = pick;
 
     let slot = match state.router.ensure_channel(&provider, &model).await {
         Ok(s) => s,
-        Err(e) => return err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "channel_error",
-            &format!("{e}"),
-        ),
+        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "channel_error", &format!("{e}")),
     };
 
     let worst_case = pricing::worst_case_for_request(&card, &chat);
@@ -108,11 +100,7 @@ async fn chat_completions(
     .await
     {
         Ok(r) => r,
-        Err(e) => return err(
-            StatusCode::BAD_GATEWAY,
-            "upstream_error",
-            &format!("{e}"),
-        ),
+        Err(e) => return err(StatusCode::BAD_GATEWAY, "upstream_error", &format!("{e}")),
     };
 
     if let Some(stream) = resp.stream {

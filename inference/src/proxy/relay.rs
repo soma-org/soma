@@ -75,8 +75,7 @@ async fn emit_breach_rating(
         // skip silently; the next epoch's breach will fire again.
         return;
     }
-    if let Err(e) =
-        sdk::channel::rate(wallet, signer, channel_id, /*negative=*/ true, reason).await
+    if let Err(e) = sdk::channel::rate(wallet, signer, channel_id, /*negative=*/ true, reason).await
     {
         tracing::warn!(channel = %channel_id, ?reason, err = %e, "RateChannel emission failed");
         return;
@@ -85,14 +84,11 @@ async fn emit_breach_rating(
     g.state.last_breach_emitted_at_epoch = current_epoch;
 }
 
-async fn current_epoch_via_wallet(
-    wallet: &Arc<sdk::wallet_context::WalletContext>,
-) -> Option<u64> {
+async fn current_epoch_via_wallet(wallet: &Arc<sdk::wallet_context::WalletContext>) -> Option<u64> {
     let client = wallet.get_client().await.ok()?;
     let epoch_resp = client.get_epoch(None).await.ok()?;
     epoch_resp.epoch.and_then(|e| e.epoch)
 }
-
 
 pub async fn forward_chat_completion(
     ctx: &RelayCtx,
@@ -146,13 +142,7 @@ pub async fn forward_chat_completion(
         // path the "first byte" equals end-of-body, so TTFT/TTOT
         // collapse into a single latency.
         let t0 = now_ms();
-        let resp = ctx
-            .http
-            .post(&url)
-            .headers(h)
-            .body(inbound_body.clone())
-            .send()
-            .await?;
+        let resp = ctx.http.post(&url).headers(h).body(inbound_body.clone()).send().await?;
 
         let status = resp.status();
         let resp_headers = resp.headers().clone();
@@ -235,8 +225,8 @@ pub async fn forward_chat_completion(
                                 first_byte_ms.map(|fb| fb.saturating_sub(t0)).unwrap_or(0);
                             let completion_tokens = u.completion_tokens as u64;
                             let ttot_ms = if completion_tokens > 0 {
-                                let stream_ms = last_byte_ms
-                                    .saturating_sub(first_byte_ms.unwrap_or(t0));
+                                let stream_ms =
+                                    last_byte_ms.saturating_sub(first_byte_ms.unwrap_or(t0));
                                 stream_ms / completion_tokens
                             } else {
                                 0
@@ -296,7 +286,8 @@ pub async fn forward_chat_completion(
         let body = resp.bytes().await?;
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body) {
             if let Some(u) = v.get("usage") {
-                if let Ok(openai_usage) = serde_json::from_value::<crate::openai::Usage>(u.clone()) {
+                if let Ok(openai_usage) = serde_json::from_value::<crate::openai::Usage>(u.clone())
+                {
                     let actual = realized_for_usage(card, &openai_usage);
                     let usage = RequestUsage::from_openai(&openai_usage);
                     reconcile(&ctx.channel, slot, &request_id, actual, usage).await;

@@ -439,10 +439,7 @@ async fn test_orchestrator_execute_staking() {
     let tx_data = e2e_tests::stateless_tx_data(
         &test_cluster,
         sender,
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
     );
     let tx = sign_tx(&test_cluster, &tx_data).await;
 

@@ -17,9 +17,7 @@ use std::sync::Arc;
 use types::base::SomaAddress;
 use types::object::ObjectID;
 use types::provider::Provider;
-use types::transaction::{
-    RegisterProviderArgs, Transaction, TransactionKind, UpdateProviderArgs,
-};
+use types::transaction::{RegisterProviderArgs, Transaction, TransactionKind, UpdateProviderArgs};
 
 use crate::transaction_builder::TransactionBuilder;
 use crate::wallet_context::WalletContext;
@@ -55,10 +53,7 @@ pub async fn update(
 /// Read the on-chain `Provider` record for `address`, if one has
 /// been registered. Returns `Ok(None)` when no Provider object
 /// exists at the canonical id.
-pub async fn get(
-    ctx: &WalletContext,
-    address: SomaAddress,
-) -> anyhow::Result<Option<Provider>> {
+pub async fn get(ctx: &WalletContext, address: SomaAddress) -> anyhow::Result<Option<Provider>> {
     let id = Provider::derive_id(address);
     let client = ctx.get_client().await?;
     match client.get_object(id).await {
@@ -129,7 +124,5 @@ async fn build_signed(
     sender: SomaAddress,
     kind: TransactionKind,
 ) -> anyhow::Result<Transaction> {
-    TransactionBuilder::new(ctx)
-        .build_transaction_async(sender, kind)
-        .await
+    TransactionBuilder::new(ctx).build_transaction_async(sender, kind).await
 }

@@ -1367,8 +1367,7 @@ impl CheckpointBuilder {
             // No balance/delegation events in this cp — nothing to
             // settle. Wake the SettlementScheduler waiter with the
             // skip sentinel and return empty.
-            self.epoch_store
-                .notify_settlement_transactions_ready(settlement_key, None);
+            self.epoch_store.notify_settlement_transactions_ready(settlement_key, None);
             return Vec::new();
         }
 
@@ -1401,11 +1400,7 @@ impl CheckpointBuilder {
         let executable = VerifiedExecutableTransaction::new_system(verified_tx, epoch);
         let settlement_digest = *executable.digest();
 
-        debug!(
-            ?settlement_key,
-            ?settlement_digest,
-            "CheckpointBuilder: published settlement TX"
-        );
+        debug!(?settlement_key, ?settlement_digest, "CheckpointBuilder: published settlement TX");
 
         // Stage 14d safety. The crash window between **user-tx
         // writeback** (effects + per-tx CF already on disk via
@@ -1428,16 +1423,13 @@ impl CheckpointBuilder {
         // Publish for the SettlementScheduler queue runner. This is
         // non-blocking; the queue runner will pick it up and dispatch
         // via the regular ExecutionScheduler.
-        self.epoch_store
-            .notify_settlement_transactions_ready(settlement_key, Some(executable));
+        self.epoch_store.notify_settlement_transactions_ready(settlement_key, Some(executable));
 
         // Block this cp's signing until the settlement effects land in
         // the cache. Without this wait, the cp could finalize before
         // the settlement applied, which is exactly the bug 14c.7 left
         // open (supply violation at epoch boundary).
-        self.effects_store
-            .notify_read_executed_effects(&[settlement_digest])
-            .await
+        self.effects_store.notify_read_executed_effects(&[settlement_digest]).await
     }
 
     // This function is used to extract the consensus commit prologue digest and effects from the root

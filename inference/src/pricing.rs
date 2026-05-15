@@ -5,8 +5,8 @@
 //! (charged in post-flight). Costs are integer micros (1 micro = $1e-6).
 
 use crate::catalog::{ModelCard, Pricing};
-use crate::openai::chat::Usage;
 use crate::openai::ChatRequest;
+use crate::openai::chat::Usage;
 use crate::tokenizer::count_messages;
 
 /// Parse a fixed-point decimal string into a u128 with the given number of
@@ -35,9 +35,7 @@ pub fn parse_fixed(price: &str, frac_digits: u32) -> u128 {
         frac_val *= 10;
         count += 1;
     }
-    int_val
-        .saturating_mul(10u128.pow(frac_digits))
-        .saturating_add(frac_val)
+    int_val.saturating_mul(10u128.pow(frac_digits)).saturating_add(frac_val)
 }
 
 /// `price_str` USD per unit, quantity. Result: `ceil(USD × 1e6)` micros.
@@ -68,9 +66,7 @@ pub fn realized_cost_micros(price: &Pricing, u: &UsageCounts) -> u64 {
 pub fn worst_case_cost_micros(card: &ModelCard, input_tokens: u64, max_output_tokens: u64) -> u64 {
     // 10% safety margin on input tokens (cl100k may under-count for non-GPT
     // architectures; the margin absorbs the gap).
-    let input_with_margin = input_tokens
-        .saturating_add(input_tokens / 10)
-        .max(input_tokens);
+    let input_with_margin = input_tokens.saturating_add(input_tokens / 10).max(input_tokens);
     cost_micros(&card.pricing.prompt, input_with_margin)
         .saturating_add(cost_micros(&card.pricing.completion, max_output_tokens))
         .saturating_add(cost_micros(&card.pricing.request, 1))
@@ -87,16 +83,8 @@ pub fn worst_case_for_request(card: &ModelCard, req: &ChatRequest) -> u64 {
 }
 
 pub fn realized_for_usage(card: &ModelCard, u: &Usage) -> u64 {
-    let cached = u
-        .prompt_tokens_details
-        .as_ref()
-        .map(|d| d.cached_tokens)
-        .unwrap_or(0);
-    let cache_write = u
-        .prompt_tokens_details
-        .as_ref()
-        .map(|d| d.cache_write_tokens)
-        .unwrap_or(0);
+    let cached = u.prompt_tokens_details.as_ref().map(|d| d.cached_tokens).unwrap_or(0);
+    let cache_write = u.prompt_tokens_details.as_ref().map(|d| d.cache_write_tokens).unwrap_or(0);
     realized_cost_micros(
         &card.pricing,
         &UsageCounts {

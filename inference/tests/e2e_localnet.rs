@@ -27,8 +27,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::json;
 use sdk::wallet_context::WalletContext;
+use serde_json::json;
 use tempfile::TempDir;
 use test_cluster::TestClusterBuilder;
 use types::base::SomaAddress;
@@ -49,10 +49,7 @@ const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
 /// Submit a `RegisterOffering` for `payee` against `TEST_MODEL` so the
 /// OpenChannel path can find an offering to snapshot. Idempotent: if
 /// the offering already exists on chain we exit cleanly.
-async fn register_test_offering(
-    test_cluster: &test_cluster::TestCluster,
-    payee: SomaAddress,
-) {
+async fn register_test_offering(test_cluster: &test_cluster::TestCluster, payee: SomaAddress) {
     use types::offering::Offering;
     let offering_id = Offering::derive_id(payee, TEST_MODEL);
     if test_cluster
@@ -79,11 +76,7 @@ async fn register_test_offering(
         ),
     );
     let r = test_cluster.sign_and_execute_transaction(&tx_data).await;
-    assert!(
-        r.effects.status().is_ok(),
-        "RegisterOffering: {:?}",
-        r.effects.status()
-    );
+    assert!(r.effects.status().is_ok(), "RegisterOffering: {:?}", r.effects.status());
 }
 
 fn wallet_for_path(path: &std::path::Path) -> WalletContext {
@@ -93,7 +86,6 @@ fn wallet_for_path(path: &std::path::Path) -> WalletContext {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn proxy_provider_full_stack_against_real_chain() {
-
     // --- 1. Boot the chain ---------------------------------------------------
     let test_cluster = TestClusterBuilder::new().build().await;
     let addrs = test_cluster.wallet.get_addresses();
@@ -187,7 +179,9 @@ async fn proxy_provider_full_stack_against_real_chain() {
     // SAFETY: tests are single-threaded WRT env vars at this point (we
     // haven't spawned any task that reads env). The provider only
     // reads `OPENROUTER_API_KEY` once during `OpenRouterBackend::new`.
-    unsafe { std::env::set_var("OPENROUTER_API_KEY", "test-key"); }
+    unsafe {
+        std::env::set_var("OPENROUTER_API_KEY", "test-key");
+    }
     let prov_cfg = inference::server::Config {
         server: inference::server::config::Server {
             listen: format!("127.0.0.1:{provider_port}"),
@@ -207,14 +201,9 @@ async fn proxy_provider_full_stack_against_real_chain() {
         let ledger_path = ledger_dir.path().to_path_buf();
         let provider_wallet = provider_wallet.clone();
         async move {
-            inference::server::run(
-                prov_cfg,
-                provider_wallet,
-                provider_addr,
-                ledger_path,
-            )
-            .await
-            .ok();
+            inference::server::run(prov_cfg, provider_wallet, provider_addr, ledger_path)
+                .await
+                .ok();
         }
     });
 
@@ -261,10 +250,7 @@ async fn proxy_provider_full_stack_against_real_chain() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200, "chat must succeed");
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(
-        body["choices"][0]["message"]["content"].as_str(),
-        Some("pong"),
-    );
+    assert_eq!(body["choices"][0]["message"]["content"].as_str(), Some("pong"),);
 
     // --- 9. Assert the proxy lazily opened a channel on-chain ---------------
     // The provider task owns its own `Ledger` instance pointing at the same
@@ -278,10 +264,7 @@ async fn proxy_provider_full_stack_against_real_chain() {
     assert_eq!(chan_before.payer(), payer);
     assert_eq!(chan_before.payee(), provider_addr);
     assert_eq!(chan_before.deposit(), 1_000_000);
-    assert_eq!(
-        chan_before.settled_amount(), 0,
-        "no Settle has been submitted yet"
-    );
+    assert_eq!(chan_before.settled_amount(), 0, "no Settle has been submitted yet");
 
     // --- 10. Trigger Settle directly via the SDK using the persisted
     //         provider state. Mirrors what the provider's SIGTERM hook
@@ -331,9 +314,8 @@ fn read_first_provider_slot(
             continue;
         }
         let bytes = std::fs::read(e.path()).ok()?;
-        if let Ok(s) = serde_json::from_slice::<
-            inference::channel::running_tab::TabProviderState,
-        >(&bytes)
+        if let Ok(s) =
+            serde_json::from_slice::<inference::channel::running_tab::TabProviderState>(&bytes)
         {
             return Some(s);
         }
@@ -460,7 +442,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
     register_test_offering(&test_cluster, provider_addr).await;
 
     // SAFETY: tests are single-threaded WRT env vars at this point.
-    unsafe { std::env::set_var("OPENROUTER_API_KEY", "test-key"); }
+    unsafe {
+        std::env::set_var("OPENROUTER_API_KEY", "test-key");
+    }
     let prov_cfg = inference::server::Config {
         server: inference::server::config::Server {
             listen: format!("127.0.0.1:{provider_port}"),
@@ -480,14 +464,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         let ledger_path = ledger_dir.path().to_path_buf();
         let provider_wallet = provider_wallet.clone();
         async move {
-            inference::server::run(
-                prov_cfg,
-                provider_wallet,
-                provider_addr,
-                ledger_path,
-            )
-            .await
-            .ok();
+            inference::server::run(prov_cfg, provider_wallet, provider_addr, ledger_path)
+                .await
+                .ok();
         }
     });
     wait_for_url(&format!("{provider_endpoint}/health")).await;
@@ -510,15 +489,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         let proxy_home = proxy_v1_home.path().to_path_buf();
         let proxy_wallet = proxy_wallet.clone();
         async move {
-            inference::proxy::run(
-                proxy_v1_cfg,
-                proxy_wallet,
-                payer,
-                registry,
-                proxy_home,
-            )
-            .await
-            .ok();
+            inference::proxy::run(proxy_v1_cfg, proxy_wallet, payer, registry, proxy_home)
+                .await
+                .ok();
         }
     });
     wait_for_url(&format!("http://127.0.0.1:{proxy_v1_port}/v1/models")).await;
@@ -526,9 +499,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
     let client = reqwest::Client::new();
     for i in 0..2 {
         let resp = client
-            .post(format!(
-                "http://127.0.0.1:{proxy_v1_port}/v1/chat/completions"
-            ))
+            .post(format!("http://127.0.0.1:{proxy_v1_port}/v1/chat/completions"))
             .json(&json!({
                 "model": TEST_MODEL,
                 "messages": [{"role": "user", "content": format!("ping {i}")}],
@@ -569,7 +540,8 @@ async fn stateless_proxy_cold_start_resumes_safely() {
     // settle has run yet — the provider's signature is in the ledger).
     let chan_before = provider_chain.get(channel_id).await.unwrap();
     assert_eq!(
-        chan_before.settled_amount(), 0,
+        chan_before.settled_amount(),
+        0,
         "no settle yet — proxy hasn't shut down, so the held voucher is still off-chain"
     );
 
@@ -595,24 +567,16 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         let proxy_home = proxy_v2_home.path().to_path_buf();
         let proxy_wallet = proxy_wallet.clone();
         async move {
-            inference::proxy::run(
-                proxy_v2_cfg,
-                proxy_wallet,
-                payer,
-                registry,
-                proxy_home,
-            )
-            .await
-            .ok();
+            inference::proxy::run(proxy_v2_cfg, proxy_wallet, payer, registry, proxy_home)
+                .await
+                .ok();
         }
     });
     wait_for_url(&format!("http://127.0.0.1:{proxy_v2_port}/v1/models")).await;
 
     // --- 9. One more chat — must succeed (no non-monotonic rejection) ----
     let resp = client
-        .post(format!(
-            "http://127.0.0.1:{proxy_v2_port}/v1/chat/completions"
-        ))
+        .post(format!("http://127.0.0.1:{proxy_v2_port}/v1/chat/completions"))
         .json(&json!({
             "model": TEST_MODEL,
             "messages": [{"role": "user", "content": "after-crash"}],
@@ -622,11 +586,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         .send()
         .await
         .unwrap();
-    assert_eq!(
-        resp.status().as_u16(),
-        200,
-        "post-cold-start chat must succeed via proxy v2"
-    );
+    assert_eq!(resp.status().as_u16(), 200, "post-cold-start chat must succeed via proxy v2");
 
     // --- 10. Provider's ledger must reflect a successful post-crash auth.
     // Two acceptable shapes:
@@ -642,13 +602,10 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         .collect();
     let states_v2: Vec<inference::channel::running_tab::TabProviderState> = entries_v2
         .iter()
-        .map(|e| {
-            serde_json::from_slice(&std::fs::read(e.path()).unwrap()).expect("parse")
-        })
+        .map(|e| serde_json::from_slice(&std::fs::read(e.path()).unwrap()).expect("parse"))
         .collect();
 
-    let total_consumed_v2: u64 =
-        states_v2.iter().map(|s| s.total_consumed_micros).sum();
+    let total_consumed_v2: u64 = states_v2.iter().map(|s| s.total_consumed_micros).sum();
     let total_consumed_v1 = state_v1.total_consumed_micros;
     assert!(
         total_consumed_v2 > total_consumed_v1,
@@ -672,10 +629,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
             "if v2 saw the old channel, its cumulative must grow OR a new channel must have opened"
         );
     } else {
-        assert!(
-            states_v2.len() >= 1,
-            "v2 should have at least one ledger entry"
-        );
+        assert!(states_v2.len() >= 1, "v2 should have at least one ledger entry");
     }
 
     // --- cleanup -----------------------------------------------------------

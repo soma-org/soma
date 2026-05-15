@@ -30,16 +30,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use sdk::wallet_context::WalletContext;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use ::types::base::SomaAddress;
 use ::types::channel::{Channel, HttpVoucher, Voucher};
 use ::types::crypto::GenericSignature;
 use ::types::object::ObjectID;
+use async_trait::async_trait;
+use sdk::wallet_context::WalletContext;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::channel::header::{decode_onchain_sig, encode_onchain_sig, SomaPayHeader};
+use crate::channel::header::{SomaPayHeader, decode_onchain_sig, encode_onchain_sig};
 use crate::channel::{ChannelError, PaymentChannel, RequestMeta, RequestUsage};
 use crate::now_ms;
 
@@ -195,15 +195,12 @@ pub struct TabProviderState {
 
 mod onchain_sig_serde {
     use ::types::crypto::GenericSignature;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use fastcrypto::traits::ToFromBytes as _;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S: Serializer>(
-        v: &Option<GenericSignature>,
-        s: S,
-    ) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(v: &Option<GenericSignature>, s: S) -> Result<S::Ok, S::Error> {
         match v {
             None => Option::<String>::None.serialize(s),
             Some(sig) => Some(URL_SAFE_NO_PAD.encode(sig.as_ref())).serialize(s),
@@ -217,11 +214,9 @@ mod onchain_sig_serde {
         match opt {
             None => Ok(None),
             Some(s) => {
-                let bytes = URL_SAFE_NO_PAD
-                    .decode(s.as_bytes())
-                    .map_err(serde::de::Error::custom)?;
-                let sig = GenericSignature::from_bytes(&bytes)
-                    .map_err(serde::de::Error::custom)?;
+                let bytes =
+                    URL_SAFE_NO_PAD.decode(s.as_bytes()).map_err(serde::de::Error::custom)?;
+                let sig = GenericSignature::from_bytes(&bytes).map_err(serde::de::Error::custom)?;
                 Ok(Some(sig))
             }
         }
@@ -270,11 +265,7 @@ pub struct RunningTab {
 
 impl RunningTab {
     pub fn for_provider(clock_skew_tolerance_secs: u64) -> Self {
-        Self {
-            signing: None,
-            clock_skew_tolerance_secs,
-            auth_validity_secs: AUTH_VALIDITY_SECS,
-        }
+        Self { signing: None, clock_skew_tolerance_secs, auth_validity_secs: AUTH_VALIDITY_SECS }
     }
 
     pub fn for_client(ctx: Arc<WalletContext>, signer: SomaAddress) -> Self {
@@ -358,13 +349,9 @@ impl PaymentChannel for RunningTab {
             request_id_sha,
             method_path_sha,
         );
-        let http_sig = sdk::channel::sign_http_voucher(
-            &ctx.config.keystore,
-            signer,
-            &http_voucher,
-        )
-        .await
-        .map_err(|e| ChannelError::Internal(format!("sign_http_voucher: {e}")))?;
+        let http_sig = sdk::channel::sign_http_voucher(&ctx.config.keystore, signer, &http_voucher)
+            .await
+            .map_err(|e| ChannelError::Internal(format!("sign_http_voucher: {e}")))?;
 
         // 4. Sign the on-chain Voucher pair (cumulative + per-channel usage
         //    breakdown). The provider stores this for `Settle`. The usage
@@ -399,11 +386,7 @@ impl PaymentChannel for RunningTab {
             estimated_micros: worst_case_cost_micros,
         });
 
-        let header = SomaPayHeader {
-            channel_id: state.channel_id,
-            http_voucher,
-            http_sig,
-        };
+        let header = SomaPayHeader { channel_id: state.channel_id, http_voucher, http_sig };
         // We pack the on-chain sig into the same string return so
         // callers don't need a second function — proxy/relay parses
         // both pieces and ships them as separate HTTP headers. The
@@ -438,7 +421,8 @@ impl PaymentChannel for RunningTab {
         if header.http_voucher.request_id_sha256() != Self::request_id_sha(meta.request_id) {
             return Err(ChannelError::BadSignature);
         }
-        if header.http_voucher.method_path_sha256() != Self::method_path_sha(meta.method, meta.path) {
+        if header.http_voucher.method_path_sha256() != Self::method_path_sha(meta.method, meta.path)
+        {
             return Err(ChannelError::BadSignature);
         }
 
@@ -450,11 +434,8 @@ impl PaymentChannel for RunningTab {
 
         // Monotonic: same request id may re-present same cum;
         // otherwise must strictly increase.
-        let same_request = state
-            .last_request_id
-            .as_deref()
-            .map(|r| r == meta.request_id)
-            .unwrap_or(false);
+        let same_request =
+            state.last_request_id.as_deref().map(|r| r == meta.request_id).unwrap_or(false);
         let cum = header.http_voucher.cumulative_amount();
         if cum < state.cumulative_authorized_micros {
             return Err(ChannelError::NonMonotonic);
@@ -499,21 +480,16 @@ impl PaymentChannel for RunningTab {
         actual_cost_micros: u64,
         usage: RequestUsage,
     ) -> Result<(), ChannelError> {
-        state.total_consumed_micros = state
-            .total_consumed_micros
-            .saturating_add(actual_cost_micros);
-        state.cumulative_prompt_tokens = state
-            .cumulative_prompt_tokens
-            .saturating_add(usage.prompt_tokens);
-        state.cumulative_completion_tokens = state
-            .cumulative_completion_tokens
-            .saturating_add(usage.completion_tokens);
-        state.cumulative_cache_read_tokens = state
-            .cumulative_cache_read_tokens
-            .saturating_add(usage.cache_read_tokens);
-        state.cumulative_cache_write_tokens = state
-            .cumulative_cache_write_tokens
-            .saturating_add(usage.cache_write_tokens);
+        state.total_consumed_micros =
+            state.total_consumed_micros.saturating_add(actual_cost_micros);
+        state.cumulative_prompt_tokens =
+            state.cumulative_prompt_tokens.saturating_add(usage.prompt_tokens);
+        state.cumulative_completion_tokens =
+            state.cumulative_completion_tokens.saturating_add(usage.completion_tokens);
+        state.cumulative_cache_read_tokens =
+            state.cumulative_cache_read_tokens.saturating_add(usage.cache_read_tokens);
+        state.cumulative_cache_write_tokens =
+            state.cumulative_cache_write_tokens.saturating_add(usage.cache_write_tokens);
         state.cumulative_requests = state.cumulative_requests.saturating_add(1);
         if state.total_consumed_micros > state.cumulative_authorized_micros {
             tracing::warn!(
@@ -534,18 +510,14 @@ impl PaymentChannel for RunningTab {
         usage: RequestUsage,
     ) {
         state.realized.insert(request_id.to_string(), actual_cost_micros);
-        state.cumulative_prompt_tokens = state
-            .cumulative_prompt_tokens
-            .saturating_add(usage.prompt_tokens);
-        state.cumulative_completion_tokens = state
-            .cumulative_completion_tokens
-            .saturating_add(usage.completion_tokens);
-        state.cumulative_cache_read_tokens = state
-            .cumulative_cache_read_tokens
-            .saturating_add(usage.cache_read_tokens);
-        state.cumulative_cache_write_tokens = state
-            .cumulative_cache_write_tokens
-            .saturating_add(usage.cache_write_tokens);
+        state.cumulative_prompt_tokens =
+            state.cumulative_prompt_tokens.saturating_add(usage.prompt_tokens);
+        state.cumulative_completion_tokens =
+            state.cumulative_completion_tokens.saturating_add(usage.completion_tokens);
+        state.cumulative_cache_read_tokens =
+            state.cumulative_cache_read_tokens.saturating_add(usage.cache_read_tokens);
+        state.cumulative_cache_write_tokens =
+            state.cumulative_cache_write_tokens.saturating_add(usage.cache_write_tokens);
         state.cumulative_requests = state.cumulative_requests.saturating_add(1);
     }
 
