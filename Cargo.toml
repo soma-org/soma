@@ -28,6 +28,7 @@ members = [
   "indexer-framework",
   "indexer-alt-schema",
   "indexer-alt",
+  "indexer-alt-object-store",
   "indexer-kvstore",
   "soma-graphql",
   "indexer-e2e-tests",
@@ -114,6 +115,7 @@ indexer-pg-db = { path = "indexer-pg-db" }
 indexer-framework = { path = "indexer-framework" }
 indexer-alt-schema = { path = "indexer-alt-schema" }
 indexer-alt = { path = "indexer-alt" }
+indexer-alt-object-store = { path = "indexer-alt-object-store" }
 indexer-kvstore = { path = "indexer-kvstore" }
 soma-graphql = { path = "soma-graphql" }
 bridge-node = { path = "bridge-node" }
