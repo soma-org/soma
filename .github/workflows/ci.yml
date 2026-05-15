@@ -60,9 +60,10 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
+      - name: Init forge submodules
+        run: git submodule update --init --recursive
+        working-directory: bridge/evm
       - name: Build EVM contracts
         run: forge build
         working-directory: bridge/evm
@@ -84,9 +85,10 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
+      - name: Init forge submodules
+        run: git submodule update --init --recursive
+        working-directory: bridge/evm
       - name: Build EVM contracts
         run: forge build
         working-directory: bridge/evm
