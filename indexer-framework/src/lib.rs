@@ -343,11 +343,14 @@ impl<S: store::Store> Indexer<S> {
             None => P::NAME.to_string(),
         };
 
-        // The new Connection::init_watermark takes `Option<u64>` (the hint) and returns
-        // `Option<InitWatermark>` (the resolved state). Convert: pass `default_next_checkpoint`
-        // through as a hint and extract `checkpoint_hi_inclusive`.
+        // The store's hint is `checkpoint_hi_inclusive` (last processed); our
+        // `default_next_checkpoint` is the next-to-process. Convert by subtracting 1:
+        // 0 → None (fresh — no checkpoint processed yet), N → Some(N-1).
+        // Without this, passing Some(0) makes the store insert a watermark claiming
+        // cp 0 is done, so a fresh indexer skips genesis.
+        let hint = self.default_next_checkpoint.checked_sub(1);
         let init = conn
-            .init_watermark(&pt, Some(self.default_next_checkpoint))
+            .init_watermark(&pt, hint)
             .await
             .with_context(|| format!("Failed to init watermark for {pt}"))?;
 
