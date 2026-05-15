@@ -8,10 +8,15 @@
 //! 1. test_checkpoint_binpb_zst_format — Verify checkpoints are written in .binpb.zst format
 //! 2. test_checkpoint_roundtrip — Verify checkpoint encode->decode roundtrip preserves data
 //! 3. test_checkpoint_transactions_included — Verify user txs appear in checkpoint data
+//! 4. test_rpc_ingestion_source — Verify the gRPC unary ingestion source reaches the fullnode
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
+use indexer_framework::ingestion::ingestion_client::IngestionClient;
+use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
+use indexer_framework::metrics::IngestionMetrics;
 use rpc::utils::checkpoint_blob;
 use test_cluster::TestClusterBuilder;
 use tokio::time::sleep;
@@ -239,4 +244,69 @@ async fn test_checkpoint_transactions_included() {
             expected_digest, file_count, tx_count, debug_info
         );
     }
+}
+
+/// Verify the gRPC unary ingestion source (RpcIngestionClient, exposed via the
+/// `--rpc-api-url` flag) reaches the fullnode's LedgerService and returns a decodable
+/// checkpoint. This is the Phase 6 reachability check: it proves a native tonic client
+/// — which is what the checkpoint-blob-indexer uses — works end-to-end against soma's
+/// rpc server (Path A: no dedicated tonic Server needed).
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_rpc_ingestion_source() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().build().await;
+    let rpc_url = test_cluster.fullnode_handle.rpc_url.clone();
+    info!("Fullnode gRPC endpoint: {}", rpc_url);
+
+    // Build an IngestionClient backed by the gRPC unary source.
+    let registry = prometheus::Registry::new();
+    let metrics = IngestionMetrics::new(None, &registry);
+    let args = IngestionClientArgs {
+        rpc_api_url: Some(rpc_url.parse().expect("rpc_url should be a valid URL")),
+        ..Default::default()
+    };
+    let client = IngestionClient::new(args, metrics).expect("build gRPC ingestion client");
+
+    // Genesis checkpoint must be fetchable.
+    let genesis: Arc<Checkpoint> = client.fetch(0).await.expect("fetch checkpoint 0 over gRPC");
+    assert_eq!(genesis.summary.sequence_number, 0);
+    info!(
+        "Fetched genesis checkpoint over gRPC: {} transactions",
+        genesis.transactions.len()
+    );
+
+    // Execute a transaction, then fetch the checkpoint that carries it over gRPC.
+    let addresses = test_cluster.wallet.get_addresses();
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
+        addresses[0],
+        vec![(addresses[1], 1000)],
+    );
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(response.effects.status().is_ok());
+
+    // Poll the latest checkpoint forward until the fullnode has produced a few, then
+    // fetch the highest one we can to confirm non-genesis checkpoints decode too.
+    let mut fetched_seq = 0;
+    let start = tokio::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(60) {
+        match client.fetch(fetched_seq + 1).await {
+            Ok(cp) => {
+                assert_eq!(cp.summary.sequence_number, fetched_seq + 1);
+                fetched_seq += 1;
+                if fetched_seq >= 2 {
+                    break;
+                }
+            }
+            Err(_) => sleep(Duration::from_millis(200)).await,
+        }
+    }
+    assert!(
+        fetched_seq >= 2,
+        "expected to fetch at least 2 non-genesis checkpoints over gRPC, got {fetched_seq}",
+    );
+    info!("Fetched checkpoints 0..={} over the gRPC ingestion source", fetched_seq);
 }
