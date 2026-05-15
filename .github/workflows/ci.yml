@@ -61,8 +61,17 @@ jobs:
           sudo apt-get clean
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Init forge submodules
-        run: git submodule update --init --recursive
+      - name: Install forge dependencies
+        # bridge/evm/lib is gitignored; deps are installed via foundry locally.
+        # Reproduce that here at the versions matching the local checkout
+        # (see lib/*/package.json).
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            -b v5.0.1 https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable \
+            lib/openzeppelin-contracts-upgradeable
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            -b v0.4.0 https://github.com/OpenZeppelin/openzeppelin-foundry-upgrades \
+            lib/openzeppelin-foundry-upgrades
         working-directory: bridge/evm
       - name: Build EVM contracts
         run: forge build
@@ -86,8 +95,17 @@ jobs:
           sudo apt-get clean
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Init forge submodules
-        run: git submodule update --init --recursive
+      - name: Install forge dependencies
+        # bridge/evm/lib is gitignored; deps are installed via foundry locally.
+        # Reproduce that here at the versions matching the local checkout
+        # (see lib/*/package.json).
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            -b v5.0.1 https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable \
+            lib/openzeppelin-contracts-upgradeable
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            -b v0.4.0 https://github.com/OpenZeppelin/openzeppelin-foundry-upgrades \
+            lib/openzeppelin-foundry-upgrades
         working-directory: bridge/evm
       - name: Build EVM contracts
         run: forge build
