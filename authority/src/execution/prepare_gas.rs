@@ -2,283 +2,105 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use tracing::info;
+use types::balance::BalanceEvent;
 use types::base::SomaAddress;
 use types::effects::ExecutionFailureStatus;
-use types::error::{ExecutionResult, SomaError};
-use types::object::{ObjectID, ObjectRef};
+use types::error::SomaError;
+use types::object::{CoinType, ObjectID};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 use types::tx_fee::TransactionFee;
 
 use super::TransactionExecutor;
 
-/// Result of gas preparation
+/// Result of gas preparation.
 pub(crate) struct GasPreparationResult {
-    /// Primary gas object ID (if gas handling is enabled)
+    /// Stage 13c: always `None` — gas no longer routes through a
+    /// coin object. The field is preserved because it is part of
+    /// `TransactionEffectsV1::gas_object_index`'s wire layout (the
+    /// effects struct still serializes it for backward-compatibility
+    /// with existing checkpoint data). A future effects-schema bump
+    /// (e.g. `TransactionEffectsV2`) can drop the field cleanly;
+    /// changing it now would alter BCS encoding and break the digest.
     pub primary_gas_id: Option<ObjectID>,
-    /// Transaction fee information
+    /// Transaction fee that was deducted from the sender's USDC
+    /// accumulator via a `BalanceEvent::Withdraw`.
     pub transaction_fee: TransactionFee,
-    /// Amount of base fee that was deducted
-    base_fee_deducted: u64,
-    /// Pre-calculated value fee to ensure consistency
-    pub value_fee: u64,
 }
 
-/// Prepares gas for a transaction
+/// Prepare gas for a transaction (Stage 13c: balance-mode only).
 ///
-/// For system transactions, this does nothing.
-/// For regular transactions, it smashes gas coins and attempts to deduct base fee.
+/// All non-system txs MUST submit with an empty `gas_payment` and
+/// rely on the sender's USDC accumulator. The reservation pre-pass
+/// (Stage 4) gates the tx's admittance based on a pre-read
+/// USDC balance; this function emits the matching
+/// `BalanceEvent::Withdraw` for the per-tx fee, which the per-commit
+/// settlement applies atomically.
+///
+/// System txs pay no fee and skip the entire flow.
+///
+/// `sender_usdc_balance` must be `Some` for non-system txs — the
+/// caller pre-reads it from the accumulator. Reaching here with a
+/// non-empty `gas_payment` (a left-over from the pre-Stage-13c
+/// coin-mode path) is now a hard error: the validator should have
+/// rejected the tx upstream.
 pub fn prepare_gas(
     temporary_store: &mut TemporaryStore,
     kind: &TransactionKind,
     signer: &SomaAddress,
-    gas_payment: Vec<ObjectRef>,
+    gas_payment: Vec<types::object::ObjectRef>,
     executor: &dyn TransactionExecutor,
+    sender_usdc_balance: Option<u64>,
 ) -> Result<GasPreparationResult, (ExecutionFailureStatus, TransactionFee)> {
-    // Skip gas handling for system transactions
     if kind.is_system_tx() {
         return Ok(GasPreparationResult {
             primary_gas_id: None,
             transaction_fee: TransactionFee::default(),
-            base_fee_deducted: 0,
-            value_fee: 0,
         });
     }
 
-    // Smash gas coins and get primary gas ID
-    let gas_id = match smash_gas_coins(temporary_store, signer, gas_payment) {
-        Ok(id) => id,
-        Err(err) => {
-            return Err((err, TransactionFee::default()));
-        }
-    };
+    if !gas_payment.is_empty() {
+        // Stage 13c: coin-mode gas is gone. A tx that submits a
+        // non-empty `gas_payment` predates the migration — reject it.
+        return Err((
+            ExecutionFailureStatus::SomaError(SomaError::from(
+                "Stage 13c: gas_payment must be empty (balance-mode gas only)".to_string(),
+            )),
+            TransactionFee::default(),
+        ));
+    }
 
-    // Set gas object ID in temporary store
-    let primary_gas_id = Some(gas_id);
-    temporary_store.gas_object_id = primary_gas_id;
+    // Compute total fee = unit_fee × fee_units.
+    let unit_fee = temporary_store.fee_parameters.unit_fee;
+    let units = executor.fee_units(temporary_store, kind) as u64;
+    let total_fee = unit_fee.saturating_mul(units);
 
-    // Deduct base fee for DOS protection
-    let base_fee = executor.base_fee(temporary_store);
+    let balance = sender_usdc_balance.ok_or((
+        ExecutionFailureStatus::SomaError(SomaError::from(
+            "Balance-mode gas requires pre-computed sender USDC balance".to_string(),
+        )),
+        TransactionFee::default(),
+    ))?;
 
-    // Get gas object with merged balance
-    let gas_obj = temporary_store.read_object(&gas_id).unwrap();
-    let gas_balance = gas_obj.as_coin().unwrap();
-
-    // Check if there's enough for base fee
-    if gas_balance < base_fee {
-        // Not enough for base fee - take what we can and fail
-        if gas_balance > 0 {
-            // Deduct whatever is available
-            let partial_fee = TransactionFee::new(gas_balance, 0, 0);
-
-            // This should always succeed since we're taking at most the available balance
-            if deduct_gas_fee(temporary_store, &partial_fee).is_ok() {
-                return Err((ExecutionFailureStatus::InsufficientGas, partial_fee));
-            }
-        }
-
+    if balance < total_fee {
+        // Underfunded. The reservation pre-pass should have caught
+        // this; reaching here indicates a race or missing pre-pass.
+        // Don't emit the Withdraw event so settlement doesn't try
+        // to debit.
         return Err((ExecutionFailureStatus::InsufficientGas, TransactionFee::default()));
     }
 
-    // Sufficient gas for base fee - deduct it
-    let base_fee_obj = TransactionFee::new(base_fee, 0, 0);
-
-    // Calculate value fee before deducting any gas
-    let value_fee = executor.calculate_value_fee(temporary_store, kind);
-
-    match deduct_gas_fee(temporary_store, &base_fee_obj) {
-        Ok(_) => {
-            // Base fee deducted successfully
-            let transaction_fee = TransactionFee::new(base_fee, 0, 0);
-
-            Ok(GasPreparationResult {
-                primary_gas_id,
-                transaction_fee,
-                base_fee_deducted: base_fee,
-                value_fee,
-            })
-        }
-        Err(err) => {
-            // This shouldn't happen since we checked the balance
-            Err((err, TransactionFee::default()))
-        }
-    }
-}
-
-fn smash_gas_coins(
-    store: &mut TemporaryStore,
-    signer: &SomaAddress,
-    gas_payment: Vec<ObjectRef>,
-) -> ExecutionResult<ObjectID> {
-    if gas_payment.is_empty() {
-        return Err(ExecutionFailureStatus::SomaError(SomaError::from("No gas payment provided")));
-    }
-
-    let primary_gas_id = gas_payment[0].0;
-
-    // Skip if only one gas coin
-    if gas_payment.len() == 1 {
-        // Still need to check ownership and verify it's a coin
-        let primary_gas_obj = store
-            .read_object(&primary_gas_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: primary_gas_id })?;
-
-        // Verify ownership of primary gas
-        if primary_gas_obj.owner().get_owner_address()? != *signer {
-            return Err(ExecutionFailureStatus::InvalidOwnership {
-                object_id: primary_gas_id,
-                expected_owner: *signer,
-                actual_owner: primary_gas_obj.owner().get_owner_address().ok(),
-            });
-        }
-
-        // Verify it's a coin
-        let _balance = primary_gas_obj.as_coin().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-        })?;
-
-        return Ok(primary_gas_id);
-    }
-
-    let primary_gas_obj = store
-        .read_object(&primary_gas_id)
-        .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: primary_gas_id })?;
-
-    // Verify ownership of primary gas
-    if primary_gas_obj.owner().get_owner_address()? != *signer {
-        return Err(ExecutionFailureStatus::InvalidOwnership {
-            object_id: primary_gas_id,
-            expected_owner: *signer,
-            actual_owner: primary_gas_obj.owner().get_owner_address().ok(),
-        });
-    }
-
-    // Get balance of primary gas object
-    let primary_balance = primary_gas_obj.as_coin().ok_or_else(|| {
-        ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-    })?;
-
-    let mut total_balance = primary_balance;
-
-    // Process additional gas coins
-    for gas_ref in gas_payment.iter().skip(1) {
-        let gas_id = gas_ref.0;
-        let gas_obj = store
-            .read_object(&gas_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: gas_id })?;
-
-        // Verify ownership
-        if gas_obj.owner().get_owner_address()? != *signer {
-            return Err(ExecutionFailureStatus::InvalidOwnership {
-                object_id: gas_id,
-                expected_owner: *signer,
-                actual_owner: gas_obj.owner().get_owner_address().ok(),
-            });
-        }
-
-        // Verify it's a coin and add balance
-        let balance = gas_obj.as_coin().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-        })?;
-
-        total_balance =
-            total_balance.checked_add(balance).ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
-
-        // Delete this gas coin (we'll merge into the first)
-        store.delete_input_object(&gas_id);
-    }
-
-    // Update the primary gas coin with total balance
-    let mut updated_gas = primary_gas_obj.clone();
-    updated_gas.update_coin_balance(total_balance);
-    store.mutate_input_object(updated_gas);
-
-    Ok(primary_gas_id)
-}
-
-/// Calculates and deducts operation and value fees after successful execution
-///
-/// Returns the final transaction fee that includes both base fee and remaining fees.
-pub fn calculate_and_deduct_remaining_fees(
-    temporary_store: &mut TemporaryStore,
-    kind: &TransactionKind,
-    executor: &dyn TransactionExecutor,
-    gas_result: &GasPreparationResult,
-) -> Result<TransactionFee, ExecutionFailureStatus> {
-    // Skip for system transactions or if no gas ID
-    if kind.is_system_tx() || gas_result.primary_gas_id.is_none() {
-        return Ok(gas_result.transaction_fee.clone());
-    }
-
-    let gas_id = gas_result.primary_gas_id.unwrap();
-
-    // Use pre-calculated value fee instead of recalculating
-    let value_fee = gas_result.value_fee;
-
-    // Calculate operation fee (without recalculating value fee)
-    let operation_fee = (temporary_store.execution_results.written_objects.len() as u64)
-        .saturating_mul(executor.write_fee_per_object(temporary_store));
-
-    // Get gas object
-    let gas_obj = match temporary_store.read_object(&gas_id) {
-        Some(obj) => obj,
-        None => return Err(ExecutionFailureStatus::ObjectNotFound { object_id: gas_id }),
-    };
-
-    // Create TransactionFee with pre-calculated value fee
-    let remaining_fee = TransactionFee::new(
-        0, // Base fee already deducted
-        operation_fee,
-        value_fee,
+    // Stage 14c.6 (SIP-58 cutover): user-tx executors emit ONLY
+    // `AccumulatorWriteV1`. The per-cp SettlementScheduler aggregates
+    // these and is the sole driver of CF apply.
+    temporary_store.emit_accumulator_event(
+        types::effects::object_change::AccumulatorAddress::balance(*signer, CoinType::Usdc),
+        types::effects::object_change::AccumulatorOperation::Split,
+        total_fee,
     );
 
-    // Attempt to deduct the remaining fee
-    match deduct_gas_fee(temporary_store, &remaining_fee) {
-        Ok(_) => {
-            // Combine base fee with operation and value fees for reporting
-            let final_fee = merge_fee_components(gas_result.base_fee_deducted, remaining_fee);
-            Ok(final_fee)
-        }
-        Err(err) => Err(err),
-    }
-}
-
-fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> ExecutionResult<u64> {
-    let gas_id = store
-        .gas_object_id
-        .ok_or_else(|| ExecutionFailureStatus::SomaError(SomaError::from("No gas object set")))?;
-
-    let gas_obj = store
-        .read_object(&gas_id)
-        .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: gas_id })?;
-
-    let current_balance = gas_obj.as_coin().ok_or_else(|| {
-        ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-    })?;
-
-    // Check sufficient balance
-    if current_balance < fee.total_fee {
-        return Err(ExecutionFailureStatus::InsufficientGas);
-    }
-
-    // Deduct fee from gas object
-    let new_balance = current_balance - fee.total_fee;
-
-    if new_balance == 0 {
-        // Gas coin fully consumed (e.g. pay-all) — delete it so it appears in
-        // effects.deleted() rather than leaving a 0-balance coin on chain.
-        store.delete_input_object(&gas_id);
-    } else {
-        let mut updated_gas = gas_obj.clone();
-        updated_gas.update_coin_balance(new_balance);
-        store.mutate_input_object(updated_gas);
-    }
-
-    Ok(fee.total_fee)
-}
-
-// Helper function to merge fee components for reporting
-fn merge_fee_components(base_fee: u64, remaining_fee: TransactionFee) -> TransactionFee {
-    TransactionFee::new(base_fee, remaining_fee.operation_fee, remaining_fee.value_fee)
+    Ok(GasPreparationResult {
+        primary_gas_id: None,
+        transaction_fee: TransactionFee::new(total_fee),
+    })
 }

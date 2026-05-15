@@ -9,6 +9,11 @@ message Owner {
     ADDRESS = 1;
     SHARED = 2;
     IMMUTABLE = 3;
+    // Stage 14a: system-managed accumulator object. The
+    // `accumulator_kind` field discriminates between Balance
+    // (per-(owner, coin_type) account-balance accumulator) and
+    // Delegation (per-(pool_id, staker) F1 row).
+    ACCUMULATOR = 4;
   }
   optional OwnerKind kind = 1;
 
@@ -17,4 +22,10 @@ message Owner {
 
   // The `initial_shared_version` if kind is `SHARED`.
   optional uint64 version = 3;
+
+  // Stage 14a: kind discriminator for `ACCUMULATOR`. Values
+  // are `BALANCE` or `DELEGATION` (string form) so the wire
+  // representation is forward-compatible if more accumulator
+  // families are added later.
+  optional string accumulator_kind = 4;
 }

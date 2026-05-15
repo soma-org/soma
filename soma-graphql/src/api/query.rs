@@ -7,29 +7,22 @@ use std::sync::Arc;
 use async_graphql::connection::{Connection, Edge};
 use async_graphql::{Context, Error, Object, Result};
 use diesel::ExpressionMethods;
-use diesel::NullableExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
-use diesel::dsl::count_star;
 use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
-use crate::api::types::aggregates::{
-    ModelAggregates, ModelStats, RewardAggregates, SubmitterStats, TargetAggregates,
-    TargetScoreAggregates,
-};
 use crate::api::types::available_range::AvailableRange;
+use crate::api::types::channel::{Channel as GqlChannel, ChannelStatus};
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
 use crate::api::types::epoch_state::EpochState;
-use crate::api::types::model::{Model, ModelFilter};
 use crate::api::types::network_metrics::NetworkMetrics;
 use crate::api::types::object::Object as GqlObject;
-use crate::api::types::reward::{Reward, RewardBalance};
+use crate::api::types::provider::Provider as GqlProvider;
 use crate::api::types::service_config::ServiceConfig;
 use crate::api::types::staked_soma::StakedSoma;
-use crate::api::types::target::{Target, TargetFilter};
 use crate::api::types::transaction::Transaction;
 use crate::api::types::transaction_detail::TransactionDetail;
 use crate::api::types::validator::Validator;
@@ -41,23 +34,6 @@ use indexer_kvstore::KvLoader;
 /// Try to get the KvLoader from the GraphQL context. Returns None if not configured.
 fn kv_loader<'a>(ctx: &'a Context<'a>) -> Option<&'a Arc<dyn KvLoader>> {
     ctx.data::<Arc<dyn KvLoader>>().ok()
-}
-
-/// Compute the submitter's share of a target reward pool.
-/// Submitter gets their bps share plus any rounding remainder.
-/// Mirrors authority/src/execution/submission.rs:459-467.
-fn submitter_reward_share(reward_pool: i64) -> i64 {
-    const MODEL_BPS: i64 = 4975;
-    const CLAIMER_BPS: i64 = 50;
-    let model_share = reward_pool * MODEL_BPS / 10000;
-    let claimer_share = reward_pool * CLAIMER_BPS / 10000;
-    reward_pool - model_share - claimer_share
-}
-
-/// Compute the model owner's share of a target reward pool.
-fn model_reward_share(reward_pool: i64) -> i64 {
-    const MODEL_BPS: i64 = 4975;
-    reward_pool * MODEL_BPS / 10000
 }
 
 pub struct Query;
@@ -320,6 +296,7 @@ impl Query {
                 indexer_alt_schema::objects::StoredOwnerKind::Address => "Address",
                 indexer_alt_schema::objects::StoredOwnerKind::Object => "Object",
                 indexer_alt_schema::objects::StoredOwnerKind::Shared => "Shared",
+                indexer_alt_schema::objects::StoredOwnerKind::Accumulator => "Accumulator",
             })
         });
 
@@ -451,401 +428,6 @@ impl Query {
             total_stake: end.as_ref().and_then(|e| e.total_stake),
             total_gas_fees: end.as_ref().and_then(|e| e.total_gas_fees),
         }))
-    }
-
-    /// Look up a target by ID. Returns the latest version.
-    async fn target(&self, ctx: &Context<'_>, target_id: String) -> Result<Option<Target>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        let id_hex = target_id.strip_prefix("0x").unwrap_or(&target_id);
-        let id_bytes =
-            hex::decode(id_hex).map_err(|e| Error::new(format!("Invalid target ID: {e}")))?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        // Split into nested tuples to stay within Diesel's 16-element tuple limit.
-        type RowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
-        type RowB = (
-            Option<f64>,
-            Option<f64>,
-            Option<Vec<u8>>,
-            Option<i64>,
-            f64,
-            String,
-            Option<String>,
-            Option<Vec<u8>>,
-            Option<i64>,
-        );
-
-        let stored: Option<(RowA, RowB)> = soma_targets::table
-            .select((
-                (
-                    soma_targets::target_id,
-                    soma_targets::cp_sequence_number,
-                    soma_targets::epoch,
-                    soma_targets::status,
-                    soma_targets::submitter,
-                    soma_targets::winning_model_id,
-                    soma_targets::reward_pool,
-                    soma_targets::bond_amount,
-                    soma_targets::report_count,
-                ),
-                (
-                    soma_targets::winning_distance_score,
-                    soma_targets::winning_loss_score,
-                    soma_targets::winning_model_owner,
-                    soma_targets::fill_epoch,
-                    soma_targets::distance_threshold,
-                    soma_targets::model_ids_json,
-                    soma_targets::winning_data_url,
-                    soma_targets::winning_data_checksum,
-                    soma_targets::winning_data_size,
-                ),
-            ))
-            .filter(soma_targets::target_id.eq(&id_bytes))
-            .order(soma_targets::cp_sequence_number.desc())
-            .first(conn.deref_mut())
-            .await
-            .optional()
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(stored.map(|(a, b)| target_from_row(a, b)))
-    }
-
-    /// Query targets with pagination and optional filters.
-    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
-    async fn targets(
-        &self,
-        ctx: &Context<'_>,
-        first: Option<i32>,
-        after: Option<String>,
-        filter: Option<TargetFilter>,
-    ) -> Result<Connection<String, Target>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let config: &GraphQlConfig = ctx.data()?;
-        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        let after_cp: Option<i64> = match &after {
-            Some(cursor) => {
-                let parts: Vec<&str> = cursor.splitn(2, ':').collect();
-                if parts.len() != 2 {
-                    return Err(Error::new("Invalid cursor format"));
-                }
-                let cp: i64 =
-                    parts[1].parse().map_err(|e| Error::new(format!("Invalid cursor cp: {e}")))?;
-                Some(cp)
-            }
-            None => None,
-        };
-
-        // Split into nested tuples to stay within Diesel's 16-element tuple limit.
-        type RowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
-        type RowB = (
-            Option<f64>,
-            Option<f64>,
-            Option<Vec<u8>>,
-            Option<i64>,
-            f64,
-            String,
-            Option<String>,
-            Option<Vec<u8>>,
-            Option<i64>,
-        );
-
-        let mut query = soma_targets::table
-            .select((
-                (
-                    soma_targets::target_id,
-                    soma_targets::cp_sequence_number,
-                    soma_targets::epoch,
-                    soma_targets::status,
-                    soma_targets::submitter,
-                    soma_targets::winning_model_id,
-                    soma_targets::reward_pool,
-                    soma_targets::bond_amount,
-                    soma_targets::report_count,
-                ),
-                (
-                    soma_targets::winning_distance_score,
-                    soma_targets::winning_loss_score,
-                    soma_targets::winning_model_owner,
-                    soma_targets::fill_epoch,
-                    soma_targets::distance_threshold,
-                    soma_targets::model_ids_json,
-                    soma_targets::winning_data_url,
-                    soma_targets::winning_data_checksum,
-                    soma_targets::winning_data_size,
-                ),
-            ))
-            .order(soma_targets::cp_sequence_number.desc())
-            .limit(limit + 1)
-            .into_boxed();
-
-        if let Some(ref filter) = filter {
-            if let Some(ref status) = filter.status {
-                query = query.filter(soma_targets::status.eq(status));
-            }
-            if let Some(epoch) = filter.epoch {
-                query = query.filter(soma_targets::epoch.eq(epoch));
-            }
-            if let Some(ref submitter_hex) = filter.submitter {
-                let hex = submitter_hex.strip_prefix("0x").unwrap_or(submitter_hex);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid submitter address: {e}")))?;
-                query = query.filter(soma_targets::submitter.eq(bytes));
-            }
-            if let Some(ref model_hex) = filter.winning_model_id {
-                let hex = model_hex.strip_prefix("0x").unwrap_or(model_hex);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid winning_model_id: {e}")))?;
-                query = query.filter(soma_targets::winning_model_id.eq(bytes));
-            }
-            if let Some(fe) = filter.fill_epoch {
-                query = query.filter(soma_targets::fill_epoch.eq(fe));
-            }
-            if let Some(ref owner_hex) = filter.winning_model_owner {
-                let hex = owner_hex.strip_prefix("0x").unwrap_or(owner_hex);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid winning_model_owner: {e}")))?;
-                query = query.filter(soma_targets::winning_model_owner.eq(bytes));
-            }
-        }
-
-        if let Some(acp) = after_cp {
-            query = query.filter(soma_targets::cp_sequence_number.lt(acp));
-        }
-
-        let results: Vec<(RowA, RowB)> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        let has_next = results.len() as i64 > limit;
-        let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
-        let has_previous = after.is_some();
-
-        let mut connection = Connection::new(has_previous, has_next);
-        for (a, b) in nodes {
-            let cursor = format!("{}:{}", hex::encode(&a.0), a.1);
-            connection.edges.push(Edge::new(cursor, target_from_row(a, b)));
-        }
-
-        Ok(connection)
-    }
-
-    /// Look up a model by ID. Returns the snapshot at the given epoch, or latest.
-    async fn model(
-        &self,
-        ctx: &Context<'_>,
-        model_id: String,
-        epoch: Option<i64>,
-    ) -> Result<Option<Model>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        let id_hex = model_id.strip_prefix("0x").unwrap_or(&model_id);
-        let id_bytes =
-            hex::decode(id_hex).map_err(|e| Error::new(format!("Invalid model ID: {e}")))?;
-
-        use indexer_alt_schema::schema::soma_models;
-
-        let mut query = soma_models::table
-            .select(model_select())
-            .filter(soma_models::model_id.eq(&id_bytes))
-            .order(soma_models::epoch.desc())
-            .into_boxed();
-
-        if let Some(e) = epoch {
-            query = query.filter(soma_models::epoch.eq(e));
-        }
-
-        let stored: Option<(ModelRowA, ModelRowB, ModelRowC)> = query
-            .first(conn.deref_mut())
-            .await
-            .optional()
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(stored.map(|(a, b, c)| model_from_row(a, b, c)))
-    }
-
-    /// Query models with pagination and optional filters.
-    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
-    async fn models(
-        &self,
-        ctx: &Context<'_>,
-        first: Option<i32>,
-        after: Option<String>,
-        epoch: Option<i64>,
-        filter: Option<ModelFilter>,
-    ) -> Result<Connection<String, Model>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let config: &GraphQlConfig = ctx.data()?;
-        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_models;
-
-        let epoch_num = match epoch {
-            Some(e) => e,
-            None => soma_models::table
-                .select(soma_models::epoch)
-                .order(soma_models::epoch.desc())
-                .first::<i64>(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?
-                .unwrap_or(0),
-        };
-
-        let after_id: Option<Vec<u8>> = after
-            .as_deref()
-            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
-            .transpose()?;
-
-        let mut query = soma_models::table
-            .select(model_select())
-            .filter(soma_models::epoch.eq(epoch_num))
-            .order(soma_models::model_id.asc())
-            .limit(limit + 1)
-            .into_boxed();
-
-        if let Some(ref aid) = after_id {
-            query = query.filter(soma_models::model_id.gt(aid));
-        }
-
-        if let Some(ref filter) = filter {
-            if let Some(ref status) = filter.status {
-                query = query.filter(soma_models::status.eq(status));
-            }
-            if let Some(ref owner_hex) = filter.owner {
-                let hex = owner_hex.strip_prefix("0x").unwrap_or(owner_hex);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
-                query = query.filter(soma_models::owner.eq(bytes));
-            }
-            if let Some(min) = filter.min_stake {
-                query = query.filter(soma_models::stake.ge(min));
-            }
-            if let Some(max) = filter.max_stake {
-                query = query.filter(soma_models::stake.le(max));
-            }
-        }
-
-        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        let has_next = results.len() as i64 > limit;
-        let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
-        let has_previous = after.is_some();
-
-        let mut connection = Connection::new(has_previous, has_next);
-        for (a, b, c) in nodes {
-            let cursor = hex::encode(&a.0);
-            connection.edges.push(Edge::new(cursor, model_from_row(a, b, c)));
-        }
-
-        Ok(connection)
-    }
-
-    /// Query rewards for a specific epoch and optionally a specific target or recipient.
-    async fn rewards(
-        &self,
-        ctx: &Context<'_>,
-        epoch: i64,
-        target_id: Option<String>,
-        recipient: Option<String>,
-    ) -> Result<Vec<Reward>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::{soma_reward_balances, soma_rewards};
-
-        // If filtering by recipient, find matching target_ids first
-        let recipient_target_ids: Option<Vec<Vec<u8>>> = match &recipient {
-            Some(hex_str) => {
-                let hex = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid recipient address: {e}")))?;
-                let ids: Vec<Vec<u8>> = soma_reward_balances::table
-                    .select(soma_reward_balances::target_id)
-                    .filter(soma_reward_balances::epoch.eq(epoch))
-                    .filter(soma_reward_balances::recipient.eq(&bytes))
-                    .load(conn.deref_mut())
-                    .await
-                    .map_err(|e| Error::new(e.to_string()))?;
-                Some(ids)
-            }
-            None => None,
-        };
-
-        type RewardRow = (Vec<u8>, i64, i64, Vec<u8>);
-
-        let mut query = soma_rewards::table
-            .select((
-                soma_rewards::target_id,
-                soma_rewards::cp_sequence_number,
-                soma_rewards::epoch,
-                soma_rewards::tx_digest,
-            ))
-            .filter(soma_rewards::epoch.eq(epoch))
-            .order(soma_rewards::cp_sequence_number.asc())
-            .limit(100)
-            .into_boxed();
-
-        if let Some(ref tid) = target_id {
-            let id_hex = tid.strip_prefix("0x").unwrap_or(tid);
-            let id_bytes =
-                hex::decode(id_hex).map_err(|e| Error::new(format!("Invalid target ID: {e}")))?;
-            query = query.filter(soma_rewards::target_id.eq(id_bytes));
-        }
-
-        if let Some(ref ids) = recipient_target_ids {
-            query = query.filter(soma_rewards::target_id.eq_any(ids));
-        }
-
-        let reward_rows: Vec<RewardRow> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        if reward_rows.is_empty() {
-            return Ok(vec![]);
-        }
-
-        // Load all balance rows for matching targets in this epoch
-        let target_ids: Vec<Vec<u8>> = reward_rows.iter().map(|r| r.0.clone()).collect();
-
-        type BalanceRow = (Vec<u8>, Vec<u8>, i64);
-
-        let balance_rows: Vec<BalanceRow> = soma_reward_balances::table
-            .select((
-                soma_reward_balances::target_id,
-                soma_reward_balances::recipient,
-                soma_reward_balances::amount,
-            ))
-            .filter(soma_reward_balances::target_id.eq_any(&target_ids))
-            .filter(soma_reward_balances::epoch.eq(epoch))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Group balances by target_id
-        let mut balance_map: std::collections::HashMap<Vec<u8>, Vec<RewardBalance>> =
-            std::collections::HashMap::new();
-        for (tid, recipient, amount) in balance_rows {
-            balance_map.entry(tid).or_default().push(RewardBalance { recipient, amount });
-        }
-
-        Ok(reward_rows
-            .into_iter()
-            .map(|r| Reward {
-                target_id: r.0.clone(),
-                cp_sequence_number: r.1,
-                epoch: r.2,
-                tx_digest: r.3,
-                balances: balance_map.remove(&r.0).unwrap_or_default(),
-            })
-            .collect())
     }
 
     /// Look up a staked SOMA position by its object ID.
@@ -1014,270 +596,46 @@ impl Query {
         Ok(connection)
     }
 
-    /// Get the total SOMA coin balance for an address.
+    /// Get the SOMA balance for an address.
+    ///
+    /// Stage 13m: `soma_balance_deltas` materializes per-checkpoint
+    /// signed deltas keyed by `(owner, coin_type)`. The current
+    /// balance is `SUM(delta)` over those rows. The same source-of-
+    /// truth (`TransactionEffects.balance_events`) feeds the
+    /// authority store and the indexer, so this answer matches the
+    /// gRPC `GetBalance` modulo indexer lag.
     async fn balance(&self, ctx: &Context<'_>, address: String) -> Result<BigInt> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
-        let addr_bytes =
-            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+        let addr_bytes = hex::decode(addr_hex)
+            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
 
-        use indexer_alt_schema::schema::{kv_objects, obj_info, obj_versions};
-
-        // Step 1: Find Coin object IDs owned by this address (latest cp per object_id).
-        // We load all obj_info rows for this owner where module='Coin', ordered by
-        // object_id ASC, cp DESC, then deduplicate by object_id.
-        type ObjInfoRow = (Vec<u8>, i64);
-
-        let info_rows: Vec<ObjInfoRow> = obj_info::table
-            .select((obj_info::object_id, obj_info::cp_sequence_number))
-            .filter(obj_info::owner_id.eq(&addr_bytes))
-            .filter(obj_info::module.eq("Coin"))
-            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Deduplicate by object_id (keep latest cp)
-        let mut seen_ids = std::collections::HashSet::new();
-        let mut coin_object_ids: Vec<Vec<u8>> = Vec::new();
-        for (oid, _cp) in &info_rows {
-            if seen_ids.insert(oid.clone()) {
-                coin_object_ids.push(oid.clone());
-            }
-        }
-
-        if coin_object_ids.is_empty() {
-            return Ok(BigInt(0));
-        }
-
-        // Step 1.5: Verify each candidate is still owned by this address.
-        // The owner-filtered query above may return stale rows for coins that
-        // were transferred to another address at a later checkpoint.
-        let verify_rows: Vec<(Vec<u8>, Option<Vec<u8>>)> = obj_info::table
-            .select((obj_info::object_id, obj_info::owner_id))
-            .filter(obj_info::object_id.eq_any(&coin_object_ids))
-            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let mut still_owned = std::collections::HashSet::new();
-        let mut seen_verify = std::collections::HashSet::new();
-        for (oid, owner) in &verify_rows {
-            if seen_verify.insert(oid.clone()) {
-                if owner.as_deref() == Some(addr_bytes.as_slice()) {
-                    still_owned.insert(oid.clone());
-                }
-            }
-        }
-        coin_object_ids.retain(|oid| still_owned.contains(oid));
-
-        if coin_object_ids.is_empty() {
-            return Ok(BigInt(0));
-        }
-
-        // Step 2: For each coin object, get the latest version and extract balance.
-        let kv = kv_loader(ctx);
-        let mut total: i64 = 0;
-        for oid in &coin_object_ids {
-            let version: Option<i64> = obj_versions::table
-                .select(obj_versions::object_version)
-                .filter(obj_versions::object_id.eq(oid))
-                .order(obj_versions::object_version.desc())
-                .first(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?;
-
-            let Some(ver) = version else { continue };
-
-            // Step 3: Load object and extract coin balance.
-            let balance: Option<u64> = if let Some(kv) = kv {
-                let obj_id = types::object::ObjectID::from_bytes(oid.as_slice())
-                    .map_err(|e| Error::new(e.to_string()))?;
-                let obj: Option<types::object::Object> =
-                    kv.get_object(&obj_id, ver as u64)
-                        .await
-                        .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
-                obj.and_then(|o| o.as_coin())
-            } else {
-                let serialized: Option<Option<Vec<u8>>> = kv_objects::table
-                    .select(kv_objects::serialized_object)
-                    .filter(kv_objects::object_id.eq(oid))
-                    .filter(kv_objects::object_version.eq(ver))
-                    .first(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?;
-                serialized
-                    .flatten()
-                    .and_then(|bytes| bcs::from_bytes::<types::object::Object>(&bytes).ok())
-                    .and_then(|obj| obj.as_coin())
-            };
-
-            if let Some(value) = balance {
-                total = total.saturating_add(value as i64);
-            }
-        }
-
-        Ok(BigInt(total))
-    }
-
-    /// Aggregate statistics for models at a given epoch (or latest).
-    async fn model_aggregates(
-        &self,
-        ctx: &Context<'_>,
-        epoch: Option<i64>,
-    ) -> Result<ModelAggregates> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
-        use indexer_alt_schema::schema::soma_models;
+        use indexer_alt_schema::schema::soma_balance_deltas;
 
-        let epoch_num = match epoch {
-            Some(e) => e,
-            None => soma_models::table
-                .select(soma_models::epoch)
-                .order(soma_models::epoch.desc())
-                .first::<i64>(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?
-                .unwrap_or(0),
-        };
+        // Default coin denomination is SOMA (the native token).
+        // Per-coin balance lookup is exposed elsewhere; this entry
+        // point keeps the historical single-balance semantics.
+        //
+        // Sum in-process rather than via SQL `SUM(BIGINT)` — Postgres
+        // promotes that to `NUMERIC` which would force a `bigdecimal`
+        // dep. Soma's pre-mainnet data volume per address is small,
+        // so the index-prefix scan + Rust fold is well within budget.
+        let deltas: Vec<i64> = soma_balance_deltas::table
+            .filter(soma_balance_deltas::owner.eq(addr_bytes))
+            .filter(soma_balance_deltas::coin_type.eq("SOMA"))
+            .select(soma_balance_deltas::delta)
+            .load::<i64>(conn.deref_mut())
+            .await?;
 
-        // Total count
-        let total_count: i64 = soma_models::table
-            .filter(soma_models::epoch.eq(epoch_num))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Active count
-        let active_count: i64 = soma_models::table
-            .filter(soma_models::epoch.eq(epoch_num))
-            .filter(soma_models::status.eq("active"))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Total stake
-        let total_stake: Option<i64> = soma_models::table
-            .filter(soma_models::epoch.eq(epoch_num))
-            .select(diesel::dsl::sql::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>>(
-                "COALESCE(SUM(stake), 0)::BIGINT",
-            ))
-            .first(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_stake = total_stake.unwrap_or(0);
-        let avg_stake = if total_count > 0 { total_stake as f64 / total_count as f64 } else { 0.0 };
-
-        Ok(ModelAggregates { total_count, total_stake, avg_stake, active_count })
-    }
-
-    /// Aggregate statistics for targets at a given epoch (or latest).
-    async fn target_aggregates(
-        &self,
-        ctx: &Context<'_>,
-        epoch: Option<i64>,
-    ) -> Result<TargetAggregates> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        let epoch_num = match epoch {
-            Some(e) => e,
-            None => soma_targets::table
-                .select(soma_targets::epoch)
-                .order(soma_targets::epoch.desc())
-                .first::<i64>(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?
-                .unwrap_or(0),
-        };
-
-        // Get latest version of each target in this epoch by loading all rows
-        // and deduplicating by target_id (keeping highest cp).
-        type AggRow = (Vec<u8>, i64, String, i64);
-
-        let rows: Vec<AggRow> = soma_targets::table
-            .select((
-                soma_targets::target_id,
-                soma_targets::cp_sequence_number,
-                soma_targets::status,
-                soma_targets::reward_pool,
-            ))
-            .filter(soma_targets::epoch.eq(epoch_num))
-            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Deduplicate by target_id, keeping latest cp
-        let mut seen = std::collections::HashSet::new();
-        let mut total_count: i64 = 0;
-        let mut open_count: i64 = 0;
-        let mut filled_count: i64 = 0;
-        let mut claimed_count: i64 = 0;
-        let mut total_reward_pool: i64 = 0;
-
-        for (tid, _cp, status, reward_pool) in &rows {
-            if !seen.insert(tid.clone()) {
-                continue;
-            }
-            total_count += 1;
-            total_reward_pool = total_reward_pool.saturating_add(*reward_pool);
-            match status.as_str() {
-                "open" => open_count += 1,
-                "filled" => filled_count += 1,
-                "claimed" => claimed_count += 1,
-                _ => {}
-            }
-        }
-
-        Ok(TargetAggregates {
-            total_count,
-            open_count,
-            filled_count,
-            claimed_count,
-            total_reward_pool,
-        })
-    }
-
-    /// Aggregate statistics for rewards at a given epoch.
-    async fn reward_aggregates(&self, ctx: &Context<'_>, epoch: i64) -> Result<RewardAggregates> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::{soma_reward_balances, soma_rewards};
-
-        // Count reward claims
-        let total_count: i64 = soma_rewards::table
-            .filter(soma_rewards::epoch.eq(epoch))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Sum amounts from reward balances
-        let total_amount: Option<i64> = soma_reward_balances::table
-            .filter(soma_reward_balances::epoch.eq(epoch))
-            .select(diesel::dsl::sql::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>>(
-                "COALESCE(SUM(amount), 0)::BIGINT",
-            ))
-            .first(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(RewardAggregates { total_count, total_amount: total_amount.unwrap_or(0) })
+        // i128 accumulator keeps a long history of u64-sized deltas
+        // safely; we narrow back to i64 at the end (saturating to
+        // surface a bug if it ever overflows, since real balances
+        // can't exceed the supply).
+        let total: i128 = deltas.iter().map(|d| *d as i128).sum();
+        let total_i64 = total.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+        Ok(BigInt(total_i64))
     }
 
     /// Look up the epoch state for a given epoch (or latest).
@@ -1291,18 +649,17 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_epoch_state;
 
-        type Row = (i64, i64, i64, f64, i64, i64, i64, i64, bool, i64, i64);
+        type Row = (i64, i64, i64, i64, i64, i32, i64, bool, i64, i64);
 
         let mut query = soma_epoch_state::table
             .select((
                 soma_epoch_state::epoch,
                 soma_epoch_state::emission_balance,
                 soma_epoch_state::emission_per_epoch,
-                soma_epoch_state::distance_threshold,
-                soma_epoch_state::targets_generated_this_epoch,
-                soma_epoch_state::hits_this_epoch,
-                soma_epoch_state::hits_ema,
-                soma_epoch_state::reward_per_target,
+                soma_epoch_state::distribution_counter,
+                soma_epoch_state::period_length,
+                soma_epoch_state::decrease_rate,
+                soma_epoch_state::protocol_fund_balance,
                 soma_epoch_state::safe_mode,
                 soma_epoch_state::safe_mode_accumulated_fees,
                 soma_epoch_state::safe_mode_accumulated_emissions,
@@ -1324,51 +681,14 @@ impl Query {
             epoch: r.0,
             emission_balance: r.1,
             emission_per_epoch: r.2,
-            distance_threshold: r.3,
-            targets_generated_this_epoch: r.4,
-            hits_this_epoch: r.5,
-            hits_ema: r.6,
-            reward_per_target: r.7,
-            safe_mode: r.8,
-            safe_mode_accumulated_fees: r.9,
-            safe_mode_accumulated_emissions: r.10,
+            distribution_counter: r.3,
+            period_length: r.4,
+            decrease_rate: r.5,
+            protocol_fund_balance: r.6,
+            safe_mode: r.7,
+            safe_mode_accumulated_fees: r.8,
+            safe_mode_accumulated_emissions: r.9,
         }))
-    }
-
-    /// Query the history of a model across epochs.
-    async fn model_history(
-        &self,
-        ctx: &Context<'_>,
-        model_id: String,
-        from_epoch: Option<i64>,
-        to_epoch: Option<i64>,
-    ) -> Result<Vec<Model>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        let id_hex = model_id.strip_prefix("0x").unwrap_or(&model_id);
-        let id_bytes =
-            hex::decode(id_hex).map_err(|e| Error::new(format!("Invalid model ID: {e}")))?;
-
-        use indexer_alt_schema::schema::soma_models;
-
-        let mut query = soma_models::table
-            .select(model_select())
-            .filter(soma_models::model_id.eq(&id_bytes))
-            .order(soma_models::epoch.asc())
-            .into_boxed();
-
-        if let Some(from) = from_epoch {
-            query = query.filter(soma_models::epoch.ge(from));
-        }
-        if let Some(to) = to_epoch {
-            query = query.filter(soma_models::epoch.le(to));
-        }
-
-        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(results.into_iter().map(|(a, b, c)| model_from_row(a, b, c)).collect())
     }
 
     /// Query transactions with pagination and optional kind filter.
@@ -1450,442 +770,6 @@ impl Query {
                     epoch: row.4,
                     timestamp_ms: row.5,
                     metadata_json: row.6,
-                },
-            ));
-        }
-
-        Ok(connection)
-    }
-
-    /// Aggregate score statistics for filled targets at a given epoch (or all epochs).
-    async fn target_score_aggregates(
-        &self,
-        ctx: &Context<'_>,
-        epoch: Option<i64>,
-    ) -> Result<TargetScoreAggregates> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        // Load filled targets, deduplicate by target_id (keep latest cp).
-        type Row = (Vec<u8>, i64, Option<f64>, Option<f64>, i64, Option<i64>);
-
-        let mut query = soma_targets::table
-            .select((
-                soma_targets::target_id,
-                soma_targets::cp_sequence_number,
-                soma_targets::winning_loss_score,
-                soma_targets::winning_distance_score,
-                soma_targets::reward_pool,
-                soma_targets::winning_data_size,
-            ))
-            .filter(soma_targets::status.eq("filled"))
-            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
-            .into_boxed();
-
-        if let Some(e) = epoch {
-            query = query.filter(soma_targets::epoch.eq(e));
-        }
-
-        let rows: Vec<Row> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        let mut seen = std::collections::HashSet::new();
-        let mut loss_sum = 0.0_f64;
-        let mut loss_count = 0_i64;
-        let mut dist_sum = 0.0_f64;
-        let mut dist_count = 0_i64;
-        let mut total_data_size = 0_i64;
-        let mut filled_count = 0_i64;
-
-        for (tid, _cp, loss, dist, _rp, data_size) in &rows {
-            if !seen.insert(tid.clone()) {
-                continue;
-            }
-            filled_count += 1;
-            if let Some(l) = loss {
-                loss_sum += l;
-                loss_count += 1;
-            }
-            if let Some(d) = dist {
-                dist_sum += d;
-                dist_count += 1;
-            }
-            if let Some(ds) = data_size {
-                total_data_size = total_data_size.saturating_add(*ds);
-            }
-        }
-
-        Ok(TargetScoreAggregates {
-            avg_loss_score: if loss_count > 0 { Some(loss_sum / loss_count as f64) } else { None },
-            avg_distance_score: if dist_count > 0 {
-                Some(dist_sum / dist_count as f64)
-            } else {
-                None
-            },
-            total_data_size,
-            filled_count,
-        })
-    }
-
-    /// Leaderboard of data submitters, ranked by number of filled targets.
-    #[graphql(complexity = "10 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
-    async fn submitter_leaderboard(
-        &self,
-        ctx: &Context<'_>,
-        first: Option<i32>,
-        after: Option<String>,
-        epoch: Option<i64>,
-    ) -> Result<Connection<String, SubmitterStats>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let config: &GraphQlConfig = ctx.data()?;
-        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        // Load all filled targets, deduplicate by target_id, then aggregate by submitter.
-        type Row = (Vec<u8>, i64, Option<Vec<u8>>, Option<f64>, Option<f64>, i64, Option<i64>);
-
-        let mut query = soma_targets::table
-            .select((
-                soma_targets::target_id,
-                soma_targets::cp_sequence_number,
-                soma_targets::submitter,
-                soma_targets::winning_distance_score,
-                soma_targets::winning_loss_score,
-                soma_targets::reward_pool,
-                soma_targets::winning_data_size,
-            ))
-            .filter(soma_targets::status.eq("filled"))
-            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
-            .into_boxed();
-
-        if let Some(e) = epoch {
-            query = query.filter(soma_targets::epoch.eq(e));
-        }
-
-        let rows: Vec<Row> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        // Deduplicate by target_id, aggregate by submitter
-        let mut seen = std::collections::HashSet::new();
-        let mut submitter_map: std::collections::HashMap<
-            Vec<u8>,
-            (i64, f64, i64, f64, i64, i64, i64),
-        > = std::collections::HashMap::new();
-        // Value: (target_count, dist_sum, dist_count, loss_sum, loss_count, total_reward, total_data_size)
-
-        for (tid, _cp, submitter, dist, loss, rp, data_size) in &rows {
-            if !seen.insert(tid.clone()) {
-                continue;
-            }
-            let Some(sub) = submitter else { continue };
-            let entry = submitter_map.entry(sub.clone()).or_default();
-            entry.0 += 1;
-            if let Some(d) = dist {
-                entry.1 += d;
-                entry.2 += 1;
-            }
-            if let Some(l) = loss {
-                entry.3 += l;
-                entry.4 += 1;
-            }
-            entry.5 = entry.5.saturating_add(submitter_reward_share(*rp));
-            if let Some(ds) = data_size {
-                entry.6 = entry.6.saturating_add(*ds);
-            }
-        }
-
-        // Sort by target_count desc
-        let mut entries: Vec<_> = submitter_map.into_iter().collect();
-        entries.sort_by(|a, b| b.1.0.cmp(&a.1.0));
-
-        // Apply cursor pagination
-        let after_addr: Option<Vec<u8>> = after
-            .as_deref()
-            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
-            .transpose()?;
-
-        let start_idx = match &after_addr {
-            Some(addr) => entries.iter().position(|(k, _)| k == addr).map(|i| i + 1).unwrap_or(0),
-            None => 0,
-        };
-
-        let page: Vec<_> = entries.into_iter().skip(start_idx).take(limit as usize + 1).collect();
-        let has_next = page.len() as i64 > limit;
-        let nodes: Vec<_> = page.into_iter().take(limit as usize).collect();
-        let has_previous = after.is_some();
-
-        let mut connection = Connection::new(has_previous, has_next);
-        for (sub, (tc, ds, dc, ls, lc, tr, tds)) in nodes {
-            let cursor = hex::encode(&sub);
-            connection.edges.push(Edge::new(
-                cursor,
-                SubmitterStats {
-                    submitter: sub,
-                    target_count: tc,
-                    avg_distance_score: if dc > 0 { Some(ds / dc as f64) } else { None },
-                    avg_loss_score: if lc > 0 { Some(ls / lc as f64) } else { None },
-                    total_reward: tr,
-                    total_data_size: tds,
-                },
-            ));
-        }
-
-        Ok(connection)
-    }
-
-    /// Stats for a single data submitter.
-    async fn submitter_stats(
-        &self,
-        ctx: &Context<'_>,
-        address: String,
-        epoch: Option<i64>,
-    ) -> Result<Option<SubmitterStats>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        let addr_bytes =
-            hex::decode(&address).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        type Row = (Vec<u8>, i64, Option<f64>, Option<f64>, i64, Option<i64>);
-
-        let mut query = soma_targets::table
-            .select((
-                soma_targets::target_id,
-                soma_targets::cp_sequence_number,
-                soma_targets::winning_distance_score,
-                soma_targets::winning_loss_score,
-                soma_targets::reward_pool,
-                soma_targets::winning_data_size,
-            ))
-            .filter(soma_targets::status.eq("filled"))
-            .filter(soma_targets::submitter.eq(&addr_bytes))
-            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
-            .into_boxed();
-
-        if let Some(e) = epoch {
-            query = query.filter(soma_targets::epoch.eq(e));
-        }
-
-        let rows: Vec<Row> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        if rows.is_empty() {
-            return Ok(None);
-        }
-
-        // Deduplicate by target_id, aggregate
-        let mut seen = std::collections::HashSet::new();
-        let (mut target_count, mut dist_sum, mut dist_count, mut loss_sum, mut loss_count) =
-            (0i64, 0.0f64, 0i64, 0.0f64, 0i64);
-        let (mut total_reward, mut total_data_size) = (0i64, 0i64);
-
-        for (tid, _cp, dist, loss, rp, data_size) in &rows {
-            if !seen.insert(tid.clone()) {
-                continue;
-            }
-            target_count += 1;
-            if let Some(d) = dist {
-                dist_sum += d;
-                dist_count += 1;
-            }
-            if let Some(l) = loss {
-                loss_sum += l;
-                loss_count += 1;
-            }
-            total_reward = total_reward.saturating_add(submitter_reward_share(*rp));
-            if let Some(ds) = data_size {
-                total_data_size = total_data_size.saturating_add(*ds);
-            }
-        }
-
-        Ok(Some(SubmitterStats {
-            submitter: addr_bytes,
-            target_count,
-            avg_distance_score: if dist_count > 0 {
-                Some(dist_sum / dist_count as f64)
-            } else {
-                None
-            },
-            avg_loss_score: if loss_count > 0 { Some(loss_sum / loss_count as f64) } else { None },
-            total_reward,
-            total_data_size,
-        }))
-    }
-
-    /// Leaderboard of models, ranked by number of targets won.
-    /// Includes win rate (targets won / targets assigned), average scores, and total rewards.
-    #[graphql(complexity = "10 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
-    async fn model_leaderboard(
-        &self,
-        ctx: &Context<'_>,
-        first: Option<i32>,
-        after: Option<String>,
-        epoch: Option<i64>,
-    ) -> Result<Connection<String, ModelStats>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let config: &GraphQlConfig = ctx.data()?;
-        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_targets;
-
-        // Load all targets (any status) for assignment counts, and filled targets for win stats.
-        // We need: target_id, cp_sequence_number, status, winning_model_id, scores, reward, data_size, model_ids_json
-        type Row = (
-            Vec<u8>,         // target_id
-            i64,             // cp_sequence_number
-            String,          // status
-            Option<Vec<u8>>, // winning_model_id
-            Option<f64>,     // winning_distance_score
-            Option<f64>,     // winning_loss_score
-            i64,             // reward_pool
-            Option<i64>,     // winning_data_size
-            String,          // model_ids_json
-        );
-
-        let mut query = soma_targets::table
-            .select((
-                soma_targets::target_id,
-                soma_targets::cp_sequence_number,
-                soma_targets::status,
-                soma_targets::winning_model_id,
-                soma_targets::winning_distance_score,
-                soma_targets::winning_loss_score,
-                soma_targets::reward_pool,
-                soma_targets::winning_data_size,
-                soma_targets::model_ids_json,
-            ))
-            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
-            .into_boxed();
-
-        if let Some(e) = epoch {
-            query = query.filter(soma_targets::epoch.eq(e));
-        }
-
-        let rows: Vec<Row> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        // Deduplicate by target_id (take most recent cp_sequence_number).
-        // For each unique target:
-        //   - Parse model_ids_json to count assignments per model
-        //   - If status == "filled", aggregate win stats by winning_model_id
-        let mut seen = std::collections::HashSet::new();
-        // Value: (targets_won, dist_sum, dist_count, loss_sum, loss_count, total_reward, total_data_size, targets_assigned)
-        let mut model_map: std::collections::HashMap<
-            Vec<u8>,
-            (i64, f64, i64, f64, i64, i64, i64, i64),
-        > = std::collections::HashMap::new();
-
-        for (tid, _cp, status, winning_model_id, dist, loss, rp, data_size, model_ids_json) in &rows
-        {
-            if !seen.insert(tid.clone()) {
-                continue;
-            }
-
-            // Count assignments for every model listed in model_ids_json
-            let assigned_ids: Vec<String> =
-                serde_json::from_str(model_ids_json).unwrap_or_default();
-            for hex_str in &assigned_ids {
-                let hex = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-                if let Ok(mid) = hex::decode(hex) {
-                    model_map.entry(mid).or_default().7 += 1;
-                }
-            }
-
-            // Aggregate win stats for filled targets
-            if status.eq_ignore_ascii_case("filled") || status.eq_ignore_ascii_case("claimed") {
-                let Some(wm) = winning_model_id else {
-                    continue;
-                };
-                let entry = model_map.entry(wm.clone()).or_default();
-                entry.0 += 1; // targets_won
-                if let Some(d) = dist {
-                    entry.1 += d;
-                    entry.2 += 1;
-                }
-                if let Some(l) = loss {
-                    entry.3 += l;
-                    entry.4 += 1;
-                }
-                entry.5 = entry.5.saturating_add(model_reward_share(*rp));
-                if let Some(ds) = data_size {
-                    entry.6 = entry.6.saturating_add(*ds);
-                }
-            }
-        }
-
-        // Include all active models, even those never assigned to a target.
-        {
-            use indexer_alt_schema::schema::soma_models;
-
-            let mut active_query = soma_models::table
-                .select(soma_models::model_id)
-                .filter(soma_models::status.eq("active"))
-                .into_boxed();
-
-            if let Some(e) = epoch {
-                active_query = active_query.filter(soma_models::epoch.eq(e));
-            } else {
-                // Use the latest epoch when no epoch is specified.
-                let latest: Option<i64> = soma_models::table
-                    .select(soma_models::epoch)
-                    .order(soma_models::epoch.desc())
-                    .first::<i64>(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?;
-                if let Some(le) = latest {
-                    active_query = active_query.filter(soma_models::epoch.eq(le));
-                }
-            }
-
-            let active_ids: Vec<Vec<u8>> =
-                active_query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-            for mid in active_ids {
-                model_map.entry(mid).or_default();
-            }
-        }
-
-        // Sort by targets_won desc
-        let mut entries: Vec<_> = model_map.into_iter().collect();
-        entries.sort_by(|a, b| b.1.0.cmp(&a.1.0));
-
-        // Apply cursor pagination
-        let after_addr: Option<Vec<u8>> = after
-            .as_deref()
-            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
-            .transpose()?;
-
-        let start_idx = match &after_addr {
-            Some(addr) => entries.iter().position(|(k, _)| k == addr).map(|i| i + 1).unwrap_or(0),
-            None => 0,
-        };
-
-        let page: Vec<_> = entries.into_iter().skip(start_idx).take(limit as usize + 1).collect();
-        let has_next = page.len() as i64 > limit;
-        let nodes: Vec<_> = page.into_iter().take(limit as usize).collect();
-        let has_previous = after.is_some();
-
-        let mut connection = Connection::new(has_previous, has_next);
-        for (mid, (tw, ds, dc, ls, lc, tr, tds, ta)) in nodes {
-            let cursor = hex::encode(&mid);
-            connection.edges.push(Edge::new(
-                cursor,
-                ModelStats {
-                    model_id: mid,
-                    targets_won: tw,
-                    targets_assigned: ta,
-                    avg_distance_score: if dc > 0 { Some(ds / dc as f64) } else { None },
-                    avg_loss_score: if lc > 0 { Some(ls / lc as f64) } else { None },
-                    total_reward: tr,
-                    total_data_size: tds,
                 },
             ));
         }
@@ -2077,7 +961,6 @@ impl Query {
             i64,
             Option<String>,
             Option<String>,
-            Option<String>,
         );
 
         let mut query = soma_validators::table
@@ -2092,7 +975,6 @@ impl Query {
                 soma_validators::pending_stake,
                 soma_validators::name,
                 soma_validators::network_address,
-                soma_validators::proxy_address,
             ))
             .filter(soma_validators::epoch.eq(epoch_num))
             .order(soma_validators::stake.desc())
@@ -2128,7 +1010,6 @@ impl Query {
                     pending_stake: row.7,
                     name: row.8,
                     network_address: row.9,
-                    proxy_address: row.10,
                 },
             ));
         }
@@ -2163,7 +1044,6 @@ impl Query {
             i64,
             Option<String>,
             Option<String>,
-            Option<String>,
         );
 
         let mut query = soma_validators::table
@@ -2178,7 +1058,6 @@ impl Query {
                 soma_validators::pending_stake,
                 soma_validators::name,
                 soma_validators::network_address,
-                soma_validators::proxy_address,
             ))
             .filter(soma_validators::address.eq(&addr_bytes))
             .order(soma_validators::epoch.desc())
@@ -2206,8 +1085,285 @@ impl Query {
             pending_stake: row.7,
             name: row.8,
             network_address: row.9,
-            proxy_address: row.10,
         }))
+    }
+
+    // ---------------------------------------------------------------
+    // Payment channels
+    // ---------------------------------------------------------------
+
+    /// Look up a single payment channel by id (hex). Returns `None`
+    /// if the indexer has not seen a channel at this id.
+    async fn channel(&self, ctx: &Context<'_>, id: String) -> Result<Option<GqlChannel>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let id_hex = id.strip_prefix("0x").unwrap_or(&id);
+        let id_bytes = hex::decode(id_hex)
+            .map_err(|e| Error::new(format!("Invalid channel id: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_channels;
+
+        type Row = (
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            String,
+            i64,
+            i64,
+            Option<i64>,
+            i16,
+            i64,
+            Vec<u8>,
+            i64,
+        );
+
+        let row: Option<Row> = soma_channels::table
+            .select((
+                soma_channels::channel_id,
+                soma_channels::payer,
+                soma_channels::payee,
+                soma_channels::authorized_signer,
+                soma_channels::token,
+                soma_channels::deposit,
+                soma_channels::settled_amount,
+                soma_channels::close_requested_at_ms,
+                soma_channels::status,
+                soma_channels::opened_at_cp,
+                soma_channels::opened_tx_digest,
+                soma_channels::last_update_cp,
+            ))
+            .filter(soma_channels::channel_id.eq(id_bytes))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| GqlChannel {
+            channel_id: r.0,
+            payer: r.1,
+            payee: r.2,
+            authorized_signer: r.3,
+            token: r.4,
+            deposit: r.5,
+            settled_amount: r.6,
+            close_requested_at_ms: r.7,
+            status: r.8,
+            opened_at_cp: r.9,
+            opened_tx_digest: r.10,
+            last_update_cp: r.11,
+        }))
+    }
+
+    /// List payment channels filtered by payer and/or payee. At least
+    /// one of the two must be supplied — channel listing is otherwise
+    /// unbounded and the indexer doesn't pre-aggregate. Status
+    /// filter narrows further.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn channels(
+        &self,
+        ctx: &Context<'_>,
+        payer: Option<String>,
+        payee: Option<String>,
+        status: Option<ChannelStatus>,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<Connection<String, GqlChannel>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit =
+            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        if payer.is_none() && payee.is_none() {
+            return Err(Error::new("channels(): one of `payer` or `payee` is required"));
+        }
+
+        use indexer_alt_schema::schema::soma_channels;
+
+        type Row = (
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            String,
+            i64,
+            i64,
+            Option<i64>,
+            i16,
+            i64,
+            Vec<u8>,
+            i64,
+        );
+
+        let mut query = soma_channels::table
+            .select((
+                soma_channels::channel_id,
+                soma_channels::payer,
+                soma_channels::payee,
+                soma_channels::authorized_signer,
+                soma_channels::token,
+                soma_channels::deposit,
+                soma_channels::settled_amount,
+                soma_channels::close_requested_at_ms,
+                soma_channels::status,
+                soma_channels::opened_at_cp,
+                soma_channels::opened_tx_digest,
+                soma_channels::last_update_cp,
+            ))
+            .order(soma_channels::last_update_cp.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(p) = payer.as_deref() {
+            let bytes = hex::decode(p.strip_prefix("0x").unwrap_or(p))
+                .map_err(|e| Error::new(format!("Invalid payer: {e}")))?;
+            query = query.filter(soma_channels::payer.eq(bytes));
+        }
+        if let Some(p) = payee.as_deref() {
+            let bytes = hex::decode(p.strip_prefix("0x").unwrap_or(p))
+                .map_err(|e| Error::new(format!("Invalid payee: {e}")))?;
+            query = query.filter(soma_channels::payee.eq(bytes));
+        }
+        if let Some(s) = status {
+            query = query.filter(soma_channels::status.eq(s.to_i16()));
+        }
+
+        if let Some(after) = after.as_deref() {
+            let cursor_bytes = hex::decode(after.strip_prefix("0x").unwrap_or(after))
+                .map_err(|e| Error::new(format!("Invalid cursor: {e}")))?;
+            query = query.filter(soma_channels::channel_id.gt(cursor_bytes));
+        }
+
+        let rows: Vec<Row> = query
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+        let has_next = rows.len() as i64 > limit;
+        let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for r in nodes {
+            let cursor = format!("0x{}", hex::encode(&r.0));
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlChannel {
+                    channel_id: r.0,
+                    payer: r.1,
+                    payee: r.2,
+                    authorized_signer: r.3,
+                    token: r.4,
+                    deposit: r.5,
+                    settled_amount: r.6,
+                    close_requested_at_ms: r.7,
+                    status: r.8,
+                    opened_at_cp: r.9,
+                    opened_tx_digest: r.10,
+                    last_update_cp: r.11,
+                },
+            ));
+        }
+        Ok(connection)
+    }
+
+    // ---------------------------------------------------------------
+    // Provider registry
+    // ---------------------------------------------------------------
+
+    /// Look up a single provider by address.
+    async fn provider(
+        &self,
+        ctx: &Context<'_>,
+        address: String,
+    ) -> Result<Option<GqlProvider>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
+        let addr_bytes = hex::decode(addr_hex)
+            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_providers;
+
+        type Row = (Vec<u8>, String, i64);
+        let row: Option<Row> = soma_providers::table
+            .select((
+                soma_providers::address,
+                soma_providers::endpoint,
+                soma_providers::last_update_cp,
+            ))
+            .filter(soma_providers::address.eq(addr_bytes))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| GqlProvider {
+            address: r.0,
+            endpoint: r.1,
+            last_update_cp: r.2,
+        }))
+    }
+
+    /// List providers, ordered by most recent registration / endpoint
+    /// change. Liveness is purely off-chain — callers that need to
+    /// know which providers are responding should HTTP-probe each
+    /// `endpoint`.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn providers(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<Connection<String, GqlProvider>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit =
+            first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_providers;
+
+        type Row = (Vec<u8>, String, i64);
+        let mut query = soma_providers::table
+            .select((
+                soma_providers::address,
+                soma_providers::endpoint,
+                soma_providers::last_update_cp,
+            ))
+            .order(soma_providers::last_update_cp.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(after) = after.as_deref() {
+            let cursor_bytes = hex::decode(after.strip_prefix("0x").unwrap_or(after))
+                .map_err(|e| Error::new(format!("Invalid cursor: {e}")))?;
+            query = query.filter(soma_providers::address.gt(cursor_bytes));
+        }
+
+        let rows: Vec<Row> = query
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+        let has_next = rows.len() as i64 > limit;
+        let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for r in nodes {
+            let cursor = format!("0x{}", hex::encode(&r.0));
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlProvider {
+                    address: r.0,
+                    endpoint: r.1,
+                    last_update_cp: r.2,
+                },
+            ));
+        }
+        Ok(connection)
     }
 
     /// Network-wide metrics (TPS, totals).
@@ -2301,188 +1457,5 @@ impl Query {
         };
 
         Ok(NetworkMetrics { tps, total_transactions, total_checkpoints, total_validators })
-    }
-}
-
-/// Convert nested tuple rows into a Target.
-type TargetRowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
-type TargetRowB = (
-    Option<f64>,
-    Option<f64>,
-    Option<Vec<u8>>,
-    Option<i64>,
-    f64,
-    String,
-    Option<String>,
-    Option<Vec<u8>>,
-    Option<i64>,
-);
-
-fn target_from_row(a: TargetRowA, b: TargetRowB) -> Target {
-    Target {
-        target_id: a.0,
-        cp_sequence_number: a.1,
-        epoch: a.2,
-        status: a.3,
-        submitter: a.4,
-        winning_model_id: a.5,
-        reward_pool: a.6,
-        bond_amount: a.7,
-        report_count: a.8,
-        winning_distance_score: b.0,
-        winning_loss_score: b.1,
-        winning_model_owner: b.2,
-        fill_epoch: b.3,
-        distance_threshold: b.4,
-        model_ids_json: b.5,
-        winning_data_url: b.6,
-        winning_data_checksum: b.7,
-        winning_data_size: b.8,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Model row types — nested tuples to stay within Diesel's 16-element limit
-// ---------------------------------------------------------------------------
-
-/// First 13 columns of soma_models.
-type ModelRowA = (
-    Vec<u8>,
-    i64,
-    String,
-    Vec<u8>,
-    i64,
-    i64,
-    i64,
-    i64,
-    i64,
-    Vec<u8>,
-    Option<i64>,
-    Option<i64>,
-    i64,
-);
-
-/// Middle 10 columns of soma_models.
-type ModelRowB = (
-    i64,
-    i64,
-    i64,
-    i64,
-    String,
-    Option<String>,
-    Option<Vec<u8>>,
-    Option<i64>,
-    Option<Vec<u8>>,
-    bool,
-);
-
-/// Last 5 columns of soma_models (pending update fields).
-type ModelRowC = (Option<String>, Option<Vec<u8>>, Option<i64>, Option<Vec<u8>>, Option<i64>);
-
-fn model_select() -> (
-    (
-        indexer_alt_schema::schema::soma_models::model_id,
-        indexer_alt_schema::schema::soma_models::epoch,
-        indexer_alt_schema::schema::soma_models::status,
-        indexer_alt_schema::schema::soma_models::owner,
-        indexer_alt_schema::schema::soma_models::architecture_version,
-        indexer_alt_schema::schema::soma_models::commit_epoch,
-        indexer_alt_schema::schema::soma_models::stake,
-        indexer_alt_schema::schema::soma_models::commission_rate,
-        indexer_alt_schema::schema::soma_models::next_epoch_commission_rate,
-        indexer_alt_schema::schema::soma_models::staking_pool_id,
-        indexer_alt_schema::schema::soma_models::activation_epoch,
-        indexer_alt_schema::schema::soma_models::deactivation_epoch,
-        indexer_alt_schema::schema::soma_models::rewards_pool,
-    ),
-    (
-        indexer_alt_schema::schema::soma_models::pool_token_balance,
-        indexer_alt_schema::schema::soma_models::pending_stake,
-        indexer_alt_schema::schema::soma_models::pending_total_soma_withdraw,
-        indexer_alt_schema::schema::soma_models::pending_pool_token_withdraw,
-        indexer_alt_schema::schema::soma_models::exchange_rates_json,
-        indexer_alt_schema::schema::soma_models::manifest_url,
-        indexer_alt_schema::schema::soma_models::manifest_checksum,
-        indexer_alt_schema::schema::soma_models::manifest_size,
-        indexer_alt_schema::schema::soma_models::weights_commitment,
-        indexer_alt_schema::schema::soma_models::has_pending_update,
-    ),
-    (
-        indexer_alt_schema::schema::soma_models::pending_manifest_url,
-        indexer_alt_schema::schema::soma_models::pending_manifest_checksum,
-        indexer_alt_schema::schema::soma_models::pending_manifest_size,
-        indexer_alt_schema::schema::soma_models::pending_weights_commitment,
-        indexer_alt_schema::schema::soma_models::pending_commit_epoch,
-    ),
-) {
-    use indexer_alt_schema::schema::soma_models;
-    (
-        (
-            soma_models::model_id,
-            soma_models::epoch,
-            soma_models::status,
-            soma_models::owner,
-            soma_models::architecture_version,
-            soma_models::commit_epoch,
-            soma_models::stake,
-            soma_models::commission_rate,
-            soma_models::next_epoch_commission_rate,
-            soma_models::staking_pool_id,
-            soma_models::activation_epoch,
-            soma_models::deactivation_epoch,
-            soma_models::rewards_pool,
-        ),
-        (
-            soma_models::pool_token_balance,
-            soma_models::pending_stake,
-            soma_models::pending_total_soma_withdraw,
-            soma_models::pending_pool_token_withdraw,
-            soma_models::exchange_rates_json,
-            soma_models::manifest_url,
-            soma_models::manifest_checksum,
-            soma_models::manifest_size,
-            soma_models::weights_commitment,
-            soma_models::has_pending_update,
-        ),
-        (
-            soma_models::pending_manifest_url,
-            soma_models::pending_manifest_checksum,
-            soma_models::pending_manifest_size,
-            soma_models::pending_weights_commitment,
-            soma_models::pending_commit_epoch,
-        ),
-    )
-}
-
-fn model_from_row(a: ModelRowA, b: ModelRowB, c: ModelRowC) -> Model {
-    Model {
-        model_id: a.0,
-        epoch: a.1,
-        status: a.2,
-        owner: a.3,
-        architecture_version: a.4,
-        commit_epoch: a.5,
-        stake: a.6,
-        commission_rate: a.7,
-        next_epoch_commission_rate: a.8,
-        staking_pool_id: a.9,
-        activation_epoch: a.10,
-        deactivation_epoch: a.11,
-        rewards_pool: a.12,
-        pool_token_balance: b.0,
-        pending_stake: b.1,
-        pending_total_soma_withdraw: b.2,
-        pending_pool_token_withdraw: b.3,
-        exchange_rates_json: b.4,
-        manifest_url: b.5,
-        manifest_checksum: b.6,
-        manifest_size: b.7,
-        weights_commitment: b.8,
-        has_pending_update: b.9,
-        pending_manifest_url: c.0,
-        pending_manifest_checksum: c.1,
-        pending_manifest_size: c.2,
-        pending_weights_commitment: c.3,
-        pending_commit_epoch: c.4,
     }
 }

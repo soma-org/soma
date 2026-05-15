@@ -17,16 +17,15 @@
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::dbg_addr;
-use types::crypto::{SomaKeyPair, get_key_pair};
+use types::crypto::get_key_pair;
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
-use types::object::{Object, ObjectID};
 use types::transaction::{TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
 use crate::authority::ExecutionEnv;
 use crate::authority_test_utils::{
     certify_transaction, enqueue_all_and_execute_all, execute_sequenced_certificate_to_effects,
-    send_and_confirm_transaction, send_consensus_no_execution,
+    seed_balance_mode_funds, send_and_confirm_transaction, send_consensus_no_execution,
 };
 use crate::test_authority_builder::TestAuthorityBuilder;
 
@@ -36,21 +35,18 @@ use crate::test_authority_builder::TestAuthorityBuilder;
 
 #[tokio::test]
 async fn test_execution_scheduler_basic_enqueue() {
-    // Enqueue a single owned-object transaction through the execution scheduler
-    // and verify it executes successfully.
+    // Enqueue a single balance-mode transaction through the execution
+    // scheduler and verify it executes successfully.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -67,23 +63,20 @@ async fn test_execution_scheduler_basic_enqueue() {
 
 #[tokio::test]
 async fn test_execution_scheduler_multiple_independent_txns() {
-    // Enqueue multiple independent transactions (different gas objects)
-    // through the execution scheduler and verify all execute.
+    // Enqueue multiple independent transactions (different recipients)
+    // through the execution scheduler and verify all execute. Stage 13c:
+    // gas is balance-mode, so all txs draw from the same accumulator.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
 
     let authority_state = TestAuthorityBuilder::new().build().await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
     let mut certs_and_envs = Vec::new();
     for i in 0..5u8 {
-        let coin_id = ObjectID::random();
-        let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-        authority_state.insert_genesis_object(coin.clone()).await;
-
-        let data = TransactionData::new_transfer_coin(
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
-            coin.compute_object_reference(),
         );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -106,12 +99,11 @@ async fn test_execution_scheduler_multiple_independent_txns() {
 async fn test_shared_object_version_assignment() {
     // Verify that shared object version assignment works correctly for
     // AddStake transactions (which use the SystemState shared object).
+    // Stage 13c: balance-mode for both stake and gas.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
     // Get the first validator's address from the system state
     let validator_address = {
@@ -119,12 +111,10 @@ async fn test_shared_object_version_assignment() {
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    // AddStake uses SystemState (shared object)
-    let coin_ref = coin.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
-        vec![coin_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -143,12 +133,11 @@ async fn test_shared_object_version_assignment() {
 async fn test_execute_sequenced_shared_object_transaction() {
     // Execute a shared-object transaction through the sequenced path
     // (assign versions then execute), verifying correct execution.
+    // Stage 13c: AddStake is balance-mode for both stake and gas.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 10_000_000);
 
     // Get the first validator's address from the system state
     let validator_address = {
@@ -156,11 +145,13 @@ async fn test_execute_sequenced_shared_object_transaction() {
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    let coin_ref = coin.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
+        TransactionKind::AddStake {
+            validator: validator_address,
+            amount: 1_000_000,
+        },
         sender,
-        vec![coin_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -180,48 +171,80 @@ async fn test_execute_sequenced_shared_object_transaction() {
 
 #[tokio::test]
 async fn test_dependent_transactions_execute_in_order() {
-    // Execute two transactions that depend on the same object (coin)
-    // sequentially, verifying the second sees the updated version.
+    // Stage 13c: BalanceTransfer doesn't lock or version any per-tx
+    // owned object — both txs draw gas from the same accumulator and
+    // run sequentially. We verify that two distinct txs with the
+    // same sender execute in order with monotonically advancing
+    // lamport versions.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
+    let starting_soma = 50_000_000u64;
+    let starting_usdc = 50_000_000u64;
+    let per_transfer = 100u64;
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, starting_soma, starting_usdc);
 
-    // First transfer
-    let data1 = TransactionData::new_transfer_coin(
+    let cache_commit = authority_state.get_cache_commit();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
+
+    let data1 = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
-        Some(100),
-        coin.compute_object_reference(),
+        Some(per_transfer),
     );
     let tx1 = to_sender_signed_transaction(data1, &sender_key);
     let (_, effects1) = send_and_confirm_transaction(&authority_state, tx1).await.unwrap();
     assert_eq!(*effects1.status(), ExecutionStatus::Success);
+    let digest1 = *effects1.transaction_digest();
+    let batch = cache_commit.build_db_batch(epoch, &[digest1]);
+    cache_commit.commit_transaction_outputs(epoch, batch, &[digest1]);
 
-    // Get updated coin ref after first tx
-    let updated_coin = authority_state.get_object(&coin_id).await.unwrap();
-    let updated_ref = updated_coin.compute_object_reference();
+    // After flushing tx1's settlement, the sender's accumulator
+    // must reflect tx1's effects exactly: SOMA dropped by transfer
+    // amount, USDC dropped by gas fee. tx2 must see this state.
+    use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+    let unit_fee = authority_state
+        .epoch_store_for_testing()
+        .epoch_start_state()
+        .fee_parameters()
+        .unit_fee;
+    let per_tx_gas = 2 * unit_fee; // BalanceTransfer 1 recipient: fee_units=2.
+    let store = authority_state.database_for_testing();
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Soma).unwrap(),
+        starting_soma - per_transfer,
+        "Sender SOMA must reflect tx1's debit before tx2 runs",
+    );
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Usdc).unwrap(),
+        starting_usdc - per_tx_gas,
+        "Sender USDC must reflect tx1's gas debit before tx2 runs",
+    );
 
-    // Second transfer using updated ref
-    let data2 = TransactionData::new_transfer_coin(dbg_addr(2), sender, Some(100), updated_ref);
+    let data2 = crate::authority_test_utils::balance_transfer_data_legacy(
+        dbg_addr(2),
+        sender,
+        Some(per_transfer),
+    );
     let tx2 = to_sender_signed_transaction(data2, &sender_key);
     let (_, effects2) = send_and_confirm_transaction(&authority_state, tx2).await.unwrap();
     assert_eq!(*effects2.status(), ExecutionStatus::Success);
+    let digest2 = *effects2.transaction_digest();
+    let batch = cache_commit.build_db_batch(epoch, &[digest2]);
+    cache_commit.commit_transaction_outputs(epoch, batch, &[digest2]);
 
-    // Verify the second transaction's effects reference the correct version
-    assert_ne!(
-        effects1.transaction_digest(),
-        effects2.transaction_digest(),
-        "Should be different transactions"
+    assert_ne!(digest1, digest2, "Should be different transactions");
+
+    // After both txs + settlements, the sender's SOMA must reflect
+    // both debits and USDC must reflect both gas charges — proves
+    // tx2 read the post-tx1 accumulator state, not the genesis state.
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Soma).unwrap(),
+        starting_soma - 2 * per_transfer,
     );
-
-    // Coin version should have increased twice
-    let final_coin = authority_state.get_object(&coin_id).await.unwrap();
-    assert!(
-        final_coin.version() > updated_coin.version(),
-        "Version should increase after second transaction"
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Usdc).unwrap(),
+        starting_usdc - 2 * per_tx_gas,
     );
 }
 
@@ -229,17 +252,14 @@ async fn test_dependent_transactions_execute_in_order() {
 async fn test_effects_idempotent_reexecution() {
     // Re-executing a certificate should return the same effects (idempotency).
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();

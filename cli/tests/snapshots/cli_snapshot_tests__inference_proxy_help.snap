@@ -1,0 +1,49 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 100
+expression: stdout
+---
+Run the local agent-facing proxy on `127.0.0.1:<port>`.
+
+Agent CLIs point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks the cheapest one for each model, and signs each request via two-tier vouchers.
+
+Usage: soma inference proxy [OPTIONS] --indexer-url <INDEXER_URL>
+
+Options:
+      --address <ADDRESS>
+          Address whose key signs both on-chain ops and HTTP vouchers. Defaults to the wallet's active address
+
+      --client <CLIENT>
+          Path to the soma client config (defaults to ~/.soma/client.yaml)
+
+      --soma-home <SOMA_HOME>
+          Soma home (for the off-chain provider registry + per-channel client state). Defaults to ~/.soma
+
+      --listen <LISTEN>
+          HTTP listen address
+          
+          [default: 127.0.0.1:11434]
+
+      --default-deposit-micros <DEFAULT_DEPOSIT_MICROS>
+          Default deposit (micros) when lazily opening a new channel
+          
+          [default: 5000000]
+
+      --provider-cache-ttl-secs <PROVIDER_CACHE_TTL_SECS>
+          Provider-list cache TTL (seconds)
+          
+          [default: 30]
+
+      --routing <ROUTING>
+          Provider-routing mode: `price` (default) or `weighted`. `weighted` requires reputation from the indexer
+          
+          [default: price]
+
+      --indexer-url <INDEXER_URL>
+          GraphQL HTTP endpoint of the indexer. Required: provider discovery and (in `weighted` mode) reputation are sourced from here
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+EXAMPLE:
+    soma inference proxy --listen 127.0.0.1:11434

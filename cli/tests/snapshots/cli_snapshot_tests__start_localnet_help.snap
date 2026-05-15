@@ -1,10 +1,11 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 58
 expression: stdout
 ---
 Start a local SOMA network for development and testing
 
-Launches local validators, a fullnode, and optionally a faucet and scoring service. State is persisted in ~/.soma/ by default, or use --force-regenesis for an ephemeral network that starts fresh each time.
+Launches local validators and a fullnode. State is persisted in ~/.soma/ by default, or use --force-regenesis for an ephemeral network that starts fresh each time.
 
 Usage: soma start localnet [OPTIONS]
 
@@ -37,22 +38,8 @@ Options:
           
           [default: info]
 
-      --with-faucet[=<FAUCET_HOST_PORT>]
-          Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable
-
-      --no-faucet
-          Disable the faucet server
-
-      --no-scoring
-          Disable the scoring server
-
-      --small-model
-          Use small model config for the scoring server (embedding_dim=16, num_layers=2)
-
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
     soma start localnet --force-regenesis
-    soma start localnet --no-faucet --no-scoring

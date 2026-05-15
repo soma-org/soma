@@ -8,6 +8,8 @@ edition = "2024"
 test-cluster.workspace = true
 types.workspace = true
 rpc.workspace = true
+e2e-tests.workspace = true
+soma-keys.workspace = true
 
 # Indexer stack
 indexer-alt.workspace = true
@@ -22,7 +24,6 @@ prometheus.workspace = true
 tempfile.workspace = true
 diesel = { workspace = true }
 diesel-async = { workspace = true }
-url.workspace = true
 reqwest.workspace = true
 axum.workspace = true
 serde_json.workspace = true

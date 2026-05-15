@@ -1,0 +1,30 @@
+[profile.default]
+src = 'contracts'
+test = 'test'
+no_match_test = "testMock"
+out = 'out'
+libs = ['lib']
+solc = "0.8.20"
+build_info = true
+extra_output = ["storageLayout"]
+# Required for openzeppelin-foundry-upgrades to read build artifacts +
+# call out to its Node.js validation CLI. Without these, the plugin's
+# deployUUPSProxy / validateUpgrade error at runtime.
+ffi = true
+ast = true
+fs_permissions = [{ access = "read-write", path = "./" }]
+
+[fmt]
+line_length = 100
+
+[fuzz]
+runs = 1000
+
+[rpc_endpoints]
+mainnet = "${MAINNET_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+anvil = "http://localhost:8545"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+mainnet = { key = "${ETHERSCAN_API_KEY}" }

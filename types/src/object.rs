@@ -26,8 +26,8 @@ use crate::crypto::{DefaultHash, default_hash};
 use crate::digests::{ObjectDigest, TransactionDigest};
 use crate::error::{SomaError, SomaResult};
 use crate::serde::Readable;
-use crate::system_state::staking::StakedSomaV1;
-use crate::target::TargetV1;
+// Stage 9d-C5: StakedSomaV1 deleted — F1 (pool, staker) row is the
+// sole on-chain record of stake.
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
@@ -304,124 +304,178 @@ impl Object {
         &self.0.owner
     }
 
-    /// Create a new coin with the specified balance
-    pub fn new_coin(
-        id: ObjectID,
-        balance: u64,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Coin,
-            Version::MIN,
-            bcs::to_bytes(&balance).unwrap(),
-        );
-        Self::new(data, owner, previous_transaction)
-    }
+    // Stage 13k: production-facing Coin object API deleted.
+    // - `new_coin` / `update_coin_balance` / `coin_type` / `as_coin`
+    //   were used by coin-mode execution (Stage 13b deleted those
+    //   executors) and by callers iterating Coin balances (Stage
+    //   13a stopped genesis from creating Coin objects, so all
+    //   such iterations now produce empty results).
+    // - `with_id_owner_soma_coin_for_testing` had no callers.
+    //
+    // The `ObjectType::Coin(CoinType)` variant + the legacy test
+    // fixtures `with_id_owner_for_testing` /
+    // `with_id_owner_coin_for_testing` /
+    // `with_id_owner_version_for_testing` are kept ONLY so e2e and
+    // unit tests have an arbitrary address-owned object type to
+    // exercise object-machinery code (TransferObjects, lock
+    // checks, version tracking). No production path constructs or
+    // reads Coin objects anymore.
 
-    /// Extract the coin balance if this is a coin object
-    pub fn as_coin(&self) -> Option<u64> {
-        if *self.data.object_type() == ObjectType::Coin {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Update the balance of a coin object
-    pub fn update_coin_balance(&mut self, new_balance: u64) {
-        self.data.update_contents(bcs::to_bytes(&new_balance).unwrap());
-    }
-
+    /// Test fixture: arbitrary address-owned object. Returns a
+    /// Coin(USDC)-typed Object with placeholder contents. Callers
+    /// in production must NOT depend on the variant — read
+    /// balances via the accumulator.
     pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
-        // For testing, we provide sufficient gas by default.
         Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
     }
 
+    /// Test fixture: arbitrary address-owned object at a specific
+    /// version, with arbitrary owner shape (AddressOwner / Shared /
+    /// Immutable). Used to seed cache-test scenarios.
     pub fn with_id_owner_version_for_testing(id: ObjectID, version: Version, owner: Owner) -> Self {
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin,
+            ObjectType::Coin(CoinType::Usdc),
             version,
             bcs::to_bytes(&GAS_VALUE_FOR_TESTING).unwrap(),
         );
         Self::new(data, owner, TransactionDigest::genesis_marker())
     }
 
+    /// Test fixture: arbitrary address-owned object with an explicit
+    /// payload byte count. Most tests don't care about contents;
+    /// the `balance` argument is the placeholder payload.
     pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin,
+            ObjectType::Coin(CoinType::Usdc),
             Version::MIN,
             bcs::to_bytes(&balance).unwrap(),
         );
         Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
     }
 
-    /// Create a new Object containing a StakedSoma
-    pub fn new_staked_soma_object(
-        id: ObjectID,
-        staked_soma: StakedSomaV1,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Object {
-        // Serialize StakedSoma to bytes
-        let staked_soma_bytes = bcs::to_bytes(&staked_soma).unwrap();
+    /// Deserialize an object's contents as a specific type.
+    pub fn deserialize_contents<T: serde::de::DeserializeOwned>(
+        &self,
+        expected_type: ObjectType,
+    ) -> Option<T> {
+        if *self.data.object_type() == expected_type {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
 
-        // Create ObjectData
+    /// Update an object's contents with BCS-serialized data.
+    pub fn update_contents<T: serde::Serialize>(&mut self, inner: &T) {
+        self.data.update_contents(bcs::to_bytes(inner).unwrap());
+    }
+
+    // -----------------------------------------------------------------
+    // Stage 14a: accumulator-object constructors and accessors.
+    //
+    // BalanceAccumulator and DelegationAccumulator wrap CF-resident
+    // state into Sui-style objects so the global state hash, snapshot
+    // integrity, and effects pipeline cover them automatically. The
+    // ObjectID is deterministic (`derive_id` on the data type), the
+    // owner is `Owner::Accumulator { kind }`, and version is bumped
+    // by the privileged executor that mutates the object.
+    // -----------------------------------------------------------------
+
+    /// Construct a fresh `BalanceAccumulator` object at `Version::MIN`.
+    /// The caller is the genesis builder or the settlement executor
+    /// when a previously-untouched `(owner, coin_type)` first sees a
+    /// non-zero balance; both pass `previous_transaction` for the
+    /// audit trail.
+    pub fn new_balance_accumulator(
+        accumulator: crate::accumulator::BalanceAccumulator,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let id = crate::accumulator::BalanceAccumulator::derive_id(
+            accumulator.owner,
+            accumulator.coin_type,
+        );
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::StakedSoma, // Assuming you've added this to your ObjectType enum
-            Version::MIN,           // Start with minimum version
-            staked_soma_bytes,
+            ObjectType::BalanceAccumulator,
+            Version::MIN,
+            bcs::to_bytes(&accumulator)
+                .expect("BCS serialization of BalanceAccumulator is infallible"),
         );
-
-        // Create and return the Object
-        Object::new(data, owner, previous_transaction)
+        Self::new(
+            data,
+            Owner::Accumulator { kind: AccumulatorKind::Balance },
+            previous_transaction,
+        )
     }
 
-    /// Extract StakedSoma from an Object
-    pub fn as_staked_soma(&self) -> Option<StakedSomaV1> {
-        if *self.data.object_type() == ObjectType::StakedSoma {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Create a new Object containing a Target.
-    ///
-    /// Targets are shared objects with `initial_shared_version` set to `OBJECT_START_VERSION`.
-    /// Using OBJECT_START_VERSION (1) instead of Version::new() (0) ensures TemporaryStore
-    /// won't replace it with the lamport timestamp, giving targets a predictable
-    /// initial_shared_version that matches TARGET_OBJECT_SHARED_VERSION regardless of
-    /// when the target is created (genesis or epoch change).
-    pub fn new_target_object(
-        id: ObjectID,
-        target: TargetV1,
+    /// Construct a fresh `DelegationAccumulator` object at `Version::MIN`.
+    pub fn new_delegation_accumulator(
+        accumulator: crate::accumulator::DelegationAccumulator,
         previous_transaction: TransactionDigest,
-    ) -> Object {
-        // Serialize Target to bytes
-        let target_bytes = bcs::to_bytes(&target).unwrap();
-
-        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
-        let data = ObjectData::new_with_id(id, ObjectType::Target, Version::MIN, target_bytes);
-
-        // Targets are shared objects - use OBJECT_START_VERSION (1) directly
-        // so TemporaryStore won't update it (it only updates Version::new() = 0)
-        let owner = Owner::Shared { initial_shared_version: OBJECT_START_VERSION };
-
-        Object::new(data, owner, previous_transaction)
+    ) -> Self {
+        let id = crate::accumulator::DelegationAccumulator::derive_id(
+            accumulator.pool_id,
+            accumulator.staker,
+        );
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::DelegationAccumulator,
+            Version::MIN,
+            bcs::to_bytes(&accumulator)
+                .expect("BCS serialization of DelegationAccumulator is infallible"),
+        );
+        Self::new(
+            data,
+            Owner::Accumulator { kind: AccumulatorKind::Delegation },
+            previous_transaction,
+        )
     }
 
-    /// Extract Target from an Object
-    pub fn as_target(&self) -> Option<TargetV1> {
-        if *self.data.object_type() == ObjectType::Target {
+    /// If this object is a `BalanceAccumulator`, deserialize its
+    /// contents and return them. Returns `None` for any other type.
+    pub fn as_balance_accumulator(&self) -> Option<crate::accumulator::BalanceAccumulator> {
+        if *self.data.object_type() == ObjectType::BalanceAccumulator {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
         }
+    }
+
+    /// If this object is a `DelegationAccumulator`, deserialize its
+    /// contents and return them. Returns `None` for any other type.
+    pub fn as_delegation_accumulator(&self) -> Option<crate::accumulator::DelegationAccumulator> {
+        if *self.data.object_type() == ObjectType::DelegationAccumulator {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Overwrite a `BalanceAccumulator` object's contents in-place.
+    /// Caller must ensure the object actually IS one; debug-asserts the
+    /// type.
+    pub fn set_balance_accumulator(&mut self, accumulator: &crate::accumulator::BalanceAccumulator) {
+        debug_assert_eq!(
+            *self.data.object_type(),
+            ObjectType::BalanceAccumulator,
+            "set_balance_accumulator called on non-BalanceAccumulator object"
+        );
+        self.update_contents(accumulator);
+    }
+
+    /// Overwrite a `DelegationAccumulator` object's contents in-place.
+    pub fn set_delegation_accumulator(
+        &mut self,
+        accumulator: &crate::accumulator::DelegationAccumulator,
+    ) {
+        debug_assert_eq!(
+            *self.data.object_type(),
+            ObjectType::DelegationAccumulator,
+            "set_delegation_accumulator called on non-DelegationAccumulator object"
+        );
+        self.update_contents(accumulator);
     }
 }
 
@@ -558,49 +612,137 @@ impl ObjectData {
     }
 }
 
+/// Distinguishes SOMA (gas/staking) coins from USDC (marketplace payment) coins.
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, Serialize, Hash, PartialOrd, Ord)]
+pub enum CoinType {
+    Soma,
+    Usdc,
+}
+
+impl fmt::Display for CoinType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CoinType::Soma => write!(f, "SOMA"),
+            CoinType::Usdc => write!(f, "USDC"),
+        }
+    }
+}
+
+impl FromStr for CoinType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "SOMA" => Ok(CoinType::Soma),
+            "USDC" => Ok(CoinType::Usdc),
+            _ => Err(format!("Unknown CoinType: {}", s)),
+        }
+    }
+}
+
 /// # ObjectType
 ///
 /// Defines the type of an object, which determines its behavior and structure.
-///
-/// ## Purpose
-/// ObjectType categorizes objects based on their role in the system, allowing
-/// for type-specific handling and validation.
-///
-/// ## Usage
-/// Different object types may have different validation rules, execution
-/// behaviors, and storage requirements.
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, PartialOrd, Ord)]
 pub enum ObjectType {
     /// Represents the global system state object
     SystemState,
-    /// Represents an owned SOMA Token object
-    Coin,
+    /// Represents an owned coin object tagged with its denomination
+    Coin(CoinType),
     /// Represents an owned Staked SOMA object
     StakedSoma,
-    /// Represents a data submission target object
-    Target,
+    /// Pending USDC withdrawal from Soma to Ethereum
+    PendingWithdrawal,
+    /// Per-deposit on-chain record of an Eth→Soma USDC bridge transfer.
+    /// One [`crate::bridge::BridgeRecord`] object per `(source_chain, nonce)`,
+    /// deterministically addressed via `bridge::derive_bridge_record_id`.
+    /// Created atomically by `BridgeDeposit` together with the USDC mint;
+    /// owner is `Immutable` so the record is a permanent audit trail and
+    /// nothing can ever mutate it. Replay defense: the executor refuses to
+    /// process a deposit whose derived ID already exists in the object store
+    /// (mirrors Sui's `LinkedTable<MessageKey, BridgeRecord>` membership
+    /// check, but flat in Soma's object store rather than nested in `BridgeInner`).
+    BridgeRecord,
+    /// Global wall-clock object updated every consensus commit. Single
+    /// instance lives at CLOCK_OBJECT_ID. User transactions may declare it
+    /// as an immutable shared input only — only the consensus commit
+    /// prologue mutates it.
+    Clock,
+    /// Unidirectional payment channel between a payer and a payee. See
+    /// [`crate::channel::Channel`] for the on-chain layout. Created by
+    /// `OpenChannel`, deleted on `Close` or `WithdrawAfterTimeout`.
+    Channel,
+    /// Stage 14a: per-(owner, coin_type) account-balance accumulator.
+    /// One object per (owner, coin_type) pair, deterministically
+    /// addressed via `BalanceAccumulator::derive_id`. Mutated only by
+    /// the per-commit `Settlement` system transaction; not transferable
+    /// or otherwise touchable by user transactions.
+    BalanceAccumulator,
+    /// Stage 14a: per-(pool_id, staker) F1 delegation row accumulator.
+    /// One object per (pool_id, staker) pair, deterministically
+    /// addressed via `DelegationAccumulator::derive_id`. Mutated by
+    /// `AddStake`, `WithdrawStake`, and `ChangeEpoch` (for validator
+    /// commission credit).
+    DelegationAccumulator,
+    /// On-chain provider record. One object per provider address,
+    /// deterministically addressed via `Provider::derive_id`. Created
+    /// by `RegisterProvider`, mutated by `UpdateProvider`. See
+    /// [`crate::provider::Provider`].
+    Provider,
+    /// Per-payee inbox tracking how many open payment channels each
+    /// payer holds against this payee. One object per payee,
+    /// deterministically addressed via `ProviderInbox::derive_id`.
+    /// Mutated atomically with `OpenChannel` (increment) and
+    /// `WithdrawAfterTimeout` (decrement) — bounds the per-(payer,
+    /// payee) channel count to prevent open-loop state-bloat
+    /// griefing. See [`crate::provider_inbox::ProviderInbox`].
+    ProviderInbox,
+    /// Per-(provider, model) offering — the price sheet a provider
+    /// publishes for a specific model in the protocol-config
+    /// ModelRegistry. Created by `RegisterOffering`, mutated by
+    /// `UpdateOffering`/`DeactivateOffering`. One object per
+    /// (provider_address, model_id) pair, deterministically addressed
+    /// via `Offering::derive_id`. See [`crate::offering::Offering`].
+    Offering,
 }
 
 impl fmt::Display for ObjectType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectType::SystemState => write!(f, "SystemState"),
-            ObjectType::Coin => write!(f, "Coin"),
+            ObjectType::Coin(ct) => write!(f, "Coin({})", ct),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
-            ObjectType::Target => write!(f, "Target"),
+            ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
+            ObjectType::BridgeRecord => write!(f, "BridgeRecord"),
+            ObjectType::Clock => write!(f, "Clock"),
+            ObjectType::Channel => write!(f, "Channel"),
+            ObjectType::BalanceAccumulator => write!(f, "BalanceAccumulator"),
+            ObjectType::DelegationAccumulator => write!(f, "DelegationAccumulator"),
+            ObjectType::Provider => write!(f, "Provider"),
+            ObjectType::ProviderInbox => write!(f, "ProviderInbox"),
+            ObjectType::Offering => write!(f, "Offering"),
         }
     }
 }
 
 impl FromStr for ObjectType {
-    type Err = String; // Or use a custom error type
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "SystemState" => Ok(ObjectType::SystemState),
-            "Coin" => Ok(ObjectType::Coin),
+            "Coin" | "Coin(SOMA)" => Ok(ObjectType::Coin(CoinType::Soma)),
+            "Coin(USDC)" => Ok(ObjectType::Coin(CoinType::Usdc)),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
-            "Target" => Ok(ObjectType::Target),
+            "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
+            "BridgeRecord" => Ok(ObjectType::BridgeRecord),
+            "Clock" => Ok(ObjectType::Clock),
+            "Channel" => Ok(ObjectType::Channel),
+            "BalanceAccumulator" => Ok(ObjectType::BalanceAccumulator),
+            "DelegationAccumulator" => Ok(ObjectType::DelegationAccumulator),
+            "Provider" => Ok(ObjectType::Provider),
+            "ProviderInbox" => Ok(ObjectType::ProviderInbox),
+            "Offering" => Ok(ObjectType::Offering),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }
@@ -987,6 +1129,20 @@ impl LiveObject {
 ///
 /// ## Thread Safety
 /// Owner is Clone and can be safely shared across threads.
+/// Distinguishes the two accumulator object families. Used by
+/// `Owner::Accumulator` to tag which executor-suite is allowed to
+/// mutate the object's data.
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, Serialize, Hash, Ord, PartialOrd)]
+pub enum AccumulatorKind {
+    /// Per-(owner, coin_type) account balance accumulator. Mutated
+    /// only by the per-commit `Settlement` system transaction.
+    Balance,
+    /// Per-(pool_id, staker) F1 delegation row accumulator. Mutated
+    /// by `AddStake`, `WithdrawStake`, and `ChangeEpoch` (validator
+    /// commission credit).
+    Delegation,
+}
+
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd)]
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
@@ -998,6 +1154,19 @@ pub enum Owner {
     },
     /// Object is immutable, and hence ownership doesn't matter.
     Immutable,
+    /// Stage 14a: system-managed accumulator object. The kernel's
+    /// privileged executors (Settlement for `Balance`,
+    /// AddStake/WithdrawStake/ChangeEpoch for `Delegation`) mutate
+    /// these directly; users cannot transfer, delete, or otherwise
+    /// touch them outside those executors.
+    ///
+    /// Versions on accumulator objects follow the lamport timestamp
+    /// of the mutating system transaction — same as how `Shared`
+    /// objects' versions are sequenced — so all validators reach
+    /// identical post-state digests deterministically.
+    Accumulator {
+        kind: AccumulatorKind,
+    },
 }
 
 impl Owner {
@@ -1005,7 +1174,9 @@ impl Owner {
     pub fn get_address_owner_address(&self) -> SomaResult<SomaAddress> {
         match self {
             Self::AddressOwner(address) => Ok(*address),
-            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+            Self::Shared { .. } | Self::Immutable | Self::Accumulator { .. } => {
+                Err(SomaError::UnexpectedOwnerType)
+            }
         }
     }
 
@@ -1013,7 +1184,9 @@ impl Owner {
     pub fn get_owner_address(&self) -> SomaResult<SomaAddress> {
         match self {
             Self::AddressOwner(address) => Ok(*address),
-            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+            Self::Shared { .. } | Self::Immutable | Self::Accumulator { .. } => {
+                Err(SomaError::UnexpectedOwnerType)
+            }
         }
     }
 
@@ -1021,7 +1194,7 @@ impl Owner {
     pub fn start_version(&self) -> Option<Version> {
         match self {
             Self::Shared { initial_shared_version } => Some(*initial_shared_version),
-            Self::Immutable | Self::AddressOwner(_) => None,
+            Self::Immutable | Self::AddressOwner(_) | Self::Accumulator { .. } => None,
         }
     }
 
@@ -1035,6 +1208,23 @@ impl Owner {
 
     pub fn is_shared(&self) -> bool {
         matches!(self, Owner::Shared { .. })
+    }
+
+    /// True for `Owner::Accumulator` of any kind. Stage 14a:
+    /// accumulator objects are system-managed — they are not
+    /// transferable, deletable, or mutable by user transactions, only
+    /// by the executors listed on the variant's docstring.
+    pub fn is_accumulator(&self) -> bool {
+        matches!(self, Owner::Accumulator { .. })
+    }
+
+    /// Returns the accumulator kind if this owner is `Accumulator`.
+    /// Useful for executors that branch on Balance vs Delegation.
+    pub fn accumulator_kind(&self) -> Option<AccumulatorKind> {
+        match self {
+            Owner::Accumulator { kind } => Some(*kind),
+            _ => None,
+        }
     }
 }
 
@@ -1051,6 +1241,10 @@ impl Display for Owner {
             Self::Shared { initial_shared_version } => {
                 write!(f, "Shared( {} )", initial_shared_version.value())
             }
+            Self::Accumulator { kind } => match kind {
+                AccumulatorKind::Balance => write!(f, "Accumulator(Balance)"),
+                AccumulatorKind::Delegation => write!(f, "Accumulator(Delegation)"),
+            },
         }
     }
 }

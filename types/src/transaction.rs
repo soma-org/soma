@@ -5,7 +5,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::iter;
 
-use crate::submission::SubmissionManifest;
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::{Signer, ToFromBytes};
 use itertools::{Either, Itertools};
@@ -19,27 +18,25 @@ use crate::base::{AuthorityName, FullObjectID, SizeOneVec, SomaAddress};
 use crate::checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp};
 use crate::committee::{Committee, EpochId};
 use crate::consensus::ConsensusCommitPrologueV1;
-use crate::crypto::DecryptionKey;
 use crate::crypto::{
     AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature, AuthorityStrongQuorumSignInfo,
     DefaultHash, Ed25519SomaSignature, EmptySignInfo, GenericSignature, Signature,
     SomaSignatureInner, default_hash,
 };
 use crate::digests::{
-    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest,
-    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment, SenderSignedDataDigest,
-    TransactionDigest,
+    AdditionalConsensusStateDigest, CertificateDigest, ChainIdentifier, ConsensusCommitDigest,
+    SenderSignedDataDigest, TransactionDigest,
 };
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::metadata::Manifest;
-use crate::model::{ArchitectureVersion, ModelId};
+use crate::balance::WithdrawalReservation;
 use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
-use crate::target::TargetId;
 use crate::temporary_store::SharedInput;
-use crate::tensor::SomaTensor;
-use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
+use crate::{
+    CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION, SYSTEM_STATE_OBJECT_ID,
+    SYSTEM_STATE_OBJECT_SHARED_VERSION,
+};
 
 /// # TransactionKind
 ///
@@ -81,67 +78,112 @@ pub enum TransactionKind {
         new_rate: u64,
     },
 
-    // Coin and object transactions
-    TransferCoin {
-        coin: ObjectRef,
-        amount: Option<u64>,
-        recipient: SomaAddress,
-    },
-    PayCoins {
-        coins: Vec<ObjectRef>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<SomaAddress>,
-    },
+    // Object transactions
+    //
+    // Stage 13b: TransactionKind::Transfer and MergeCoins are gone.
+    // BalanceTransfer (Stage 7) replaces both — there's no longer
+    // any concept of a "coin object" being moved or merged. The
+    // accumulator is the sole record of fungible balances.
     TransferObjects {
         objects: Vec<ObjectRef>,
         recipient: SomaAddress,
     },
     // Staking txs
+    //
+    // Stage 9d-C2/C3: both AddStake and WithdrawStake are balance-mode
+    // and driven by the F1-shaped (pool, sender) delegation row. No
+    // StakedSomaV1 reference required.
+    //
+    // - AddStake: debits `amount` SOMA from the sender's accumulator,
+    //   folds pending rewards to balance, bumps principal, advances
+    //   the F1 fold mark.
+    // - WithdrawStake: pays out pending rewards + the requested
+    //   principal (or the entire row if `amount` is `None`) to the
+    //   sender's SOMA balance, decrements principal, and (if drained)
+    //   removes the row outright.
     AddStake {
-        address: SomaAddress,
-        coin_ref: ObjectRef,
-        amount: Option<u64>, // Optional to allow staking entire coin
+        validator: SomaAddress,
+        amount: u64,
     },
     WithdrawStake {
-        staked_soma: ObjectRef,
-    },
-
-    // Model transactions
-    CreateModel(CreateModelArgs),
-    CommitModel(CommitModelArgs),
-    RevealModel(RevealModelArgs),
-    AddStakeToModel {
-        model_id: ModelId,
-        coin_ref: ObjectRef,
+        pool_id: ObjectID,
+        /// `None` = withdraw all principal on this row.
         amount: Option<u64>,
     },
-    SetModelCommissionRate {
-        model_id: ModelId,
-        new_rate: u64,
-    },
-    DeactivateModel {
-        model_id: ModelId,
-    },
-    ReportModel {
-        model_id: ModelId,
-    },
-    UndoReportModel {
-        model_id: ModelId,
-    },
 
-    // Submission transactions
-    SubmitData(SubmitDataArgs),
-    ClaimRewards(ClaimRewardsArgs),
-    /// Report a submission as fraudulent (validators only).
-    /// Reports are stored on the Target object and accumulate until 2f+1 quorum.
-    /// Quorum triggers slashing at ClaimRewards time.
-    ReportSubmission {
-        target_id: TargetId,
-    },
-    /// Undo a previous submission report.
-    UndoReportSubmission {
-        target_id: TargetId,
-    },
+    // Bridge transactions (system — gasless)
+    BridgeDeposit(BridgeDepositArgs),
+    BridgeEmergencyPause(BridgeEmergencyPauseArgs),
+    BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+    /// Attach a quorum committee certificate to an existing
+    /// [`crate::bridge::PendingWithdrawal`]. After this tx commits, anyone
+    /// can read the cert from the on-chain object and submit it to the
+    /// Eth-side `SomaBridge` contract to release the locked USDC.
+    /// Idempotent: re-submitting after a cert is already attached is a no-op.
+    BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignaturesArgs),
+    /// Surgically blocklist or unblocklist committee members without rotating
+    /// the whole committee. Members are identified by their derived 20-byte
+    /// Eth address. Mirrors Sui's `committee::execute_blocklist`.
+    BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklistArgs),
+    /// A validator pre-registers their bridge keypair + endpoint URL.
+    /// Stored in `BridgeState.bridge_registrations`; consumed at the next
+    /// epoch boundary by `try_rotate_committee`. Mirrors Sui's
+    /// `bridge::committee_registration` flow.
+    BridgeRegisterBridgeKey(BridgeRegisterBridgeKeyArgs),
+
+    // Bridge transaction (user — normal gas)
+    BridgeWithdraw(BridgeWithdrawArgs),
+
+    // Payment-channel transactions (Phase 1: open + settle + timed close).
+    OpenChannel(OpenChannelArgs),
+    Settle(SettleArgs),
+    RequestClose(RequestCloseArgs),
+    WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
+    TopUp(TopUpArgs),
+    /// Payer flags a channel they've paid into as negative or
+    /// positive. Aggregated by the off-chain `provider_reputation`
+    /// view as a *volume-weighted negative rate* per provider; not
+    /// consensus-validated beyond auth + settled-amount precondition.
+    RateChannel(RateChannelArgs),
+
+    // Provider registry. Liveness is purely off-chain (HTTP probes
+    // by the proxy), so the only on-chain ops are register and
+    // endpoint update.
+    RegisterProvider(RegisterProviderArgs),
+    UpdateProvider(UpdateProviderArgs),
+
+    // Per-(provider, model) offering ops. The set of valid `model_id`
+    // values is governed by the protocol-config `ModelRegistry`
+    // (validator consensus). Pricing is provider-controlled and can be
+    // updated freely; existing channels are unaffected (they snapshot
+    // the price at OpenChannel time).
+    RegisterOffering(RegisterOfferingArgs),
+    UpdateOffering(UpdateOfferingArgs),
+    DeactivateOffering(DeactivateOfferingArgs),
+
+    /// Stage 7: stateless value transfer — debits sender's
+    /// accumulator balance, credits each recipient's. No owned
+    /// coin objects involved on either side. Sender pays gas
+    /// from the same accumulator (balance-mode), so the tx is
+    /// fully stateless and requires `TransactionExpiration::ValidDuring`.
+    ///
+    /// Replay protection: digest cache + validity window
+    /// (Stage 5.5). Parallel safety: scheduler reservation
+    /// pre-pass (Stage 6d) ensures sender has sufficient balance
+    /// across all txs in a commit.
+    BalanceTransfer(BalanceTransferArgs),
+
+    /// Per-consensus-commit settlement of the account-balance accumulator.
+    /// The consensus handler aggregates `BalanceEvent`s emitted by every
+    /// user tx in the commit, dedupes by `(owner, coin_type)`, and packs
+    /// the net non-zero deltas into one of these. Applied atomically in
+    /// the same write batch as the commit's other tx effects.
+    ///
+    /// System tx — sender = `SomaAddress::ZERO`, no gas, no input objects.
+    /// Stage 3 introduces the kind + executor; stages 6+ start emitting
+    /// the events that populate it. Until then the consensus handler
+    /// either skips it entirely or injects an empty one as a no-op.
+    Settlement(SettlementTransaction),
 }
 
 /// # AddValidatorArgs
@@ -174,8 +216,6 @@ pub struct AddValidatorArgs {
     pub p2p_address: Vec<u8>,
     /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
-    /// The validator's proxy server address for data/model serving
-    pub proxy_address: Vec<u8>,
 }
 
 /// # RemoveValidatorArgs
@@ -206,8 +246,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_p2p_address: Option<Vec<u8>>,
     /// Optional new primary address (serialized Multiaddr)
     pub next_epoch_primary_address: Option<Vec<u8>>,
-    /// Optional new proxy address (serialized Multiaddr)
-    pub next_epoch_proxy_address: Option<Vec<u8>>,
 
     /// Optional new protocol public key (BLS)
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
@@ -221,73 +259,361 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
-/// CreateModel: economic setup only (stake, commission, architecture).
-/// Returns model_id (derived from tx_digest). Model enters Created state.
+// --- Bridge arg structs ---
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CreateModelArgs {
-    pub stake_amount: u64,
-    pub commission_rate: u64,
-    pub architecture_version: ArchitectureVersion,
+pub struct BridgeDepositArgs {
+    pub nonce: u64,
+    pub eth_tx_hash: [u8; 32],
+    pub recipient: SomaAddress,
+    pub amount: u64,
+    /// V2 token transfer: timestamp (Eth block time, in milliseconds)
+    /// at which the source-chain deposit was emitted. Mirrors Sui's
+    /// `TokenTransferPayloadV2.timestamp_ms`.
+    pub timestamp_ms: u64,
+    /// V2 wire-format field — Eth address that locked USDC on Eth.
+    /// At the `senderAddress` slot in the signed payload (length=20).
+    /// The on-chain executor needs this to reconstruct the canonical
+    /// signed bytes; it has no other source for the Eth-side sender.
+    pub sender_eth_address: [u8; 20],
+    /// V2 wire-format field — destination chain (always a Soma chain).
+    /// At the `targetChain` slot in the signed payload.
+    pub target_chain: crate::bridge::BridgeChainId,
+    /// V2 wire-format field — token id. Always [`crate::bridge::USDC_TOKEN_TYPE`]
+    /// today; the executor asserts this to harden against a future
+    /// multi-token expansion silently slipping through.
+    pub token_type: u8,
+    /// Independent 65-byte recoverable secp256k1 signatures from the
+    /// committee. Order doesn't matter — verifier ecrecovers each and
+    /// looks up the recovered pubkey in `BridgeState.bridge_committee.members`.
+    /// Mirrors Sui's `vector<vector<u8>> signatures`.
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
-/// CommitModel (unified): works on Created models (initial) and Active models (update).
-/// On Created: transitions to Pending, sets commit_epoch.
-/// On Active: sets/overwrites pending_update.
+/// Args for `BridgeWithdraw`. Stage 12: the withdrawn USDC is debited
+/// from the sender's accumulator (no `payment_coin` input). The
+/// reservation pre-pass enforces sufficient balance before execution.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CommitModelArgs {
-    pub model_id: ModelId,
-    pub manifest: Manifest,
-    pub weights_commitment: ModelWeightsCommitment,
-    /// Commitment (hash) of the model embedding for stake-weighted KNN selection.
-    pub embedding_commitment: EmbeddingCommitment,
-    /// Commitment (hash) of the decryption key, verified at reveal time.
-    pub decryption_key_commitment: DecryptionKeyCommitment,
+pub struct BridgeWithdrawArgs {
+    pub amount: u64,
+    pub recipient_eth_address: [u8; 20],
+    /// V2 wire-format field — destination Eth chain (typically `EthMainnet`
+    /// or `EthSepolia`). Stored on the resulting `PendingWithdrawal` so the
+    /// later `BridgeAttachWithdrawalSignatures` executor can reconstruct
+    /// the exact bytes the committee signed over.
+    pub target_chain: crate::bridge::BridgeChainId,
 }
 
-/// RevealModel (unified): works on Pending models (initial) and Active models with pending_update.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct RevealModelArgs {
-    pub model_id: ModelId,
-    pub decryption_key: DecryptionKey,
-    /// Full model embedding, revealed after commit.
-    pub embedding: SomaTensor,
+pub struct BridgeEmergencyPauseArgs {
+    /// Per-message-type sequence number. Must equal the chain's expected
+    /// next seq for `BridgeMessageType::EmergencyOp`; the executor rejects
+    /// otherwise. Mirrors Sui's `execute_system_message` per-type seq check.
+    /// Pause and unpause SHARE this counter (both have message_type byte 2).
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
 }
 
-/// Arguments for a data submission to a target.
+// --- Payment-channel arg structs ---
+
+/// Args for `OpenChannel`. The signer of the transaction becomes the
+/// channel's `payer`; no separate payer field is needed. Stage 8: the
+/// deposit is drawn from the sender's accumulator balance rather than
+/// a coin object — the executor emits a single `Withdraw` event for
+/// `deposit_amount` against the signer in the chosen `token`.
 ///
-/// This is a single-transaction submission (no commit-reveal) where the submitter
-/// provides all required data upfront. Front-running mitigation is deferred to
-/// future versions.
+/// `model_id` binds the channel to a specific entry in the
+/// protocol-config `ModelRegistry`. The executor looks up the matching
+/// `(payee, model_id)` offering at open time and snapshots its prices +
+/// SLA bounds onto the channel — so settlement math is fixed for the
+/// channel's life regardless of how the provider updates the menu
+/// later. The scheduler declares
+/// `Offering::derive_id(payee, model_id)` as a read-only shared input
+/// for this kind.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct SubmitDataArgs {
-    /// Target to submit against (shared object ID)
-    pub target_id: TargetId,
-
-    /// Manifest for submitted data (URL + checksum + size)
-    pub data_manifest: SubmissionManifest,
-
-    /// Which model the submitter chose from the target's model_ids
-    pub model_id: ModelId,
-
-    /// Pre-computed embedding as SomaTensor (f32 values)
-    pub embedding: SomaTensor,
-
-    /// Distance score as SomaTensor (scalar, shape [1]). Lower is better.
-    pub distance_score: SomaTensor,
-
-    /// Loss score from model inference as SomaTensor (vector, f32 values).
-    /// Stored on-chain for tracking and verified during challenge audit.
-    pub loss_score: SomaTensor,
-
-    /// Coin to use for bond payment (must cover submission_bond_per_byte * data_manifest.size)
-    pub bond_coin: ObjectRef,
+pub struct OpenChannelArgs {
+    pub payee: SomaAddress,
+    /// Address whose key will sign vouchers. Typically equal to the
+    /// payer; differs when the payer wants a hot-key delegation.
+    pub authorized_signer: SomaAddress,
+    pub token: crate::object::CoinType,
+    pub deposit_amount: u64,
+    /// Canonical model_id from the protocol-config ModelRegistry.
+    /// Channel is bound to this single model for its entire lifetime.
+    pub model_id: String,
 }
 
-/// Arguments for claiming rewards from a filled or expired target.
+/// Args for `Settle`. Voucher signature is over
+/// `IntentMessage<Voucher{...}>` with `IntentScope::PaymentVoucher`.
+///
+/// The voucher carries `cumulative_amount` (the total $ the payee may
+/// claim through the end of this request batch) plus a per-channel
+/// usage breakdown — cumulative input/output/cache tokens and request
+/// count. The breakdown is informational at the protocol layer (the
+/// executor settles on `cumulative_amount`), but it's persisted by the
+/// indexer to power per-model price/latency oracle queries that need
+/// to know exactly how many tokens flowed through each channel.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct ClaimRewardsArgs {
-    /// Target to claim rewards from
-    pub target_id: TargetId,
+pub struct SettleArgs {
+    pub channel_id: ObjectID,
+    pub cumulative_amount: u64,
+    /// Cumulative prompt tokens served on this channel through this
+    /// settlement. Monotonic across settles (same property as
+    /// `cumulative_amount`).
+    pub cumulative_prompt_tokens: u64,
+    /// Cumulative completion tokens.
+    pub cumulative_completion_tokens: u64,
+    /// Cumulative cache-read tokens.
+    pub cumulative_cache_read_tokens: u64,
+    /// Cumulative cache-write tokens.
+    pub cumulative_cache_write_tokens: u64,
+    /// Cumulative request count.
+    pub cumulative_requests: u64,
+    /// Voucher signature, produced via
+    /// [`crate::crypto::Signature::new_secure`] by the channel's
+    /// `authorized_signer`. Wrapped as `GenericSignature` to allow
+    /// MultiSig signers transparently.
+    pub voucher_signature: crate::crypto::GenericSignature,
+}
+
+/// Args for `RequestClose`. Payer-only (executor enforces). Reads
+/// the current Clock timestamp and stamps it onto the channel.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RequestCloseArgs {
+    pub channel_id: ObjectID,
+}
+
+/// Args for `RateChannel`. The channel's payer flags a channel
+/// they've paid into as negative (`true`) or positive (`false`).
+/// Latest-wins: a subsequent `RateChannel` from the same payer
+/// replaces the prior flag (service quality can change).
+///
+/// Executor checks:
+///   * sender == channel.payer (only the buyer can rate the seller)
+///   * channel.settled_amount > 0 (must have actually paid before
+///     forming an opinion).
+///
+/// The view computes a volume-weighted **negative rate** per
+/// provider: among rated channels, what fraction of settled volume
+/// came from buyers who flagged the channel negatively. Higher =
+/// worse service signal.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RateChannelArgs {
+    pub channel_id: ObjectID,
+    /// `true` = negative rating (thumbs down), `false` = positive
+    /// (thumbs up). Both values are recorded; the view aggregates
+    /// the negative *rate* across rated volume.
+    pub negative: bool,
+    /// Why the payer flagged this channel. Auto-emitted by proxies
+    /// for `TtftBreach` / `TtotBreach` / `NoResponse`; user-driven
+    /// rates carry `Quality` or `Other`. Indexer aggregates per
+    /// `(payee, model_id, reason_code)` so we can see *what* is going
+    /// wrong, not just *that* something is. Unknown values are stored
+    /// verbatim (forward-compat for future codes).
+    pub reason_code: RatingReasonCode,
+}
+
+/// Why a payer rated a channel the way they did. Encoded as a `u8`
+/// over the wire (variants below) so the protocol can grow new
+/// reason codes without breaking existing readers — unknown codes
+/// project to `Other`.
+#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum RatingReasonCode {
+    /// Manual buyer rating — quality complaint or compliment. Default
+    /// for user-driven rates.
+    #[default]
+    Quality = 0,
+    /// Provider exceeded the offering's declared `ttft_bound_ms` on at
+    /// least one request served by this channel.
+    TtftBreach = 1,
+    /// Provider exceeded the offering's declared `ttot_bound_ms`.
+    TtotBreach = 2,
+    /// Upstream returned no response within the bounded retry window.
+    NoResponse = 3,
+    /// Catch-all for proxy/operator-emitted codes the buyer doesn't
+    /// otherwise classify. Forward-compat sink for unknown enum tags.
+    Other = 255,
+}
+
+/// Args for `WithdrawAfterTimeout`. Payer-only. Reads Clock and
+/// SystemState (for `channel_grace_period_ms`) and pays the
+/// remainder of the deposit back to the payer if the grace period
+/// has elapsed since `RequestClose`.
+///
+/// `payee` is carried in args so the scheduler can declare the
+/// `ProviderInbox(payee)` shared input from the kind alone — without
+/// it the validator would have to read the channel object first to
+/// learn the payee, which the input-declaration phase can't do. The
+/// executor verifies `args.payee == channel.payee` and rejects with
+/// `ChannelInboxPayeeMismatch` on a forged value.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct WithdrawAfterTimeoutArgs {
+    pub channel_id: ObjectID,
+    pub payee: SomaAddress,
+}
+
+/// Args for `TopUp`. Payer-only. Increments `channel.deposit` by
+/// `amount` (debited from the payer's accumulator in the channel's
+/// own coin type) and clears any pending `close_requested_at_ms`,
+/// turning the close timer back off so the relationship can keep
+/// running.
+///
+/// `coin_type` must match the channel's coin type — committed by the
+/// caller so the reservation pre-pass can register the withdrawal
+/// before the channel object is loaded. Mismatch is rejected at
+/// execution.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct TopUpArgs {
+    pub channel_id: ObjectID,
+    pub coin_type: crate::object::CoinType,
+    pub amount: u64,
+}
+
+/// Args for `RegisterProvider`. Signer becomes the provider's address;
+/// `Provider::derive_id(signer)` is the canonical id of the resulting
+/// shared object. Re-registration fails — use `UpdateProvider` to
+/// change the endpoint.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RegisterProviderArgs {
+    /// HTTP(S) endpoint at which this provider serves `/soma/info`
+    /// and the OpenAI-compatible `/v1/...` endpoints. Validated for
+    /// non-empty + length cap by the executor.
+    pub endpoint: String,
+}
+
+/// Args for `UpdateProvider`. Changes the advertised `endpoint` on an
+/// existing Provider object. Same-endpoint submissions are accepted
+/// but have no observable on-chain effect — there is no liveness
+/// signal on-chain to refresh.
+///
+/// `provider_id` is carried in the args (rather than derived
+/// post-hoc from the signer) so the scheduler can declare the
+/// shared input from the kind alone, matching the channel-tx
+/// pattern. The executor verifies `provider_id ==
+/// Provider::derive_id(signer)` and rejects mismatches.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateProviderArgs {
+    pub provider_id: ObjectID,
+    pub endpoint: String,
+}
+
+/// Args for `RegisterOffering`. Signer becomes the offering's
+/// `provider`; `Offering::derive_id(signer, model_id)` is the canonical
+/// id of the resulting shared object. Re-registration fails — use
+/// `UpdateOffering` to change prices/SLA, or `DeactivateOffering` to
+/// retire the row.
+///
+/// The executor verifies `model_id` is an active entry in the
+/// protocol-config `ModelRegistry` at the executor's protocol version,
+/// so providers can't register prices against models that don't exist
+/// or have been deprecated.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RegisterOfferingArgs {
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+/// Args for `UpdateOffering`. Mutates the prices + SLA on an existing
+/// `(signer, model_id)` offering. `offering_id` is carried in the args
+/// so the scheduler can declare the shared input from the kind alone;
+/// the executor verifies `offering_id == Offering::derive_id(signer, model_id)`
+/// (and rejects `model_id` ≠ `offering.model_id`).
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateOfferingArgs {
+    pub offering_id: ObjectID,
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+/// Args for `DeactivateOffering`. Flips `active = false` on the
+/// offering. New channels can't open against it; existing channels are
+/// unaffected. Reactivation requires a fresh `RegisterOffering` after
+/// the executor garbage-collects the prior row (future protocol
+/// version — for now `Deactivate` is sticky).
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct DeactivateOfferingArgs {
+    pub offering_id: ObjectID,
+    pub model_id: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeEmergencyUnpauseArgs {
+    /// Per-message-type sequence number. Shares the same counter as pause
+    /// (both have `BridgeMessageType::EmergencyOp` = byte 2).
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+}
+
+/// Args for `BridgeRegisterBridgeKey`. The signer (msg.sender) is the
+/// validator's Soma address; the executor verifies the signer is in the
+/// current active validator set before storing.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeRegisterBridgeKeyArgs {
+    /// 33-byte compressed secp256k1 pubkey.
+    pub bridge_pubkey: crate::bridge::BridgePubkey,
+    /// Public URL of the validator's bridge node sig-collection endpoint.
+    pub http_url: String,
+}
+
+/// Args for `BridgeUpdateCommitteeBlocklist`.
+///
+/// `eth_addresses` carries the 20-byte derived Eth addresses of the
+/// members whose `is_blocklisted` flag is being flipped (set if
+/// `is_blocklist == true`, cleared otherwise — `true` matches
+/// `BlocklistType::Blocklist`). Mirrors Sui's `Blocklist` payload.
+/// `nonce` is consumed from the per-message-type counter at
+/// `BridgeMessageType::UpdateCommitteeBlocklist`.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeUpdateCommitteeBlocklistArgs {
+    pub nonce: u64,
+    pub is_blocklist: bool,
+    pub eth_addresses: Vec<[u8; 20]>,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+}
+
+/// Args for `BridgeAttachWithdrawalSignatures`.
+///
+/// `nonce` selects the [`crate::bridge::PendingWithdrawal`] (the executor
+/// derives the object ID via `derive_bridge_record_id(SOMA_BRIDGE_CHAIN_ID,
+/// UsdcWithdraw, nonce)`). `signatures` carries the committee cert; the
+/// executor reconstructs the canonical message bytes from the on-chain
+/// object's fields and ecrecovers each sig — callers can't smuggle a
+/// cert for one withdrawal into another's slot.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeAttachWithdrawalSignaturesArgs {
+    pub nonce: u64,
+    pub signatures: std::collections::BTreeMap<crate::bridge::BridgePubkey, crate::bridge::BridgeSignature>,
+}
+
+/// Stage 7: balance-mode value transfer.
+///
+/// `transfers` is a list of `(recipient, amount)` pairs all in the
+/// same `coin_type`. Multiple recipients let a single tx fan out a
+/// payment (analogous to `PayCoins` in coin-mode), but with one
+/// shared `coin_type` because the executor emits one Withdraw per
+/// (sender, coin_type) and one Deposit per recipient.
+///
+/// All amounts are in the smallest unit (microdollars for USDC,
+/// shannons for SOMA). Empty `transfers` is rejected by the executor.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BalanceTransferArgs {
+    pub coin_type: crate::object::CoinType,
+    /// (recipient, amount) pairs. Order matters for the digest but not
+    /// for execution.
+    pub transfers: Vec<(SomaAddress, u64)>,
 }
 
 impl TransactionKind {
@@ -297,6 +623,34 @@ impl TransactionKind {
             TransactionKind::Genesis(_)
                 | TransactionKind::ConsensusCommitPrologueV1(_)
                 | TransactionKind::ChangeEpoch(_)
+                | TransactionKind::BridgeDeposit(_)
+                | TransactionKind::BridgeEmergencyPause(_)
+                | TransactionKind::BridgeEmergencyUnpause(_)
+                | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+                | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
+                | TransactionKind::Settlement(_)
+        )
+    }
+
+    /// True for the per-commit balance settlement transaction. Used by
+    /// the perpetual store to gate the balance-write path: only this
+    /// kind's `TransactionOutputs.balance_events` are applied as
+    /// deltas to the accumulator. User-tx events are intent records
+    /// only and get rolled into the next settlement.
+    pub fn is_settlement_tx(&self) -> bool {
+        matches!(self, TransactionKind::Settlement(_))
+    }
+
+    pub fn is_bridge_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::BridgeDeposit(_)
+                | TransactionKind::BridgeWithdraw(_)
+                | TransactionKind::BridgeEmergencyPause(_)
+                | TransactionKind::BridgeEmergencyUnpause(_)
+                | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+                | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
+                | TransactionKind::BridgeRegisterBridgeKey(_)
         )
     }
 
@@ -316,17 +670,156 @@ impl TransactionKind {
         matches!(self, TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. })
     }
 
-    pub fn is_model_tx(&self) -> bool {
+    /// True for any payment-channel tx kind.
+    pub fn is_channel_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::CreateModel(_)
-                | TransactionKind::CommitModel(_)
-                | TransactionKind::RevealModel(_)
-                | TransactionKind::AddStakeToModel { .. }
-                | TransactionKind::SetModelCommissionRate { .. }
-                | TransactionKind::DeactivateModel { .. }
-                | TransactionKind::ReportModel { .. }
-                | TransactionKind::UndoReportModel { .. }
+            TransactionKind::OpenChannel(_)
+                | TransactionKind::Settle(_)
+                | TransactionKind::RequestClose(_)
+                | TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::TopUp(_)
+                | TransactionKind::RateChannel(_)
+        )
+    }
+
+    /// True for any provider-registry tx kind.
+    pub fn is_provider_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_)
+        )
+    }
+
+    /// True for any per-(provider, model) offering tx kind.
+    pub fn is_offering_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
+        )
+    }
+
+    /// Channel ops that need an existing Channel as a shared input
+    /// (everything except `OpenChannel`, which creates one). The
+    /// boolean is `true` if the op mutates the Channel object,
+    /// `false` for read-only ops (`RateChannel` reads
+    /// `payer`/`settled_amount` to authorize the rating but doesn't
+    /// touch the channel state).
+    fn channel_id_input(&self) -> Option<(ObjectID, bool)> {
+        match self {
+            TransactionKind::Settle(args) => Some((args.channel_id, true)),
+            TransactionKind::RequestClose(args) => Some((args.channel_id, true)),
+            TransactionKind::WithdrawAfterTimeout(args) => Some((args.channel_id, true)),
+            TransactionKind::TopUp(args) => Some((args.channel_id, true)),
+            TransactionKind::RateChannel(args) => Some((args.channel_id, false)),
+            _ => None,
+        }
+    }
+
+    /// Provider ops that mutate an existing Provider shared object
+    /// (`UpdateProvider`; `RegisterProvider` creates a new one).
+    fn provider_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::UpdateProvider(args) => Some(args.provider_id),
+            _ => None,
+        }
+    }
+
+    /// Per-(provider, model) offering shared-input declarations. The
+    /// boolean is `true` if the op mutates the Offering.
+    ///
+    /// `OpenChannel` declares the offering as *read-only* — we need to
+    /// load it to snapshot prices onto the new channel, but we never
+    /// mutate it. `Update`/`Deactivate` declare it mutable. `Register`
+    /// is omitted (same lazy-create pattern as `RegisterProvider` for
+    /// the Provider object).
+    fn offering_id_input(&self) -> Option<(ObjectID, bool)> {
+        match self {
+            TransactionKind::OpenChannel(args) => Some((
+                crate::offering::Offering::derive_id(args.payee, &args.model_id),
+                false,
+            )),
+            TransactionKind::UpdateOffering(args) => Some((args.offering_id, true)),
+            TransactionKind::DeactivateOffering(args) => Some((args.offering_id, true)),
+            _ => None,
+        }
+    }
+
+    /// `ProviderInbox(payee)` for kinds that increment or decrement
+    /// the per-(payer, payee) channel-count cap. The id is derived
+    /// client-side from the payee carried in args; the executor
+    /// verifies it matches the loaded channel for `WithdrawAfterTimeout`.
+    /// The inbox may not yet exist on chain — `OpenChannel` creates it
+    /// lazily. The shared-object scheduler treats a declared input
+    /// whose object doesn't exist as "starts at the declared
+    /// initial_shared_version", which is exactly what we want.
+    fn provider_inbox_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::OpenChannel(args) => {
+                Some(crate::provider_inbox::ProviderInbox::derive_id(args.payee))
+            }
+            TransactionKind::WithdrawAfterTimeout(args) => {
+                Some(crate::provider_inbox::ProviderInbox::derive_id(args.payee))
+            }
+            _ => None,
+        }
+    }
+
+    /// Bridge ops that mutate an existing per-record shared object
+    /// (a `PendingWithdrawal` for cert attachment). The ID is derived
+    /// client-side via `bridge::derive_bridge_record_id` from the args'
+    /// nonce — anyone with `(chain, msg_type, nonce)` can compute it.
+    ///
+    /// `BridgeDeposit` is NOT here: replay defense is the bounded
+    /// `BridgeState.processed_deposit_nonces` set, not object existence.
+    /// The per-deposit `BridgeRecord` object is created as a *new* object
+    /// (no prior object to declare as input) — it's pure audit trail.
+    fn bridge_record_id_input(&self) -> Option<ObjectID> {
+        match self {
+            TransactionKind::BridgeAttachWithdrawalSignatures(args) => {
+                Some(crate::bridge::derive_bridge_record_id(
+                    crate::bridge::SOMA_BRIDGE_CHAIN_ID,
+                    crate::bridge::BridgeMessageType::UsdcWithdraw,
+                    args.nonce,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// True for txs that need to read the current Clock timestamp.
+    /// Used by both `shared_input_objects()` and `input_objects()` to
+    /// declare Clock as a *read-only* shared input — letting the
+    /// scheduler run multiple Clock readers in parallel within a
+    /// single commit window.
+    pub fn requires_clock_read(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::RequestClose(_)
+                | TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
+        )
+    }
+
+    /// True for txs that need to read SystemState (e.g., for protocol
+    /// parameters) without mutating it. `WithdrawAfterTimeout` reads
+    /// `channel_grace_period_ms`; `OpenChannel` reads
+    /// `max_channels_per_pair` to enforce the per-pair cap and the
+    /// protocol version to validate the model registry; offering ops
+    /// read protocol version to validate `model_id` against the
+    /// version-pinned registry.
+    pub fn requires_system_state_read(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::WithdrawAfterTimeout(_)
+                | TransactionKind::OpenChannel(_)
+                | TransactionKind::RegisterOffering(_)
+                | TransactionKind::UpdateOffering(_)
+                | TransactionKind::DeactivateOffering(_)
         )
     }
 
@@ -334,26 +827,56 @@ impl TransactionKind {
         matches!(self, TransactionKind::ChangeEpoch(_))
     }
 
-    pub fn is_submission_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::SubmitData(_)
-                | TransactionKind::ClaimRewards(_)
-                | TransactionKind::ReportSubmission { .. }
-                | TransactionKind::UndoReportSubmission { .. }
-        )
-    }
-
     pub fn requires_system_state(&self) -> bool {
         self.is_validator_tx()
             || self.is_epoch_change()
             || self.is_staking_tx()
-            || self.is_model_tx()
-            || self.is_submission_tx()
+            || self.is_bridge_tx()
+    }
+
+    /// True for the consensus commit prologue, which is the only tx kind
+    /// allowed to mutate the Clock object. User transactions that need to
+    /// read the current timestamp declare Clock as an *immutable* shared
+    /// input themselves (and never appear here).
+    pub fn requires_clock_mut(&self) -> bool {
+        matches!(self, TransactionKind::ConsensusCommitPrologueV1(_))
     }
 
     pub fn is_epoch_change(&self) -> bool {
         matches!(self, TransactionKind::ChangeEpoch(_))
+    }
+
+    /// Number of fee units this kind is charged for. Mirrors what each
+    /// executor's `TransactionExecutor::fee_units` returns — extracted
+    /// here so non-execution code (e.g., the scheduler reservation
+    /// pre-pass in Stage 6d) can compute the gas fee without
+    /// instantiating an executor.
+    ///
+    /// System txs return 0 (they're gasless).
+    /// Most ops return 1.
+    /// Linear-in-input ops (BalanceTransfer, TransferObjects) return
+    /// cost proportional to input count. Stake/Bridge ops return 2.
+    pub fn fee_units(&self) -> u32 {
+        if self.is_system_tx() {
+            return 0;
+        }
+        match self {
+            TransactionKind::TransferObjects { objects, .. } => {
+                objects.len().try_into().unwrap_or(u32::MAX)
+            }
+            // Stage 7: balance transfer cost is 1 + 1 unit per recipient
+            // (one withdraw event for sender, one deposit per recipient).
+            TransactionKind::BalanceTransfer(args) => {
+                let n = 1usize.saturating_add(args.transfers.len());
+                n.try_into().unwrap_or(u32::MAX)
+            }
+            // Staking: flat 2.
+            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => 2,
+            // Bridge user op: 2.
+            TransactionKind::BridgeWithdraw(_) => 2,
+            // All other user ops (validator mgmt, channel ops, etc.): 1.
+            _ => 1,
+        }
     }
 
     pub fn contains_shared_object(&self) -> bool {
@@ -372,41 +895,86 @@ impl TransactionKind {
         // Add system object if needed
         if self.requires_system_state() {
             objects.push(SharedInputObject::SYSTEM_OBJ);
+        } else if self.requires_system_state_read() {
+            objects.push(SharedInputObject::SYSTEM_OBJ_READ);
         }
 
-        // Add transaction-specific shared objects
-        match self {
-            TransactionKind::SubmitData(args) => {
-                objects.push(SharedInputObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::ClaimRewards(args) => {
-                objects.push(SharedInputObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::ReportSubmission { target_id, .. } => {
-                // ReportSubmission writes to the Target object
-                objects.push(SharedInputObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::UndoReportSubmission { target_id } => {
-                // UndoReportSubmission writes to the Target object
-                objects.push(SharedInputObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-            _ => {}
+        // The consensus commit prologue declares Clock as a mutable shared
+        // input so it can write the new timestamp. User transactions that
+        // need to read the timestamp declare Clock as `mutable: false` —
+        // multiple read-only references in a commit window run in parallel
+        // because the scheduler skips the version bump.
+        if self.requires_clock_mut() {
+            objects.push(SharedInputObject::CLOCK_OBJ_MUT);
+        } else if self.requires_clock_read() {
+            objects.push(SharedInputObject::CLOCK_OBJ_READ);
+        }
+
+        // Channel ops (other than OpenChannel) declare the existing
+        // Channel as a mutable shared input. The Channel's
+        // `initial_shared_version` is recorded on the on-chain object
+        // and rediscovered by the scheduler from storage; we cannot
+        // know it from the tx kind alone, so we set it to
+        // OBJECT_START_VERSION here. The shared-object scheduler
+        // resolves to the actual current version via
+        // `get_or_init_versions`.
+        if let Some((channel_id, mutable)) = self.channel_id_input() {
+            objects.push(SharedInputObject {
+                id: channel_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
+            });
+        }
+
+        // UpdateProvider / UnregisterProvider declare the existing
+        // Provider as a mutable shared input. RegisterProvider
+        // creates the object so it's omitted here (mirrors
+        // OpenChannel).
+        if let Some(provider_id) = self.provider_id_input() {
+            objects.push(SharedInputObject {
+                id: provider_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // Offering ops (and OpenChannel) declare a per-(provider, model)
+        // Offering as a shared input. OpenChannel reads it (snapshot
+        // prices onto the channel); Update/Deactivate mutate. Register
+        // is omitted — same pattern as RegisterProvider for the Provider.
+        if let Some((offering_id, mutable)) = self.offering_id_input() {
+            objects.push(SharedInputObject {
+                id: offering_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
+            });
+        }
+
+        // OpenChannel / WithdrawAfterTimeout mutate the per-payee
+        // ProviderInbox (increment or decrement the open-channel
+        // count for the signer/payer). The inbox is created lazily
+        // by OpenChannel, so the validator may declare an input
+        // whose object doesn't yet exist — the scheduler resolves
+        // that to the declared initial_shared_version and the
+        // executor handles the create-on-write.
+        if let Some(inbox_id) = self.provider_inbox_id_input() {
+            objects.push(SharedInputObject {
+                id: inbox_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // BridgeAttachWithdrawalSignatures mutates the existing
+        // PendingWithdrawal shared object to attach a quorum cert.
+        // Like ProviderInbox, the ID is deterministically derived
+        // client-side from the args.
+        if let Some(record_id) = self.bridge_record_id_input() {
+            objects.push(SharedInputObject {
+                id: record_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
         }
 
         objects.into_iter()
@@ -426,72 +994,109 @@ impl TransactionKind {
                 initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
                 mutable: true,
             });
+        } else if self.requires_system_state_read() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: SYSTEM_STATE_OBJECT_ID,
+                initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
+                mutable: false,
+            });
+        }
+
+        // Clock is declared mutable only by the prologue; user txs that
+        // need wall-clock time declare it as immutable.
+        if self.requires_clock_mut() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: CLOCK_OBJECT_ID,
+                initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
+                mutable: true,
+            });
+        } else if self.requires_clock_read() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: CLOCK_OBJECT_ID,
+                initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
+                mutable: false,
+            });
+        }
+
+        // Channel ops (other than OpenChannel) need the existing
+        // Channel as a shared input. Most mutate; `RateChannel`
+        // declares it read-only (it only validates the channel
+        // state, doesn't touch it). All channels use
+        // OBJECT_START_VERSION for `initial_shared_version`.
+        if let Some((channel_id, mutable)) = self.channel_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: channel_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
+            });
+        }
+
+        // UpdateProvider needs the existing Provider as a mutable
+        // shared input. RegisterProvider creates the object so it's
+        // omitted here (mirrors OpenChannel).
+        if let Some(provider_id) = self.provider_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: provider_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // Offering: OpenChannel reads, Update/Deactivate mutate, Register
+        // is lazy-create (omitted). See `shared_input_objects` for detail.
+        if let Some((offering_id, mutable)) = self.offering_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: offering_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable,
+            });
+        }
+
+        // OpenChannel / WithdrawAfterTimeout mutate the per-payee
+        // ProviderInbox; see `shared_input_objects()` for the
+        // create-on-write rationale.
+        if let Some(inbox_id) = self.provider_inbox_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: inbox_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
+        }
+
+        // BridgeAttachWithdrawalSignatures mutates the PendingWithdrawal
+        // shared object whose ID is derived from the args' nonce.
+        if let Some(record_id) = self.bridge_record_id_input() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: record_id,
+                initial_shared_version: crate::object::OBJECT_START_VERSION,
+                mutable: true,
+            });
         }
 
         // Add transaction-specific inputs
         match self {
-            TransactionKind::TransferCoin { coin, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
-            }
-            TransactionKind::PayCoins { coins, .. } => {
-                for coin in coins {
-                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
-                }
-            }
             TransactionKind::TransferObjects { objects, .. } => {
                 for object in objects {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
                 }
             }
-            TransactionKind::AddStake { coin_ref, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-            }
+            // Stage 9d-C2/C3: AddStake / WithdrawStake are
+            // balance-mode and key off the F1 (pool, sender) row —
+            // no SOMA coin or StakedSomaV1 input. Their fund flows
+            // are covered by the per-tx reservations + Deposit
+            // events emitted from the executor.
+            TransactionKind::AddStake { .. } => {}
+            TransactionKind::WithdrawStake { .. } => {}
 
-            TransactionKind::WithdrawStake { staked_soma } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
-            }
+            // Stage 12: BridgeWithdraw is balance-mode — no payment
+            // coin to read. The Withdraw event the executor emits is
+            // covered by `reservations()`.
+            TransactionKind::BridgeWithdraw(_) => {}
 
-            TransactionKind::AddStakeToModel { coin_ref, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-            }
-
-            TransactionKind::SubmitData(args) => {
-                // Add bond coin as owned object
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.bond_coin));
-                // Add target as shared object
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-
-            TransactionKind::ClaimRewards(args) => {
-                // Add target as shared object
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-
-            TransactionKind::ReportSubmission { target_id, .. } => {
-                // Add target as shared object (mutable - storing reports)
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-
-            TransactionKind::UndoReportSubmission { target_id } => {
-                // Add target as shared object (mutable - removing reports)
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
+            // Stage 8: OpenChannel no longer reads a deposit coin —
+            // the deposit is drawn from the accumulator. The executor
+            // emits a Withdraw event covered by `reservations()`.
+            TransactionKind::OpenChannel(_) => {}
 
             _ => {}
         }
@@ -557,6 +1162,54 @@ pub struct ChangeEpoch {
     pub fees: u64,
     /// Epoch randomness
     pub epoch_randomness: Vec<u8>,
+}
+
+/// # SettlementTransaction
+///
+/// Per-consensus-commit settlement of the account-balance accumulator.
+///
+/// `changes` is the *aggregated* net delta per `(owner, coin_type)` over
+/// every user tx in the commit. Each entry is non-zero — zero deltas
+/// (e.g., a withdraw and equal deposit cancelling out) are dropped at
+/// aggregation time. Entries are sorted by `(owner, coin_type)` so the
+/// transaction digest is deterministic across validators.
+///
+/// `BalanceEvent::Withdraw` represents a net debit; `BalanceEvent::Deposit`
+/// a net credit. Magnitudes are u64 (bounded by total supply, which fits
+/// well below u64::MAX).
+///
+/// At write time, the perpetual store applies these as deltas via
+/// `multi_apply_balance_deltas`, atomically within the same RocksDB
+/// batch as the commit's other transaction outputs.
+///
+/// ## Digest uniqueness
+///
+/// Sui's SIP-58 routes settlement through the `AccumulatorRoot` shared
+/// object whose version advances each commit, making every settlement
+/// tx unique by construction. We don't have an `AccumulatorRoot`, so
+/// we instead embed the commit identifier `(epoch, round,
+/// sub_dag_index)` directly — same fields the consensus prologue uses
+/// — so two consecutive empty commits produce different digests and
+/// `is_tx_already_executed` doesn't reject the second. The executor
+/// does **not** validate these fields; they exist solely to bind the
+/// transaction to its commit.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct SettlementTransaction {
+    /// Epoch of the commit this settlement belongs to.
+    pub epoch: EpochId,
+    /// Consensus round of the commit. Mirrors `ConsensusCommitPrologueV1::round`.
+    pub round: u64,
+    /// Sub-DAG index, populated when a round has multiple commits.
+    /// Mirrors `ConsensusCommitPrologueV1::sub_dag_index`.
+    pub sub_dag_index: Option<u64>,
+    /// Aggregated net per-(owner, coin_type) balance deltas for the
+    /// `BalanceAccumulator` family. May be empty.
+    pub changes: Vec<crate::balance::BalanceEvent>,
+    /// Stage 14d: aggregated per-(pool_id, staker) delegation deltas
+    /// for the `DelegationAccumulator` family. Each entry carries a
+    /// signed principal delta and an optional `set_period` advancing
+    /// the F1 collection mark. May be empty.
+    pub delegation_changes: Vec<crate::temporary_store::DelegationEvent>,
 }
 
 /// # CertificateProof
@@ -728,6 +1381,74 @@ pub enum TransactionData {
     V1(TransactionDataV1),
 }
 
+/// # TransactionExpiration
+///
+/// Replay-protection declaration on a transaction.
+///
+/// Transactions that consume at least one owned input object (e.g., a gas
+/// coin) are implicitly replay-protected by the version-bump on that
+/// object — once consumed, the version is gone, and re-submitting the
+/// same tx fails the input-version check at execution. Such transactions
+/// may carry `TransactionExpiration::None`.
+///
+/// "Stateless" transactions — txs with **no** owned inputs (post-Stage 6
+/// when gas pays from address-balance) — have no implicit anchor, so
+/// they must declare `ValidDuring`. Validators bound the digest cache
+/// by the validity window: every executed digest is recorded under
+/// `(epoch, digest)` and pruned at epoch boundary so only the current
+/// + previous epoch are retained. Any tx whose digest is in the prior
+/// epoch's cache is rejected as a replay; any tx outside its validity
+/// window is rejected as expired.
+///
+/// Width is bound to 2 epochs: `max_epoch == min_epoch` or
+/// `max_epoch == min_epoch + 1`. Wider windows are rejected because
+/// they would require unbounded cache memory.
+///
+/// `nonce` is **never read** during validation — it's an arbitrary u32
+/// that becomes part of the tx body so two otherwise-identical txs
+/// (same sender, same kind, same epoch, same chain) hash to different
+/// digests and thus don't collide in the cache. Mirrors Sui SIP-58.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+pub enum TransactionExpiration {
+    /// No declared expiration. Replay protection comes from owned-input
+    /// version-bumps. The signature-verifier rejects this variant for
+    /// txs with no owned inputs.
+    None,
+    /// Stateless replay protection. All four fields are required at
+    /// validation time (the `Option` on epochs is a compatibility
+    /// hedge — Sui keeps them optional in case future variants relax
+    /// the bound).
+    ValidDuring {
+        /// Earliest epoch (inclusive) in which this tx is valid.
+        min_epoch: Option<EpochId>,
+        /// Latest epoch (inclusive) in which this tx is valid. Bounded
+        /// to `min_epoch + 1` by protocol config.
+        max_epoch: Option<EpochId>,
+        /// Chain identifier this tx is valid on. Cross-chain replay
+        /// defense — a tx signed for testnet can't be replayed on
+        /// mainnet because the digest binds the chain.
+        chain: ChainIdentifier,
+        /// Arbitrary u32 to differentiate otherwise-identical txs.
+        /// Not consulted by the protocol; only affects the digest.
+        nonce: u32,
+    },
+}
+
+impl TransactionExpiration {
+    /// True iff this expiration declaration provides stateless replay
+    /// protection — i.e., is `ValidDuring` with both epochs set and the
+    /// width within the protocol-mandated 2-epoch bound.
+    pub fn is_replay_protected(&self) -> bool {
+        match self {
+            Self::None => false,
+            Self::ValidDuring { min_epoch: Some(min), max_epoch: Some(max), .. } => {
+                *max == *min || *max == min.saturating_add(1)
+            }
+            Self::ValidDuring { .. } => false,
+        }
+    }
+}
+
 /// # TransactionDataV1
 ///
 /// Contains the core data of a transaction, including its type and sender.
@@ -750,49 +1471,52 @@ pub struct TransactionDataV1 {
     pub sender: SomaAddress,
 
     pub gas_payment: Vec<ObjectRef>,
+
+    /// Replay-protection declaration. Defaults to `None` for txs with
+    /// owned inputs (which get implicit version-bump protection); user
+    /// txs with no owned inputs (post-Stage 6 stateless mode) must
+    /// declare `ValidDuring`.
+    pub expiration: TransactionExpiration,
 }
 
 impl TransactionData {
     pub fn new(kind: TransactionKind, sender: SomaAddress, gas_payment: Vec<ObjectRef>) -> Self {
-        TransactionData::V1(TransactionDataV1 { kind, sender, gas_payment })
+        TransactionData::V1(TransactionDataV1 {
+            kind,
+            sender,
+            gas_payment,
+            expiration: TransactionExpiration::None,
+        })
+    }
+
+    /// Construct with an explicit expiration declaration. Stateless
+    /// (no owned inputs) txs must use this with a `ValidDuring`
+    /// variant; the validator rejects stateless txs whose expiration
+    /// is `None`.
+    pub fn new_with_expiration(
+        kind: TransactionKind,
+        sender: SomaAddress,
+        gas_payment: Vec<ObjectRef>,
+        expiration: TransactionExpiration,
+    ) -> Self {
+        TransactionData::V1(TransactionDataV1 { kind, sender, gas_payment, expiration })
     }
 
     fn new_system_transaction(kind: TransactionKind) -> Self {
         // assert transaction kind if a system transaction
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
-        TransactionData::V1(TransactionDataV1 { kind, sender, gas_payment: vec![] })
+        TransactionData::V1(TransactionDataV1 {
+            kind,
+            sender,
+            gas_payment: vec![],
+            expiration: TransactionExpiration::None,
+        })
     }
 
-    pub fn new_pay_coins(
-        coins: Vec<ObjectRef>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<SomaAddress>,
-        sender: SomaAddress,
-    ) -> Self {
-        // Use the first coin in the list as gas payment
-        if coins.is_empty() {
-            panic!("PayCoins transaction must have at least one coin");
-        }
-        Self::new(
-            TransactionKind::PayCoins { coins: coins.clone(), amounts, recipients },
-            sender,
-            vec![coins[0]],
-        )
-    }
-
-    pub fn new_transfer_coin(
-        recipient: SomaAddress,
-        sender: SomaAddress,
-        amount: Option<u64>,
-        object_ref: ObjectRef,
-    ) -> Self {
-        Self::new(
-            TransactionKind::TransferCoin { coin: object_ref, amount, recipient },
-            sender,
-            vec![object_ref],
-        )
-    }
+    // Stage 13b: `new_pay_coins` and `new_transfer_coin` deleted —
+    // they constructed the now-removed `TransactionKind::Transfer`
+    // variant. Callers use `BalanceTransfer` directly.
 
     pub fn new_transfer(
         recipient: SomaAddress,
@@ -855,6 +1579,78 @@ impl TransactionData {
         }
     }
 
+    /// The expiration declaration on this tx. Used by validators to
+    /// run the `ValidDuring` window check and decide whether to consult
+    /// the executed-digest cache.
+    pub fn expiration(&self) -> &TransactionExpiration {
+        match self {
+            TransactionData::V1(v1) => &v1.expiration,
+        }
+    }
+
+    /// Run protocol-level checks on the expiration declaration. Returns
+    /// the appropriate error variant for each failure mode so callers
+    /// can map to gRPC status codes cleanly.
+    ///
+    /// Width is bound to 2 epochs (`max == min || max == min + 1`),
+    /// matching Sui SIP-58 (which hardcodes the same bound). Wider
+    /// windows would require unbounded digest-cache memory.
+    ///
+    /// This check enforces only the *structural* validity of the
+    /// declaration. The "is the tx in the digest cache?" check happens
+    /// separately in the validation path.
+    pub fn check_expiration(
+        &self,
+        current_epoch: EpochId,
+        chain: &ChainIdentifier,
+    ) -> SomaResult<()> {
+        match self.expiration() {
+            TransactionExpiration::None => Ok(()),
+            TransactionExpiration::ValidDuring {
+                min_epoch,
+                max_epoch,
+                chain: tx_chain,
+                nonce: _,
+            } => {
+                if tx_chain != chain {
+                    return Err(SomaError::InvalidChainId {
+                        expected: chain.to_string(),
+                        actual: tx_chain.to_string(),
+                    });
+                }
+                let (Some(min), Some(max)) = (min_epoch, max_epoch) else {
+                    return Err(SomaError::UnsupportedFeatureError {
+                        error: "ValidDuring requires both min_epoch and max_epoch to be set"
+                            .to_string(),
+                    });
+                };
+                // Width bound: 2 epochs. Wider would unbound the cache.
+                if !(*max == *min || *max == min.saturating_add(1)) {
+                    return Err(SomaError::UnsupportedFeatureError {
+                        error: format!(
+                            "ValidDuring max_epoch ({max}) must equal min_epoch ({min}) or min_epoch+1"
+                        ),
+                    });
+                }
+                if current_epoch < *min {
+                    return Err(SomaError::TransactionExpired {
+                        current_epoch,
+                        min_epoch: *min,
+                        max_epoch: *max,
+                    });
+                }
+                if current_epoch > *max {
+                    return Err(SomaError::TransactionExpired {
+                        current_epoch,
+                        min_epoch: *min,
+                        max_epoch: *max,
+                    });
+                }
+                Ok(())
+            }
+        }
+    }
+
     fn contains_shared_object(&self) -> bool {
         self.kind().shared_input_objects().next().is_some()
     }
@@ -894,24 +1690,110 @@ impl TransactionData {
         self.kind().receiving_objects()
     }
 
-    // Dependency (input, package & receiving) objects that already have a version,
-    // and do not require version assignment from consensus.
-    // Returns objects and receiving objects.
-    pub fn fastpath_dependency_objects(&self) -> SomaResult<(Vec<ObjectRef>, Vec<ObjectRef>)> {
-        let mut objects = vec![];
-
-        let mut receiving_objects = vec![];
-        self.input_objects()?.iter().for_each(|o| match o {
-            InputObjectKind::ImmOrOwnedObject(object_ref) => {
-                objects.push(*object_ref);
+    /// Withdrawal reservations this transaction needs against the
+    /// account-balance accumulator. The scheduler runs a pre-pass
+    /// that sums these per `(owner, coin_type)` for every tx in a
+    /// commit and drops any tx whose reservations exceed the
+    /// pre-commit balance.
+    ///
+    /// Stage 6d: balance-mode txs (empty `gas_payment`, non-system)
+    /// declare a USDC reservation for `unit_fee × kind.fee_units()`.
+    /// Coin-mode txs declare nothing (replay/insufficiency caught at
+    /// execution by the smash + version check).
+    ///
+    /// `unit_fee` is the per-unit fee from the active epoch's
+    /// `FeeParameters`; the caller supplies it so this method stays
+    /// pure (no global state). Pass 0 if you only want the non-gas
+    /// reservations (currently no kind has any).
+    pub fn reservations(&self, unit_fee: u64) -> Vec<WithdrawalReservation> {
+        let mut out = Vec::new();
+        if !self.is_system_tx() && self.gas().is_empty() {
+            // Balance-mode gas: reserve unit_fee × fee_units(kind) USDC.
+            let fee = unit_fee.saturating_mul(self.kind().fee_units() as u64);
+            if fee > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Usdc,
+                    fee,
+                ));
             }
-            InputObjectKind::SharedObject { .. } => {}
-        });
-        self.receiving_objects().iter().for_each(|object_ref| {
-            receiving_objects.push(*object_ref);
-        });
-        Ok((objects, receiving_objects))
+        }
+        // Stage 7: BalanceTransfer also reserves the total transfer
+        // amount in the chosen coin type. The pre-pass aggregates
+        // per-(owner, coin_type), so a USDC transfer adds to the gas
+        // reservation above and is checked together against the
+        // sender's balance.
+        if let TransactionKind::BalanceTransfer(args) = self.kind() {
+            let total: u64 = args
+                .transfers
+                .iter()
+                .map(|(_, amt)| *amt)
+                .fold(0u64, |a, b| a.saturating_add(b));
+            if total > 0 {
+                out.push(WithdrawalReservation::new(self.sender(), args.coin_type, total));
+            }
+        }
+        // Stage 8: OpenChannel debits the deposit from the sender's
+        // accumulator. Settle/RequestClose/WithdrawAfterTimeout move
+        // funds *out* of the channel object's internal balance, not
+        // the sender's accumulator, so they have no caller-side
+        // reservation here — only OpenChannel needs one.
+        if let TransactionKind::OpenChannel(args) = self.kind() {
+            if args.deposit_amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    args.token,
+                    args.deposit_amount,
+                ));
+            }
+        }
+        // TopUp: payer adds `amount` to the channel's escrow, debited
+        // from their accumulator. The pre-pass uses `args.coin_type`
+        // (caller-committed) so the reservation can be registered
+        // before the channel object is loaded; the executor verifies
+        // the coin_type matches the channel and rejects otherwise.
+        if let TransactionKind::TopUp(args) = self.kind() {
+            if args.amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    args.coin_type,
+                    args.amount,
+                ));
+            }
+        }
+        // Stage 12: BridgeWithdraw debits USDC from the sender's
+        // accumulator (the bridge "burns" the local balance and the
+        // off-chain bridge nodes release the corresponding ETH-side
+        // amount). BridgeDeposit only credits a recipient, so it has
+        // no caller-side reservation. EmergencyPause/Unpause move no
+        // funds.
+        if let TransactionKind::BridgeWithdraw(args) = self.kind() {
+            if args.amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Usdc,
+                    args.amount,
+                ));
+            }
+        }
+        // Stage 9d-C2: AddStake debits SOMA from the sender's
+        // accumulator. The F1 fold-to-balance only credits, never
+        // debits, so we don't subtract pending rewards here — the
+        // worst case is overstating the required balance, which the
+        // pre-pass treats as an Accept (we still have enough), and
+        // the executor's checked_sub catches the actual case.
+        if let TransactionKind::AddStake { amount, .. } = self.kind() {
+            if *amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Soma,
+                    *amount,
+                ));
+            }
+        }
+        out
     }
+
 }
 
 /// # SenderSignedData
@@ -1183,6 +2065,32 @@ impl VerifiedTransaction {
         .pipe(Self::new_system_transaction)
     }
 
+    /// Per-consensus-commit accumulator settlement system transaction.
+    ///
+    /// Stage 6a: the consensus handler injects one of these at the end
+    /// of every commit's schedulable list. Until executors start
+    /// emitting `BalanceEvent`s (Stage 6c), `changes` is always empty
+    /// and the executor + write path treat it as a no-op. The
+    /// `(epoch, round, sub_dag_index)` triplet makes the digest unique
+    /// per commit even with empty `changes`, so consecutive empty
+    /// settlements don't collide in the executed-digest cache.
+    pub fn new_settlement_transaction(
+        epoch: EpochId,
+        round: u64,
+        sub_dag_index: Option<u64>,
+        changes: Vec<crate::balance::BalanceEvent>,
+        delegation_changes: Vec<crate::temporary_store::DelegationEvent>,
+    ) -> Self {
+        TransactionKind::Settlement(crate::transaction::SettlementTransaction {
+            epoch,
+            round,
+            sub_dag_index,
+            changes,
+            delegation_changes,
+        })
+        .pipe(Self::new_system_transaction)
+    }
+
     pub fn new_system_transaction(system_transaction: TransactionKind) -> Self {
         system_transaction
             .pipe(TransactionData::new_system_transaction)
@@ -1299,6 +2207,34 @@ impl SharedInputObject {
         id: SYSTEM_STATE_OBJECT_ID,
         initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
         mutable: true,
+    };
+
+    /// Read-only view of SystemState — used by ops that only need to
+    /// fetch protocol parameters (e.g. `WithdrawAfterTimeout` reading
+    /// `channel_grace_period_ms`). Doesn't bump the shared object's
+    /// next-version, so multiple readers run in parallel.
+    pub const SYSTEM_OBJ_READ: Self = Self {
+        id: SYSTEM_STATE_OBJECT_ID,
+        initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
+        mutable: false,
+    };
+
+    /// Clock as a mutable shared input — used only by the consensus commit
+    /// prologue. User transactions that need wall-clock time should
+    /// instead construct a `SharedInputObject` with `mutable: false`.
+    pub const CLOCK_OBJ_MUT: Self = Self {
+        id: CLOCK_OBJECT_ID,
+        initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
+        mutable: true,
+    };
+
+    /// Clock as an immutable shared input. Multiple transactions in the
+    /// same commit can declare this without serializing on the Clock —
+    /// see [`crate::clock`] for details.
+    pub const CLOCK_OBJ_READ: Self = Self {
+        id: CLOCK_OBJECT_ID,
+        initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
+        mutable: false,
     };
 
     pub fn id(&self) -> ObjectID {
@@ -1437,6 +2373,14 @@ pub enum ObjectReadResultKind {
     DeletedSharedObject(Version, TransactionDigest),
     /// A shared object in a cancelled transaction. The sequence number embeds cancellation reason
     CancelledTransactionSharedObject(Version),
+    /// A shared object that the transaction declared as input, but which doesn't yet exist on
+    /// chain. Used for lazy-create patterns (e.g. `ProviderInbox` created by the first
+    /// `OpenChannel` for a payee, `Offering` read by `OpenChannel` but only existing once the
+    /// payee has registered it). The carried version is the `initial_shared_version` declared at
+    /// input time. Consumers that filter the input set into a concrete object map should drop
+    /// this variant; executors that look up the input via `read_object` will simply see `None`
+    /// and handle the missing-object case themselves.
+    NotYetCreated(Version),
 }
 
 impl std::fmt::Debug for ObjectReadResultKind {
@@ -1450,6 +2394,9 @@ impl std::fmt::Debug for ObjectReadResultKind {
             }
             ObjectReadResultKind::CancelledTransactionSharedObject(seq) => {
                 write!(f, "CancelledTransactionSharedObject({})", seq.value())
+            }
+            ObjectReadResultKind::NotYetCreated(version) => {
+                write!(f, "NotYetCreated({})", version.value())
             }
         }
     }
@@ -1479,6 +2426,14 @@ impl ObjectReadResult {
             panic!("only shared objects can be CancelledTransactionSharedObject");
         }
 
+        if let (
+            InputObjectKind::ImmOrOwnedObject(_),
+            ObjectReadResultKind::NotYetCreated(_),
+        ) = (&input_object_kind, &object)
+        {
+            panic!("only shared objects can be NotYetCreated");
+        }
+
         Self { input_object_kind, object }
     }
 
@@ -1491,14 +2446,7 @@ impl ObjectReadResult {
             ObjectReadResultKind::Object(object) => Some(object),
             ObjectReadResultKind::DeletedSharedObject(_, _) => None,
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
-        }
-    }
-
-    pub fn new_from_gas_object(gas: &Object) -> Self {
-        let objref = gas.compute_object_reference();
-        Self {
-            input_object_kind: InputObjectKind::ImmOrOwnedObject(objref),
-            object: ObjectReadResultKind::Object(gas.clone()),
+            ObjectReadResultKind::NotYetCreated(_) => None,
         }
     }
 
@@ -1514,6 +2462,10 @@ impl ObjectReadResult {
             (
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
+            ) => unreachable!(),
+            (
+                InputObjectKind::ImmOrOwnedObject(_),
+                ObjectReadResultKind::NotYetCreated(_),
             ) => unreachable!(),
             (InputObjectKind::SharedObject { mutable, .. }, _) => *mutable,
         }
@@ -1552,6 +2504,10 @@ impl ObjectReadResult {
                 InputObjectKind::ImmOrOwnedObject(_),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_),
             ) => unreachable!(),
+            (
+                InputObjectKind::ImmOrOwnedObject(_),
+                ObjectReadResultKind::NotYetCreated(_),
+            ) => unreachable!(),
             (InputObjectKind::SharedObject { .. }, _) => None,
         }
     }
@@ -1563,17 +2519,20 @@ impl ObjectReadResult {
     pub fn to_shared_input(&self) -> Option<SharedInput> {
         match self.input_object_kind {
             InputObjectKind::ImmOrOwnedObject(_) => None,
-            InputObjectKind::SharedObject { id, mutable, .. } => Some(match &self.object {
+            InputObjectKind::SharedObject { id, mutable, .. } => match &self.object {
                 ObjectReadResultKind::Object(obj) => {
-                    SharedInput::Existing(obj.compute_object_reference())
+                    Some(SharedInput::Existing(obj.compute_object_reference()))
                 }
                 ObjectReadResultKind::DeletedSharedObject(seq, digest) => {
-                    SharedInput::Deleted((id, *seq, mutable, *digest))
+                    Some(SharedInput::Deleted((id, *seq, mutable, *digest)))
                 }
                 ObjectReadResultKind::CancelledTransactionSharedObject(seq) => {
-                    SharedInput::Cancelled((id, *seq))
+                    Some(SharedInput::Cancelled((id, *seq)))
                 }
-            }),
+                // Lazy-create input that never materialized — no SharedInput entry to
+                // emit (the executor sees None via `read_object` and decides what to do).
+                ObjectReadResultKind::NotYetCreated(_) => None,
+            },
         }
     }
 
@@ -1582,6 +2541,7 @@ impl ObjectReadResult {
             ObjectReadResultKind::Object(obj) => Some(obj.previous_transaction),
             ObjectReadResultKind::DeletedSharedObject(_, digest) => Some(*digest),
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
+            ObjectReadResultKind::NotYetCreated(_) => None,
         }
     }
 }
@@ -1700,7 +2660,11 @@ impl InputObjects {
         self.objects
             .iter()
             .filter(|obj| obj.is_shared_object())
-            .map(|obj| obj.to_shared_input().expect("already filtered for shared objects"))
+            // NotYetCreated shared inputs (lazy-create patterns — see
+            // `ObjectReadResultKind::NotYetCreated`) don't contribute a SharedInput entry:
+            // there's no object to reference yet, and the executor decides what to do via
+            // the missing-object path. Drop them here.
+            .filter_map(|obj| obj.to_shared_input())
             .collect()
     }
 
@@ -1757,6 +2721,16 @@ impl InputObjects {
                         InputObjectKind::SharedObject { .. },
                         ObjectReadResultKind::CancelledTransactionSharedObject(_),
                     ) => None,
+                    (
+                        InputObjectKind::ImmOrOwnedObject(_),
+                        ObjectReadResultKind::NotYetCreated(_),
+                    ) => {
+                        unreachable!()
+                    }
+                    (
+                        InputObjectKind::SharedObject { .. },
+                        ObjectReadResultKind::NotYetCreated(_),
+                    ) => None,
                 }
             })
             .collect()
@@ -1773,6 +2747,10 @@ impl InputObjects {
                 ObjectReadResultKind::Object(object) => Some(object.data.version()),
                 ObjectReadResultKind::DeletedSharedObject(v, _) => Some(*v),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => None,
+                // Lazy-create inputs that don't yet exist contribute their declared
+                // `initial_shared_version` to the lamport timestamp so other shared
+                // inputs touched by the same tx never collide with this id.
+                ObjectReadResultKind::NotYetCreated(v) => Some(*v),
             })
             .chain(receiving_objects.iter().map(|object_ref| object_ref.1));
 

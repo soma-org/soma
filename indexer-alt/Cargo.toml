@@ -16,9 +16,6 @@ indexer-alt-schema.workspace = true
 indexer-framework = { workspace = true, features = ["postgres"] }
 indexer-kvstore.workspace = true
 indexer-pg-db.workspace = true
-indexer-store-traits.workspace = true
-serde_json.workspace = true
-soma-field-count.workspace = true
 tokio.workspace = true
 prometheus.workspace = true
 tracing.workspace = true

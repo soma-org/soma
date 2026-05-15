@@ -16,7 +16,7 @@ use crate::multiaddr::Multiaddr;
 pub mod certificate_deny_config;
 pub mod genesis_config;
 pub mod local_ip_utils;
-#[cfg(all(feature = "cloud-storage", feature = "ml"))]
+#[cfg(feature = "cloud-storage")]
 pub mod network_config;
 #[cfg(feature = "cloud-storage")]
 pub mod node_config;

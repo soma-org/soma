@@ -17,10 +17,6 @@ pub mod objects;
 pub mod transactions;
 pub mod watermarks;
 
-// Soma-specific tables
-pub mod models;
-pub mod rewards;
-pub mod targets;
 
 /// Column family name used by all tables.
 pub const FAMILY: &str = "soma";

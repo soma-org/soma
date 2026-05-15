@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 use inquire::Select;
 use types::config::genesis_config::SHANNONS_PER_SOMA;
 use types::genesis::UnsignedGenesis;
-use types::object::ObjectType;
 use types::system_state::validator::Validator;
 use types::system_state::{SystemStateTrait, get_system_state};
 
@@ -19,8 +18,6 @@ const STR_OTHER: &str = "Other";
 const STR_SOMA_DISTRIBUTION: &str = "SOMA Distribution";
 const STR_OBJECTS: &str = "Objects";
 const STR_VALIDATORS: &str = "Validators";
-const STR_MODELS: &str = "Models";
-const STR_TARGETS: &str = "Targets";
 
 pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
     let system_state =
@@ -48,7 +45,7 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
 
     // Main loop for inspection
     let main_options: Vec<&str> =
-        vec![STR_SOMA_DISTRIBUTION, STR_VALIDATORS, STR_MODELS, STR_TARGETS, STR_OBJECTS, STR_EXIT];
+        vec![STR_SOMA_DISTRIBUTION, STR_VALIDATORS, STR_OBJECTS, STR_EXIT];
 
     loop {
         let ans = Select::new(
@@ -63,12 +60,6 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
             }
             Ok(name) if name == STR_VALIDATORS => {
                 examine_validators(&consensus_validator_options, &consensus_validator_map);
-            }
-            Ok(name) if name == STR_MODELS => {
-                examine_models(genesis);
-            }
-            Ok(name) if name == STR_TARGETS => {
-                examine_targets(genesis);
             }
             Ok(name) if name == STR_OBJECTS => {
                 println!("Examine Objects (total: {})", genesis.objects().len());
@@ -132,33 +123,31 @@ fn examine_objects(genesis: &UnsignedGenesis) {
         match ans {
             Ok(name) if name == STR_EXIT => break,
             Ok(name) if name == STR_SOMA => {
-                for object in genesis.objects() {
-                    if object.as_coin().is_some() {
-                        println!("ID: {}", object.id());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
+                // Stage 13a: balances live in the accumulator, not as
+                // Coin objects. Show genesis balance allocations
+                // grouped by coin type.
+                for ((owner, coin_type), amount) in genesis.balances() {
+                    println!("{} {} → {}", coin_type, amount, owner);
                 }
-                print_divider("SOMA");
+                print_divider("Balances");
             }
+            // Stage 9d-C5: StakedSomaV1 deleted; genesis no longer
+            // produces such objects. The category is kept in the
+            // inspector menu for legacy chain history but always
+            // surfaces an empty list.
             Ok(name) if name == STR_STAKED_SOMA => {
-                for object in genesis.objects() {
-                    if object.as_staked_soma().is_some() {
-                        println!("ID: {}", object.id());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
-                }
+                println!("(no StakedSomaV1 objects post Stage 9d-C5)");
                 print_divider("StakedSoma");
             }
             Ok(name) if name == STR_OTHER => {
+                // All non-balance objects (SystemState, Clock, etc.).
+                // Stage 13a: no Coin objects exist in genesis, so
+                // every object here is "other".
                 for object in genesis.objects() {
-                    if object.as_coin().is_none() && object.as_staked_soma().is_none() {
-                        println!("ID: {}", object.id());
-                        println!("Type: {:?}", object.type_());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
+                    println!("ID: {}", object.id());
+                    println!("Type: {:?}", object.type_());
+                    println!("Owner: {:?}", object.owner());
+                    println!();
                 }
                 print_divider("Other");
             }
@@ -170,87 +159,6 @@ fn examine_objects(genesis: &UnsignedGenesis) {
         }
     }
     print_divider("Objects");
-}
-
-fn examine_models(genesis: &UnsignedGenesis) {
-    let system_state =
-        get_system_state(&genesis.objects()).expect("System state must exist in genesis");
-    let registry = system_state.model_registry();
-
-    println!(
-        "Active: {}  Pending: {}  Inactive: {}",
-        registry.active_models().count(),
-        registry.pending_models().count(),
-        registry.inactive_models().count(),
-    );
-    println!(
-        "Total Model Stake: {} shannons ({} SOMA)",
-        registry.total_model_stake,
-        registry.total_model_stake / SHANNONS_PER_SOMA,
-    );
-    println!();
-
-    for (i, (id, model)) in registry.active_models().enumerate() {
-        let stake = model.staking_pool.soma_balance;
-        println!("[{}] Active Model", i);
-        println!("  ID:               {}", id);
-        println!("  Owner:            {}", model.owner);
-        println!("  Architecture:     {}", model.architecture_version);
-        println!("  Commission Rate:  {} bps", model.commission_rate);
-        println!("  Stake:            {} shannons ({} SOMA)", stake, stake / SHANNONS_PER_SOMA);
-        println!("  Has Embedding:    true");
-        println!();
-    }
-
-    for (i, (id, model)) in registry.pending_models().enumerate() {
-        println!("[{}] Pending Model  ID: {}  Owner: {}", i, id, model.owner);
-    }
-
-    print_divider("Models");
-}
-
-fn examine_targets(genesis: &UnsignedGenesis) {
-    let system_state =
-        get_system_state(&genesis.objects()).expect("System state must exist in genesis");
-
-    let params = system_state.parameters();
-    println!("Target Parameters:");
-    println!("  initial_targets_per_epoch: {}", params.target_initial_targets_per_epoch);
-    println!("  models_per_target:         {}", params.target_models_per_target);
-    println!("  embedding_dim:             {}", params.target_embedding_dim);
-    println!("  reward_allocation_bps:     {}", params.target_reward_allocation_bps);
-    println!();
-
-    let ts = system_state.target_state();
-    println!("Target State:");
-    println!("  distance_threshold:           {}", ts.distance_threshold.as_scalar());
-    println!("  reward_per_target:            {} shannons", ts.reward_per_target);
-    println!("  targets_generated_this_epoch: {}", ts.targets_generated_this_epoch);
-    println!("  hits_this_epoch:              {}", ts.hits_this_epoch);
-    println!("  hits_ema:                     {}", ts.hits_ema);
-    println!();
-
-    let target_objects: Vec<_> =
-        genesis.objects().iter().filter(|o| *o.type_() == ObjectType::Target).collect();
-
-    println!("Target Objects: {}", target_objects.len());
-    for (i, obj) in target_objects.iter().enumerate() {
-        if let Some(target) = obj.as_target() {
-            println!(
-                "  [{}] ID: {}  Status: {:?}  Epoch: {}  Models: {}  Reward: {}",
-                i,
-                obj.id(),
-                target.status,
-                target.generation_epoch,
-                target.model_ids.len(),
-                target.reward_pool,
-            );
-        } else {
-            println!("  [{}] ID: {}  (failed to deserialize)", i, obj.id());
-        }
-    }
-
-    print_divider("Targets");
 }
 
 fn examine_soma_distribution(soma_distribution: &BTreeMap<String, BTreeMap<String, (&str, u64)>>) {
@@ -292,8 +200,8 @@ fn display_validator(validator: &Validator) {
     println!("Voting Power: {}", validator.voting_power);
     println!("Commission Rate: {}", validator.commission_rate);
     println!("Staking Pool ID: {}", validator.staking_pool.id);
-    println!("Staking Pool SOMA Balance: {}", validator.staking_pool.soma_balance);
-    println!("Next Epoch Stake: {}", validator.next_epoch_stake);
+    println!("Active Stake: {}", validator.staking_pool.active_stake);
+    println!("Pending Active Stake: {}", validator.staking_pool.pending_active_stake);
     print_divider(&validator.metadata.soma_address.to_string());
 }
 

@@ -19,7 +19,6 @@ use anyhow::{Context, Result};
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use indexer_alt::setup_indexer;
-use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
 use indexer_framework::ingestion::{ClientArgs, IngestionConfig};
 use indexer_framework::{Indexer, IndexerArgs};
 use indexer_pg_db::temp::TempDb;
@@ -53,12 +52,13 @@ pub struct OffchainCluster {
 impl OffchainCluster {
     /// Start the full off-chain stack.
     ///
-    /// `checkpoint_dir` is the directory where `.binpb.zst` checkpoint files are written
-    /// (either by a TestCluster fullnode or manually via [`write_checkpoint_file`]).
+    /// `client_args` selects the indexer's ingestion source: `rpc_api_url` / `streaming_url`
+    /// to pull from a TestCluster fullnode's gRPC, or `local_ingestion_path` to read
+    /// `.binpb.zst` files written manually via [`write_checkpoint_file`].
     ///
     /// `indexer_args` configures the indexer (e.g. `last_checkpoint` to bound ingestion).
     pub async fn new(
-        checkpoint_dir: &Path,
+        client_args: ClientArgs,
         indexer_args: IndexerArgs,
         registry: &prometheus::Registry,
     ) -> Result<Self> {
@@ -79,14 +79,7 @@ impl OffchainCluster {
             .await
             .context("Failed to run migrations")?;
 
-        // 2. Indexer with local ingestion
-        let client_args = ClientArgs {
-            ingestion: IngestionClientArgs {
-                local_ingestion_path: Some(checkpoint_dir.to_path_buf()),
-                ..Default::default()
-            },
-        };
-
+        // 2. Indexer — ingestion source is whatever `client_args` selects.
         let mut indexer = Indexer::new(
             db.clone(),
             indexer_args,

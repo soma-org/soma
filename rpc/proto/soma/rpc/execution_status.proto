@@ -223,6 +223,79 @@ message ExecutionError {
 
     // Model decryption key commitment mismatch
     MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH = 57;
+
+    // Gas coin must be USDC
+    INVALID_GAS_COIN_TYPE = 58;
+
+    //
+    // Payment-channel errors.
+    //
+    // Channel op needs payee but caller wasn't.
+    CHANNEL_CALLER_NOT_PAYEE = 60;
+    // Channel op needs payer but caller wasn't.
+    CHANNEL_CALLER_NOT_PAYER = 61;
+    // Voucher cumulative_amount <= channel.settled_amount.
+    CHANNEL_VOUCHER_NOT_MONOTONIC = 62;
+    // Voucher cumulative_amount > deposit + settled_amount.
+    CHANNEL_OVERSPEND = 63;
+    // WithdrawAfterTimeout before grace_period_ms elapsed.
+    CHANNEL_GRACE_NOT_ELAPSED = 64;
+    // RequestClose called twice.
+    CHANNEL_CLOSE_ALREADY_PENDING = 65;
+    // WithdrawAfterTimeout without a prior RequestClose.
+    CHANNEL_NO_CLOSE_REQUEST = 66;
+    // Voucher signature did not verify.
+    CHANNEL_INVALID_VOUCHER_SIGNATURE = 67;
+    // OpenChannel/TopUp amount was zero.
+    CHANNEL_AMOUNT_ZERO = 68;
+    // OpenChannel input invariant failed (self-channel, zero signer).
+    CHANNEL_INVALID_INPUT = 69;
+    // TopUp coin_type didn't match channel token.
+    CHANNEL_COIN_TYPE_MISMATCH = 70;
+    // Object loaded for a channel op was not a Channel.
+    NOT_A_CHANNEL = 71;
+    // Clock not declared as a shared input by a channel op that needs it.
+    CHANNEL_CLOCK_MISSING = 72;
+
+    //
+    // Provider registry errors
+    //
+    // RegisterProvider on an address that already has a Provider object.
+    PROVIDER_ALREADY_EXISTS = 80;
+    // UpdateProvider for an address that has not registered yet.
+    PROVIDER_NOT_FOUND = 81;
+    // UpdateProvider signer != Provider.address (or args.provider_id != derive_id(signer)).
+    PROVIDER_CALLER_MISMATCH = 82;
+    // Endpoint string was empty or exceeded the max length cap.
+    PROVIDER_INVALID_ENDPOINT = 83;
+    // Clock not declared as a shared input by a Provider op.
+    PROVIDER_CLOCK_MISSING = 84;
+
+    //
+    // Per-(payer, payee) cap (ProviderInbox) errors
+    //
+    // (payer, payee) already holds the maximum allowed open channels.
+    CHANNEL_TOO_MANY_OPEN_FOR_PAIR = 90;
+    // Declared ProviderInbox payee != channel.payee on Withdraw.
+    CHANNEL_INBOX_PAYEE_MISMATCH = 91;
+    // Object at ProviderInbox::derive_id(payee) was not a ProviderInbox.
+    NOT_A_PROVIDER_INBOX = 92;
+
+    //
+    // Per-(provider, model) offering errors
+    //
+    // RegisterOffering for a (signer, model_id) that already has a row.
+    OFFERING_ALREADY_EXISTS = 100;
+    // UpdateOffering / DeactivateOffering with no on-chain row for the pair.
+    OFFERING_NOT_FOUND = 101;
+    // Update/Deactivate offering_id != derive_id(signer, model_id), or
+    // attempt to mutate an offering owned by a different provider.
+    OFFERING_CALLER_MISMATCH = 102;
+    // Register/Update against a model_id absent from the protocol-config
+    // ModelRegistry at the active version.
+    OFFERING_UNKNOWN_MODEL = 103;
+    // OpenChannel against a (payee, model_id) pair with no active Offering.
+    CHANNEL_OFFERING_MISSING = 104;
   }
 
   optional ExecutionErrorKind kind = 2;

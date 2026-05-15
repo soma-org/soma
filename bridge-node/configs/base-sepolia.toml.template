@@ -1,0 +1,209 @@
+# =============================================================================
+# Bridge-node config — Base Sepolia (Phase 1 ops launch)
+# =============================================================================
+#
+# This is a sed-substituted template (NOT real Jinja). Operators replace the
+# {{...}} placeholders with their per-validator values before launching the
+# bridge node:
+#
+#   sed -e "s|{{VALIDATOR_NAME}}|alice|g" \
+#       -e "s|{{OPERATOR_PRIVATE_KEY_HEX}}|0xabc...|g" \
+#       -e "s|{{ALCHEMY_API_KEY}}|abc123|g" \
+#       -e "s|{{SOMA_BRIDGE_CONTRACT_ADDRESS}}|0x...|g" \
+#       -e "s|{{USDC_CONTRACT_ADDRESS}}|0x036CbD53842c5426634e7929541eC2318f3dCF7e|g" \
+#       -e "s|{{SOMA_RPC_URL}}|http://localhost:9000|g" \
+#       configs/base-sepolia.toml.template > configs/alice.toml
+#
+# See ./README.md for the full substitution table + where each value comes
+# from in the deployment sequence.
+#
+# Struct reference: `bridge-node/src/config.rs::BridgeNodeConfig`. Field
+# order below tracks struct order so a stray rename is easy to spot.
+# =============================================================================
+
+# Path to the ECDSA bridge-committee key file (Secp256k1 private key).
+# This is the validator's *bridge* key (signs inner certs), NOT the Eth
+# wallet key (which signs outbound EIP-1559 envelopes — see
+# [outbound_relayer.operator_private_key_hex] below).
+bridge_key_path = "/var/lib/soma/{{VALIDATOR_NAME}}/bridge.key"
+
+# Multi-provider Eth RPC quorum. The bridge node rotates through these on
+# failure (auto_pause_failure_threshold below caps consecutive failures
+# before the node enters auto-pause). Order matters for read fan-out — put
+# the lowest-latency / highest-rate-limit provider first.
+#
+# Phase 1 recommendation: Alchemy (paid, primary) → Ankr (free, fallback)
+# → public Base RPC (last-resort). Replace {{ALCHEMY_API_KEY}} with your
+# Alchemy app key. See ./README.md §"Required Base Sepolia RPC endpoints".
+eth_rpc_urls = [
+    "https://base-sepolia.g.alchemy.com/v2/{{ALCHEMY_API_KEY}}",
+    "https://rpc.ankr.com/base_sepolia",
+    "https://sepolia.base.org",
+]
+
+# Deployed `SomaBridge` proxy address on Base Sepolia. Comes from the
+# stdout of `forge script bridge/evm/script/Deploy.s.sol --broadcast ...`
+# (the `SomaBridge proxy:` line). MUST match the address used by every
+# other validator in the committee — a mismatch here silently routes one
+# validator's reads against the wrong contract and breaks consensus.
+bridge_contract_address = "{{SOMA_BRIDGE_CONTRACT_ADDRESS}}"
+
+# Local Soma fullnode RPC. The bridge node subscribes to checkpoints from
+# this endpoint for outbound Withdrawal scanning. Use the validator's own
+# fullnode (loopback), not a public RPC — sustained checkpoint streaming
+# will rate-limit a shared endpoint.
+soma_rpc_url = "{{SOMA_RPC_URL}}"
+
+# HTTP REST sig-exchange endpoint (Sui parity). Peers GET signatures off
+# this endpoint via routes like `/sign/bridge_tx/eth/soma/{tx}/{idx}`.
+# MUST be reachable from every other committee member — bind to a public
+# interface and open the firewall. Defaults to 0.0.0.0:9191; override if
+# you run multiple bridge nodes on one host.
+http_listen_address = "0.0.0.0:9191"
+
+# Operator's pre-approved governance whitelist. The HTTP server's
+# `GovernanceVerifier` rejects sig requests for any governance action not
+# byte-identical to one in this list. Token transfers (deposit/withdrawal)
+# are server-verified via on-chain state and do NOT belong here.
+#
+# Empty for Phase 1 launch — no scheduled governance signatures. To add
+# one (e.g. an EmergencyPause), append a TOML entry matching the
+# externally-tagged BridgeAction enum, e.g.:
+#
+#   [[approved_governance_actions]]
+#   EmergencyPause = { nonce = 0 }
+#
+# Paste the output of `cargo run --bin bridge-committee-export -- ...` if
+# you need the canonical committee-bound encoding for an EvmContractUpgrade
+# or UpdateCommitteeBlocklist entry.
+approved_governance_actions = []
+
+# Peer bridge nodes for signature exchange. Empty = auto-discover from the
+# on-chain committee's `BridgeMember.http_url`. Override only when running
+# split-horizon DNS where the on-chain URL isn't reachable from this host.
+peer_addresses = []
+
+# Eth chain ID for Base Sepolia. NOTE: this is the *EVM* chain id (84532),
+# distinct from Soma's wire-format `BridgeChainId::BaseSepolia` byte tag
+# (13). The on-chain SomaBridge contract reads this back to assert it was
+# deployed against the right chain.
+eth_chain_id = 84532
+
+# Finalized block poll interval (ms). Base Sepolia produces blocks every
+# ~2s and finalizes ~12-15s behind head; 5s is fine for production. Lower
+# only if you've measured your provider's rate-limit headroom.
+eth_poll_interval_ms = 5000
+
+# Maximum block range per `eth_getLogs` query. Alchemy free tier caps at
+# ~500 blocks; paid tiers go higher. 1000 is the safe default for our
+# provider mix.
+max_log_query_range = 1000
+
+# Consecutive RPC failures (across the multi-provider rotation) before the
+# bridge node enters auto-pause. 10 ~= 50s of total downtime at 5s poll
+# interval. Don't lower this in production — flaky providers will trip it.
+auto_pause_failure_threshold = 10
+
+# Max retry-elapsed time (seconds) for transient RPC errors before the
+# call propagates as a hard failure. 120s lets the exponential backoff
+# absorb a provider outage without killing the syncer.
+max_retry_elapsed_secs = 120
+
+# RocksDB WAL directory — stores pending actions + Eth/Soma cursors so a
+# bridge-node restart picks up from the last processed block instead of
+# re-scanning from genesis. Pick a path under the validator's persistent
+# data volume.
+wal_path = "/var/lib/soma/{{VALIDATOR_NAME}}/bridge-wal"
+
+# Eth block height to start scanning from on first run (only used when the
+# WAL has no recorded cursor for the bridge contract). Set to the block
+# number that contains the `Deploy.s.sol` broadcast tx — otherwise the
+# first scan downloads useless logs back to genesis. Pull this from the
+# Foundry broadcast JSON: `out/broadcast/Deploy.s.sol/84532/run-latest.json`.
+eth_start_block_fallback = {{ETH_DEPLOY_BLOCK}}
+
+# -----------------------------------------------------------------------------
+# Conservation-invariant watchdog (opt-in)
+# -----------------------------------------------------------------------------
+# When present, the bridge node spawns a background task that reads the
+# SomaBridge's USDC balance and asserts the conservation invariant
+# (Eth-side locked == Soma-side minted ± in_flight_tolerance_micro). On
+# sustained violation it emits an EmergencyPause auto-pause action.
+# REQUIRED for Phase 1 production launch.
+
+[watchdog]
+# Eth-side USDC ERC20 address. Base Sepolia USDC (Circle's testnet token).
+usdc_contract_address = "{{USDC_CONTRACT_ADDRESS}}"
+
+# Eth-side SomaBridge proxy — the "locked pool" balance the watchdog
+# reads. Typically the same value as `bridge_contract_address` above, but
+# specified separately so a misconfigured node can't accidentally read
+# its watchdog input from the wrong contract.
+eth_bridge_contract_address = "{{SOMA_BRIDGE_CONTRACT_ADDRESS}}"
+
+# Poll cadence (ms). 5s = 6 polls / 30s violation window before auto-pause
+# fires.
+poll_interval_ms = 5000
+
+# Consecutive violation polls before auto-pause. 6 at 5s = 30s of
+# sustained violation. Below that, expect transient false positives from
+# in-flight transfers between Eth confirmation and Soma checkpoint.
+failure_threshold = 6
+
+# USDC-micro tolerance for in-flight transfers (1 USDC = 1_000_000 micro).
+# 1_000_000_000 = 1000 USDC of in-flight slack — covers realistic burst
+# volume during normal operation. Tune downward only after measuring real
+# steady-state in-flight volume on your deployment.
+in_flight_tolerance_micro = 1000000000
+
+# -----------------------------------------------------------------------------
+# Outbound Eth relayer (opt-in)
+# -----------------------------------------------------------------------------
+# When present, the bridge node polls Soma for cert-attached
+# PendingWithdrawal objects and submits the release tx to Base Sepolia.
+# Requires a funded Eth wallet (the operator wallet, NOT the bridge key).
+# REQUIRED for Phase 1 — the bridge is non-functional without it.
+
+[outbound_relayer]
+# Deployed `SomaBridge` proxy address — same as top-level
+# `bridge_contract_address`. Duplicated here because the outbound relayer
+# can be wired against a separate contract during a phased upgrade.
+bridge_contract_address = "{{SOMA_BRIDGE_CONTRACT_ADDRESS}}"
+
+# Operator wallet private key (32 bytes hex, with or without `0x`). Pays
+# gas for every release tx and signs the EIP-1559 envelope. Provision via
+# the Coinbase Developer Platform faucet — see ./README.md §"Provisioning
+# the operator wallet". **NOT** the bridge committee key.
+operator_private_key_hex = "{{OPERATOR_PRIVATE_KEY_HEX}}"
+
+# Poll cadence (ms) for scanning Soma PendingWithdrawal objects. 10s is
+# the production default — withdrawals are not latency-sensitive on the
+# scale of a 12s Eth finality window.
+poll_interval_ms = 10000
+
+# Max withdrawal nonces to scan per poll. The relayer walks a fixed
+# window each tick (no chain-state reader for `next_withdrawal_nonce`
+# yet). 1024 is fine for Phase 1 launch volumes — increase only if you
+# observe nonce lag in the metrics.
+scan_window = 1024
+
+# Override the Eth RPC for outbound writes. Leave commented to reuse
+# `eth_rpc_urls[0]` (Alchemy by default). Uncomment + set to a Flashbots-
+# style protected RPC if you're concerned about MEV on release txs.
+# eth_submit_rpc_url = "https://base-sepolia.flashbots.example/..."
+
+# =============================================================================
+# Phase 7 smoke-test toggles (commented out — uncomment for testing only)
+# =============================================================================
+# Lower thresholds + tighter polls for end-to-end smoke testing on a fresh
+# Base Sepolia deployment. NEVER ship these to production — the watchdog
+# will trip on transient in-flight balances.
+#
+# [watchdog]
+# poll_interval_ms = 1000           # 1s polls for faster smoke-test signal
+# failure_threshold = 3             # 3s violation window (vs 30s prod)
+# in_flight_tolerance_micro = 0     # zero tolerance — flag any drift
+#
+# [outbound_relayer]
+# poll_interval_ms = 2000           # 2s outbound poll for quicker test signal
+# scan_window = 32                  # smaller window — smoke tests have ≤1 tx

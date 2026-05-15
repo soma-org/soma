@@ -249,21 +249,47 @@ impl Client {
         })
     }
 
-    /// List targets with optional filtering by status and epoch.
-    ///
-    /// Returns a paginated list of targets. Use `status_filter` to filter by "open", "filled", or "claimed".
-    /// Use `epoch_filter` to filter by generation epoch.
-    pub async fn list_targets(
-        &mut self,
-        request: impl tonic::IntoRequest<proto::ListTargetsRequest>,
-    ) -> Result<proto::ListTargetsResponse> {
-        self.0.state_client().list_targets(request).await.map(|r| r.into_inner())
+    /// Read the sender's USDC accumulator balance. USDC is the gas /
+    /// typical transferable currency; for other coin types (e.g.
+    /// SOMA) use [`get_balance_by_coin_type`].
+    pub async fn get_balance(&mut self, owner: &types::base::SomaAddress) -> Result<u64> {
+        self.get_balance_by_coin_type(owner, types::object::CoinType::Usdc).await
     }
 
-    pub async fn get_balance(&mut self, owner: &types::base::SomaAddress) -> Result<u64> {
-        let request = proto::GetBalanceRequest { owner: Some(owner.to_string()) };
+    /// Read the accumulator balance for `(owner, coin_type)`.
+    /// Stage 13c: balances are per-coin-type — there is no "total"
+    /// across coin types.
+    pub async fn get_balance_by_coin_type(
+        &mut self,
+        owner: &types::base::SomaAddress,
+        coin_type: types::object::CoinType,
+    ) -> Result<u64> {
+        let coin_type_str = match coin_type {
+            types::object::CoinType::Usdc => "USDC",
+            types::object::CoinType::Soma => "SOMA",
+        };
+        let request = proto::GetBalanceRequest {
+            owner: Some(owner.to_string()),
+            coin_type: Some(coin_type_str.to_string()),
+        };
         let response = self.0.state_client().get_balance(request).await?.into_inner();
         response.balance.ok_or_else(|| tonic::Status::not_found("balance not found in response"))
+    }
+
+    /// Stage 9d: list a staker's active delegations from the on-chain
+    /// `delegations` table. Returns the full response including the
+    /// server-computed `total_principal` so callers don't have to sum
+    /// again (and can't be lied to by a malicious node omitting rows
+    /// — the total is over-the-wire authoritative).
+    pub async fn list_delegations(
+        mut self,
+        request: impl tonic::IntoRequest<proto::ListDelegationsRequest>,
+    ) -> Result<proto::ListDelegationsResponse> {
+        self.0
+            .state_client()
+            .list_delegations(request)
+            .await
+            .map(|r| r.into_inner())
     }
 
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
@@ -326,22 +352,6 @@ impl Client {
         self.0.ledger_client().get_epoch(request).await.map(|r| r.into_inner())
     }
 
-    /// Fetch the current on-chain model architecture version.
-    pub async fn get_architecture_version(&mut self) -> Result<u64> {
-        let response = self.get_epoch_with_config(None).await?;
-        let config = response
-            .epoch
-            .and_then(|e| e.protocol_config)
-            .ok_or_else(|| tonic::Status::not_found("protocol config not found"))?;
-        config
-            .attributes
-            .get("model_architecture_version")
-            .and_then(|v| v.parse::<u64>().ok())
-            .ok_or_else(|| {
-                tonic::Status::not_found("model_architecture_version not found in protocol config")
-            })
-    }
-
     pub async fn simulate_transaction(
         &mut self,
         tx_data: &types::transaction::TransactionData,
@@ -387,6 +397,7 @@ impl Client {
         transaction_query_result_try_from_proto(&executed_tx)
             .map_err(|e| status_from_error_with_metadata(e, metadata))
     }
+
 }
 
 #[derive(Debug)]

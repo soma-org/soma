@@ -12,7 +12,7 @@ use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for system state transactions (validators)
 pub struct ValidatorExecutor;
@@ -40,7 +40,6 @@ impl ValidatorExecutor {
                 args.net_address.clone(),
                 args.p2p_address.clone(),
                 args.primary_address.clone(),
-                args.proxy_address.clone(),
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
             ),
             TransactionKind::RemoveValidator(args) => {
@@ -64,13 +63,17 @@ impl ValidatorExecutor {
 }
 
 impl TransactionExecutor for ValidatorExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        // Validator-management ops touch only SystemState; small fixed cost.
+        1
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         // Get system state object
         let state_object = store
@@ -110,5 +113,3 @@ impl TransactionExecutor for ValidatorExecutor {
         Ok(())
     }
 }
-
-impl FeeCalculator for ValidatorExecutor {}

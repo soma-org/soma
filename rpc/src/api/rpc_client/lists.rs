@@ -7,7 +7,9 @@ use futures::stream::Stream;
 use prost_types::FieldMask;
 
 use super::{Client, Result};
-use crate::proto::soma::{ListOwnedObjectsRequest, Object};
+use crate::proto::soma::{
+    ListDelegationsRequest, ListDelegationsResponse, ListOwnedObjectsRequest, Object,
+};
 use crate::utils::field::FieldMaskUtil as _;
 
 impl Client {
@@ -22,6 +24,23 @@ impl Client {
     /// # Returns
     /// A stream that yields `Result<Object>` instances. If any RPC call fails, the
     /// tonic::Status from that request is returned.
+    /// Stage 9d: list a staker's active delegations from the on-chain
+    /// `delegations` table — the Stage 9d analogue of scanning their
+    /// owned StakedSomaV1 objects. Single-shot (no pagination today;
+    /// realistic stake-row counts per staker are bounded by the
+    /// number of validator pools).
+    pub async fn list_delegations(
+        &self,
+        request: impl tonic::IntoRequest<ListDelegationsRequest>,
+    ) -> Result<ListDelegationsResponse> {
+        let mut client = self.clone();
+        client
+            .state_client()
+            .list_delegations(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
     pub fn list_owned_objects(
         &self,
         request: impl tonic::IntoRequest<ListOwnedObjectsRequest>,

@@ -5,21 +5,15 @@
 use fastcrypto::ed25519::Ed25519KeyPair;
 
 use crate::base::SomaAddress;
-use crate::checksum::Checksum;
 use crate::consensus::ConsensusCommitPrologueV1;
-use crate::crypto::{DecryptionKey, default_hash, get_key_pair};
+use crate::crypto::{default_hash, get_key_pair};
 use crate::digests::{
-    AdditionalConsensusStateDigest, ConsensusCommitDigest, DecryptionKeyCommitment,
-    EmbeddingCommitment, ModelWeightsCommitment, ObjectDigest,
+    AdditionalConsensusStateDigest, ConsensusCommitDigest, ObjectDigest,
 };
 use crate::envelope::Message;
+use crate::error::SomaError;
 use crate::intent::{Intent, IntentMessage};
-use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use crate::model::ModelId;
 use crate::object::{ObjectID, ObjectRef, Version};
-use crate::submission::SubmissionManifest;
-use crate::target::TargetId;
-use crate::tensor::SomaTensor;
 use crate::transaction::*;
 use crate::unit_tests::utils::to_sender_signed_transaction;
 use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
@@ -33,12 +27,38 @@ fn random_object_ref() -> ObjectRef {
     (ObjectID::random(), Version::from_u64(1), ObjectDigest::random())
 }
 
-/// Create a simple TransferCoin TransactionData for testing.
+/// Stage 13b helper: build a BalanceTransfer-mode TransactionData
+/// matching what `new_transfer_coin` used to produce in coin-mode.
+fn balance_transfer_data(
+    recipient: SomaAddress,
+    sender: SomaAddress,
+    amount: u64,
+    gas_ref: ObjectRef,
+) -> TransactionData {
+    TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, amount)],
+        }),
+        sender,
+        vec![gas_ref],
+    )
+}
+
+/// Create a simple BalanceTransfer TransactionData for testing.
+/// Stage 13b: was a coin-mode TransferCoin; balance-mode now.
 fn make_transfer_coin_data() -> (TransactionData, SomaAddress) {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(1000), coin_ref);
+    let data = TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1000)],
+        }),
+        sender,
+        vec![coin_ref],
+    );
     (data, sender)
 }
 
@@ -48,28 +68,6 @@ fn make_transfer_coin_data() -> (TransactionData, SomaAddress) {
 fn make_system_tx_data(kind: TransactionKind) -> TransactionData {
     assert!(kind.is_system_tx(), "kind must be a system transaction");
     TransactionData::new(kind, SomaAddress::default(), vec![])
-}
-
-/// Create a dummy Manifest for model / submission tests.
-fn dummy_manifest() -> Manifest {
-    let url = url::Url::parse("https://example.com/weights.bin").unwrap();
-    let metadata = Metadata::V1(MetadataV1::new(Checksum::default(), 1024));
-    Manifest::V1(ManifestV1::new(url, metadata))
-}
-
-/// Create a dummy SubmissionManifest.
-fn dummy_submission_manifest() -> SubmissionManifest {
-    SubmissionManifest::new(dummy_manifest())
-}
-
-/// Create a dummy SomaTensor (a single-element embedding).
-fn dummy_tensor() -> SomaTensor {
-    SomaTensor::new(vec![1.0, 2.0, 3.0], vec![3])
-}
-
-/// Create a dummy scalar SomaTensor for distance scores.
-fn dummy_scalar_tensor() -> SomaTensor {
-    SomaTensor::new(vec![0.5], vec![1])
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +123,7 @@ fn test_signed_transaction() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(500), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 500, coin_ref);
 
     let tx = Transaction::from_data_and_signer(data.clone(), vec![&kp]);
 
@@ -150,8 +148,6 @@ fn test_transaction_kind_classification() {
     assert!(genesis.is_system_tx());
     assert!(!genesis.is_validator_tx());
     assert!(!genesis.is_staking_tx());
-    assert!(!genesis.is_model_tx());
-    assert!(!genesis.is_submission_tx());
 
     let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
@@ -181,7 +177,6 @@ fn test_transaction_kind_classification() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     assert!(add_val.is_validator_tx());
@@ -206,87 +201,27 @@ fn test_transaction_kind_classification() {
 
     // Staking transactions
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(add_stake.is_staking_tx());
     assert!(!add_stake.is_validator_tx());
     assert!(!add_stake.is_system_tx());
 
-    let withdraw_stake = TransactionKind::WithdrawStake { staked_soma: random_object_ref() };
+    let withdraw_stake = TransactionKind::WithdrawStake {
+        pool_id: ObjectID::random(),
+        amount: None,
+    };
     assert!(withdraw_stake.is_staking_tx());
 
-    // Model transactions
-    let model_id = ModelId::random();
-    let create_model = TransactionKind::CreateModel(CreateModelArgs {
-        stake_amount: 1000,
-        commission_rate: 100,
-        architecture_version: 1,
-    });
-    assert!(create_model.is_model_tx());
-    assert!(!create_model.is_staking_tx());
-
-    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id,
-        manifest: dummy_manifest(),
-        weights_commitment: ModelWeightsCommitment::random(),
-        embedding_commitment: EmbeddingCommitment::random(),
-        decryption_key_commitment: DecryptionKeyCommitment::random(),
-    });
-    assert!(commit_model.is_model_tx());
-    assert!(!commit_model.is_staking_tx());
-
-    let reveal_model = TransactionKind::RevealModel(RevealModelArgs {
-        model_id,
-        decryption_key: DecryptionKey::new([0u8; 32]),
-        embedding: dummy_tensor(),
-    });
-    assert!(reveal_model.is_model_tx());
-
-    let deactivate = TransactionKind::DeactivateModel { model_id };
-    assert!(deactivate.is_model_tx());
-
-    let report_model = TransactionKind::ReportModel { model_id };
-    assert!(report_model.is_model_tx());
-
-    let undo_report_model = TransactionKind::UndoReportModel { model_id };
-    assert!(undo_report_model.is_model_tx());
-
-    // Submission transactions
-    let target_id: TargetId = ObjectID::random();
-    let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id,
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    assert!(submit_data.is_submission_tx());
-    assert!(!submit_data.is_model_tx());
-
-    let claim_rewards = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id });
-    assert!(claim_rewards.is_submission_tx());
-
-    let report_sub = TransactionKind::ReportSubmission { target_id };
-    assert!(report_sub.is_submission_tx());
-
-    let undo_report_sub = TransactionKind::UndoReportSubmission { target_id };
-    assert!(undo_report_sub.is_submission_tx());
-
     // Coin/object transactions should not match any category
-    let transfer_coin = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
-    };
+    let transfer_coin = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer_coin.is_system_tx());
     assert!(!transfer_coin.is_validator_tx());
     assert!(!transfer_coin.is_staking_tx());
-    assert!(!transfer_coin.is_model_tx());
-    assert!(!transfer_coin.is_submission_tx());
 }
 
 // ---------------------------------------------------------------------------
@@ -337,16 +272,15 @@ fn test_user_tx_has_gas() {
     assert!(!data.gas().is_empty(), "TransferCoin should have gas payment");
     assert!(!data.is_system_tx());
 
-    // AddStake
+    // AddStake (Stage 9d-C2: balance-mode, no coin input)
     let sender = SomaAddress::random();
-    let coin_ref = random_object_ref();
     let gas_ref = random_object_ref();
     let add_stake_data = TransactionData::new(
-        TransactionKind::AddStake { address: SomaAddress::random(), coin_ref, amount: Some(1000) },
+        TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 },
         sender,
         vec![gas_ref],
     );
-    assert!(!add_stake_data.gas().is_empty(), "AddStake should have gas payment");
+    assert!(!add_stake_data.gas().is_empty(), "AddStake can still take coin-mode gas");
 }
 
 // ---------------------------------------------------------------------------
@@ -355,9 +289,6 @@ fn test_user_tx_has_gas() {
 
 #[test]
 fn test_all_tx_kinds_bcs_roundtrip() {
-    let model_id = ModelId::random();
-    let target_id: TargetId = ObjectID::random();
-
     let kinds: Vec<TransactionKind> = vec![
         // System
         TransactionKind::Genesis(GenesisTransaction { objects: vec![] }),
@@ -384,7 +315,6 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             net_address: vec![40],
             p2p_address: vec![50],
             primary_address: vec![60],
-            proxy_address: vec![70],
             proof_of_possession: vec![80],
         }),
         TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes: vec![10] }),
@@ -392,74 +322,62 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         TransactionKind::UndoReportValidator { reportee: SomaAddress::random() },
         TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs::default()),
         TransactionKind::SetCommissionRate { new_rate: 100 },
-        // Coin/object
-        TransactionKind::TransferCoin {
-            coin: random_object_ref(),
-            amount: Some(500),
-            recipient: SomaAddress::random(),
-        },
-        TransactionKind::PayCoins {
-            coins: vec![random_object_ref(), random_object_ref()],
-            amounts: Some(vec![100, 200]),
-            recipients: vec![SomaAddress::random(), SomaAddress::random()],
-        },
+        // Object / balance transfers (Stage 13b: Transfer / MergeCoins gone)
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 500)],
+        }),
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 100), (SomaAddress::random(), 200)],
+        }),
         TransactionKind::TransferObjects {
             objects: vec![random_object_ref()],
             recipient: SomaAddress::random(),
         },
         // Staking
         TransactionKind::AddStake {
-            address: SomaAddress::random(),
-            coin_ref: random_object_ref(),
-            amount: Some(1000),
+            validator: SomaAddress::random(),
+            amount: 1000,
         },
-        TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
-        // Model
-        TransactionKind::CreateModel(CreateModelArgs {
-            stake_amount: 5000,
-            commission_rate: 200,
-            architecture_version: 1,
-        }),
-        TransactionKind::CommitModel(CommitModelArgs {
-            model_id,
-            manifest: dummy_manifest(),
-            weights_commitment: ModelWeightsCommitment::random(),
-            embedding_commitment: EmbeddingCommitment::random(),
-            decryption_key_commitment: DecryptionKeyCommitment::random(),
-        }),
-        TransactionKind::RevealModel(RevealModelArgs {
-            model_id,
-            decryption_key: DecryptionKey::new([0u8; 32]),
-            embedding: dummy_tensor(),
-        }),
-        TransactionKind::AddStakeToModel {
-            model_id,
-            coin_ref: random_object_ref(),
+        TransactionKind::WithdrawStake {
+            pool_id: ObjectID::random(),
             amount: Some(500),
         },
-        TransactionKind::SetModelCommissionRate { model_id, new_rate: 300 },
-        TransactionKind::DeactivateModel { model_id },
-        TransactionKind::ReportModel { model_id },
-        TransactionKind::UndoReportModel { model_id },
-        // Submission
-        TransactionKind::SubmitData(SubmitDataArgs {
-            target_id,
-            data_manifest: dummy_submission_manifest(),
-            model_id,
-            embedding: dummy_tensor(),
-            distance_score: dummy_scalar_tensor(),
-            loss_score: SomaTensor::new(vec![0.5], vec![1]),
-            bond_coin: random_object_ref(),
+        // Bridge
+        TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
+            nonce: 1,
+            eth_tx_hash: [0u8; 32],
+            recipient: SomaAddress::random(),
+            amount: 1000,
+            timestamp_ms: 0,
+            sender_eth_address: [0u8; 20],
+            target_chain: crate::bridge::BridgeChainId::SomaCustom,
+            token_type: crate::bridge::USDC_TOKEN_TYPE,
+            signatures: Default::default(),
         }),
-        TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        TransactionKind::ReportSubmission { target_id },
-        TransactionKind::UndoReportSubmission { target_id },
+        TransactionKind::BridgeWithdraw(crate::transaction::BridgeWithdrawArgs {
+            amount: 500,
+            recipient_eth_address: [0u8; 20],
+            target_chain: crate::bridge::BridgeChainId::EthCustom,
+        }),
+        TransactionKind::BridgeEmergencyPause(crate::transaction::BridgeEmergencyPauseArgs {
+            nonce: 0,
+            signatures: Default::default(),
+        }),
+        TransactionKind::BridgeEmergencyUnpause(crate::transaction::BridgeEmergencyUnpauseArgs {
+            nonce: 0,
+            signatures: Default::default(),
+        }),
     ];
 
+    // Stage 13b: Transfer + MergeCoins variants deleted (-2). The
+    // list above samples 17 variants plus a 2-recipient
+    // BalanceTransfer = 18 entries.
     assert_eq!(
         kinds.len(),
-        26,
-        "Expected 26 TransactionKind variants; if a new variant was added, update this test"
+        18,
+        "Expected 18 TransactionKind sample entries; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {
@@ -559,9 +477,6 @@ fn test_genesis_transaction() {
 
 #[test]
 fn test_shared_input_objects() {
-    let model_id = ModelId::random();
-    let target_id: TargetId = ObjectID::random();
-
     // Validator tx -> SystemState only
     let add_val = TransactionKind::AddValidator(AddValidatorArgs {
         pubkey_bytes: vec![],
@@ -570,7 +485,6 @@ fn test_shared_input_objects() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     let shared: Vec<_> = add_val.shared_input_objects().collect();
@@ -579,41 +493,12 @@ fn test_shared_input_objects() {
 
     // Staking tx -> SystemState only
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     let shared: Vec<_> = add_stake.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);
     assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-
-    // Model tx -> SystemState only
-    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id: ModelId::random(),
-        manifest: dummy_manifest(),
-        weights_commitment: ModelWeightsCommitment::random(),
-        embedding_commitment: EmbeddingCommitment::random(),
-        decryption_key_commitment: DecryptionKeyCommitment::random(),
-    });
-    let shared: Vec<_> = commit_model.shared_input_objects().collect();
-    assert_eq!(shared.len(), 1);
-    assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-
-    // Submission tx -> SystemState + Target
-    let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id,
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    let shared: Vec<_> = submit_data.shared_input_objects().collect();
-    assert_eq!(shared.len(), 2);
-    assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-    assert_eq!(shared[1].id, target_id);
-    assert!(shared[1].mutable);
 
     // Genesis -> no shared input objects
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
@@ -621,11 +506,10 @@ fn test_shared_input_objects() {
     assert!(shared.is_empty());
 
     // TransferCoin -> no shared input objects
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     let shared: Vec<_> = transfer.shared_input_objects().collect();
     assert!(shared.is_empty());
 }
@@ -642,7 +526,7 @@ fn test_input_objects_no_duplicates() {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(100), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 100, coin_ref);
 
     let inputs = data.input_objects().expect("input_objects should succeed");
     // The coin appears once as ImmOrOwnedObject, and since the gas_payment contains
@@ -658,35 +542,21 @@ fn test_input_objects_no_duplicates() {
 #[test]
 fn test_contains_shared_object() {
     // TransferCoin does NOT touch shared state
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer.contains_shared_object(), "TransferCoin should not contain shared objects");
 
     // AddStake touches SystemState
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(
         add_stake.contains_shared_object(),
         "AddStake should contain shared objects (SystemState)"
     );
-
-    // SubmitData touches SystemState + Target
-    let submit = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id: ObjectID::random(),
-        data_manifest: dummy_submission_manifest(),
-        model_id: ModelId::random(),
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    assert!(submit.contains_shared_object(), "SubmitData should contain shared objects");
 
     // Genesis does NOT touch shared state
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
@@ -716,7 +586,7 @@ fn test_verify_sender_signed_transaction() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(100), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 100, coin_ref);
 
     let tx = Transaction::from_data_and_signer(data, vec![&kp]);
     assert!(tx.verify_signature_for_testing().is_ok(), "Valid signature should pass verification");
@@ -810,8 +680,11 @@ fn test_full_message_digest_deterministic() {
 }
 
 // ---------------------------------------------------------------------------
-// 22. TransactionData::new_transfer and new_pay_coins constructors
+// 22. TransactionData constructor — new_transfer (TransferObjects)
 // ---------------------------------------------------------------------------
+//
+// Stage 13b: new_pay_coins / new_transfer_coin deleted. The
+// remaining `new_transfer` constructs a TransferObjects tx.
 
 #[test]
 fn test_transaction_data_constructors() {
@@ -820,7 +693,6 @@ fn test_transaction_data_constructors() {
     let obj_ref = random_object_ref();
     let gas_ref = random_object_ref();
 
-    // new_transfer
     let transfer_data = TransactionData::new_transfer(recipient, obj_ref, sender, vec![gas_ref]);
     assert_eq!(transfer_data.sender(), sender);
     assert_eq!(transfer_data.gas(), vec![gas_ref]);
@@ -831,29 +703,6 @@ fn test_transaction_data_constructors() {
             assert_eq!(*r, recipient);
         }
         _ => panic!("Expected TransferObjects kind"),
-    }
-
-    // new_pay_coins
-    let coin1 = random_object_ref();
-    let coin2 = random_object_ref();
-    let r1 = SomaAddress::random();
-    let r2 = SomaAddress::random();
-    let pay_data = TransactionData::new_pay_coins(
-        vec![coin1, coin2],
-        Some(vec![100, 200]),
-        vec![r1, r2],
-        sender,
-    );
-    assert_eq!(pay_data.sender(), sender);
-    // Gas payment should be the first coin
-    assert_eq!(pay_data.gas(), vec![coin1]);
-    match pay_data.kind() {
-        TransactionKind::PayCoins { coins, amounts, recipients } => {
-            assert_eq!(coins.len(), 2);
-            assert_eq!(*amounts, Some(vec![100, 200]));
-            assert_eq!(recipients.len(), 2);
-        }
-        _ => panic!("Expected PayCoins kind"),
     }
 }
 
@@ -871,26 +720,16 @@ fn test_requires_system_state() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     assert!(add_val.requires_system_state());
 
     // Staking requires system state
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: None,
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(add_stake.requires_system_state());
-
-    // Model tx requires system state
-    let deactivate = TransactionKind::DeactivateModel { model_id: ModelId::random() };
-    assert!(deactivate.requires_system_state());
-
-    // Submission tx requires system state
-    let claim = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: ObjectID::random() });
-    assert!(claim.requires_system_state());
 
     // ChangeEpoch requires system state (is_epoch_change)
     let epoch = TransactionKind::ChangeEpoch(ChangeEpoch {
@@ -903,11 +742,10 @@ fn test_requires_system_state() {
     assert!(epoch.requires_system_state());
 
     // Transfer does NOT require system state
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer.requires_system_state());
 
     // Genesis does NOT require system state
@@ -926,7 +764,8 @@ fn test_input_objects_system_tx() {
     let inputs = genesis.input_objects().expect("should succeed");
     assert!(inputs.is_empty(), "Genesis should have no input objects");
 
-    // CCP has no input objects
+    // CCP declares Clock as a mutable shared input — that's how the
+    // prologue executor mutates the wall-clock timestamp each commit.
     let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
         round: 1,
@@ -936,10 +775,14 @@ fn test_input_objects_system_tx() {
         additional_state_digest: AdditionalConsensusStateDigest::new([0; 32]),
     });
     let inputs = ccp.input_objects().expect("should succeed");
-    assert!(
-        inputs.is_empty(),
-        "CCP should have no input objects (not validator/staking/model/submission)"
-    );
+    assert_eq!(inputs.len(), 1, "CCP must declare exactly Clock as input");
+    match &inputs[0] {
+        crate::transaction::InputObjectKind::SharedObject { id, mutable, .. } => {
+            assert_eq!(*id, crate::CLOCK_OBJECT_ID, "CCP input must be the Clock object");
+            assert!(*mutable, "CCP must declare Clock as mutable");
+        }
+        other => panic!("CCP input must be a SharedObject, got {:?}", other),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -948,52 +791,158 @@ fn test_input_objects_system_tx() {
 
 #[test]
 fn test_input_objects_user_txs() {
-    // TransferCoin: should have the coin as ImmOrOwnedObject
+    // Stage 13b: BalanceTransfer has no input objects (sender's
+    // accumulator is debited, no coin refs).
     let coin_ref = random_object_ref();
-    let transfer = TransactionKind::TransferCoin {
-        coin: coin_ref,
-        amount: Some(100),
-        recipient: SomaAddress::random(),
-    };
+    let _ = coin_ref;
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     let inputs = transfer.input_objects().expect("should succeed");
-    assert_eq!(inputs.len(), 1);
-    assert_eq!(inputs[0].object_id(), coin_ref.0);
+    assert!(inputs.is_empty(), "BalanceTransfer has no input objects");
 
-    // AddStake: should have SystemState (shared) + coin_ref (owned)
-    let coin_ref2 = random_object_ref();
+    // AddStake (Stage 9d-C2: balance-mode): SystemState shared only,
+    // no coin input.
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: coin_ref2,
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     let inputs = add_stake.input_objects().expect("should succeed");
-    assert_eq!(inputs.len(), 2);
-    // First is SystemState shared object
+    assert_eq!(inputs.len(), 1);
     assert!(inputs[0].is_shared_object());
     assert_eq!(inputs[0].object_id(), SYSTEM_STATE_OBJECT_ID);
-    // Second is the coin
-    assert!(!inputs[1].is_shared_object());
-    assert_eq!(inputs[1].object_id(), coin_ref2.0);
+}
 
-    // SubmitData: SystemState + bond_coin + target (shared)
-    let target_id = ObjectID::random();
-    let bond_coin = random_object_ref();
-    let submit = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id: ModelId::random(),
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin,
+// ---------------------------------------------------------------------------
+// Channel tx kind input shapes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_input_objects_open_channel() {
+    // Stage 8: OpenChannel debits the deposit from the sender's
+    // accumulator balance, not a coin object. Owned-input set is
+    // empty; declared shared inputs are the per-payee
+    // `ProviderInbox` (mutated to enforce the per-pair cap) and
+    // `SystemState` (read-only, for `max_channels_per_pair`).
+    let payee = SomaAddress::random();
+    let kind = TransactionKind::OpenChannel(OpenChannelArgs {
+        payee,
+        authorized_signer: SomaAddress::random(),
+        token: crate::object::CoinType::Usdc,
+        deposit_amount: 1_000,
+        model_id: "anthropic/claude-opus-4".to_string(),
     });
-    let inputs = submit.input_objects().expect("should succeed");
+    let inputs = kind.input_objects().expect("OpenChannel inputs build");
+    let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
+    let offering_id = crate::offering::Offering::derive_id(payee, "anthropic/claude-opus-4");
+    // Inputs: SystemState (read), ProviderInbox (write), Offering (read).
     assert_eq!(inputs.len(), 3);
-    // Should contain system state, bond coin, and target
-    let ids: Vec<ObjectID> = inputs.iter().map(|i| i.object_id()).collect();
+
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&inbox_id));
     assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
-    assert!(ids.contains(&bond_coin.0));
-    assert!(ids.contains(&target_id));
+    assert!(ids.contains(&offering_id));
+
+    // ProviderInbox mutable; SystemState + Offering read-only.
+    for input in &inputs {
+        let id = input.object_id();
+        let expected_mut = id == inbox_id;
+        assert_eq!(input.is_mutable(), expected_mut);
+    }
+}
+
+#[test]
+fn test_input_objects_settle() {
+    // Settle: declares the Channel as a mutable shared input only.
+    let channel_id = ObjectID::random();
+    let kind = TransactionKind::Settle(SettleArgs {
+        channel_id,
+        cumulative_amount: 100,
+        cumulative_prompt_tokens: 0,
+        cumulative_completion_tokens: 0,
+        cumulative_cache_read_tokens: 0,
+        cumulative_cache_write_tokens: 0,
+        cumulative_requests: 0,
+        voucher_signature: dummy_voucher_signature(),
+    });
+    let inputs = kind.input_objects().expect("Settle inputs build");
+    assert_eq!(inputs.len(), 1);
+    assert!(inputs[0].is_shared_object());
+    assert_eq!(inputs[0].object_id(), channel_id);
+    assert!(inputs[0].is_mutable());
+
+    let shared: Vec<_> = kind.shared_input_objects().collect();
+    assert_eq!(shared.len(), 1);
+    assert_eq!(shared[0].id, channel_id);
+    assert!(shared[0].mutable);
+}
+
+#[test]
+fn test_input_objects_request_close() {
+    // RequestClose: Channel (mutable shared) + Clock (immutable shared).
+    let channel_id = ObjectID::random();
+    let kind = TransactionKind::RequestClose(RequestCloseArgs { channel_id });
+    let inputs = kind.input_objects().expect("RequestClose inputs build");
+    assert_eq!(inputs.len(), 2);
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&crate::CLOCK_OBJECT_ID), "Clock must be declared");
+    assert!(ids.contains(&channel_id), "Channel must be declared");
+
+    // Clock must be immutable.
+    let clock_input = inputs.iter().find(|i| i.object_id() == crate::CLOCK_OBJECT_ID).unwrap();
+    assert!(!clock_input.is_mutable(), "Clock must be read-only for user txs");
+    // Channel must be mutable.
+    let channel_input = inputs.iter().find(|i| i.object_id() == channel_id).unwrap();
+    assert!(channel_input.is_mutable(), "Channel is mutated by RequestClose");
+}
+
+#[test]
+fn test_input_objects_withdraw_after_timeout() {
+    // WithdrawAfterTimeout: Channel (mutable) + Clock (read) +
+    // SystemState (read) + ProviderInbox(payee) (mutable, decremented).
+    let channel_id = ObjectID::random();
+    let payee = SomaAddress::random();
+    let inbox_id = crate::provider_inbox::ProviderInbox::derive_id(payee);
+    let kind = TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs {
+        channel_id,
+        payee,
+    });
+    let inputs = kind.input_objects().expect("WithdrawAfterTimeout inputs build");
+    assert_eq!(inputs.len(), 4);
+
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&channel_id));
+    assert!(ids.contains(&crate::CLOCK_OBJECT_ID));
+    assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
+    assert!(ids.contains(&inbox_id));
+
+    // Channel + ProviderInbox mutable; Clock + SystemState read-only.
+    for input in &inputs {
+        let id = input.object_id();
+        let expected_mut = id == channel_id || id == inbox_id;
+        assert_eq!(
+            input.is_mutable(),
+            expected_mut,
+            "object {} mutability should be {}",
+            id,
+            expected_mut
+        );
+    }
+}
+
+/// Helper: a syntactically-valid GenericSignature for shape tests. The
+/// signature does not need to verify since we're testing input-object
+/// declarations, not execution.
+fn dummy_voucher_signature() -> crate::crypto::GenericSignature {
+    use fastcrypto::ed25519::Ed25519KeyPair;
+    let (_, kp): (SomaAddress, Ed25519KeyPair) = crate::crypto::get_key_pair();
+    let voucher = crate::channel::Voucher::new_amount_only(ObjectID::ZERO, 0);
+    let intent_msg = crate::intent::IntentMessage::new(
+        crate::intent::Intent::soma_app(crate::intent::IntentScope::PaymentVoucher),
+        voucher,
+    );
+    crate::crypto::Signature::new_secure(&intent_msg, &kp).into()
 }
 
 // ---------------------------------------------------------------------------
@@ -1088,9 +1037,8 @@ fn test_envelope_shared_object_methods() {
     // AddStake transaction -> touches shared SystemState
     let add_stake_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: SomaAddress::random(),
-            coin_ref: random_object_ref(),
-            amount: Some(1000),
+            validator: SomaAddress::random(),
+            amount: 1000,
         },
         sender,
         vec![gas_ref],
@@ -1100,15 +1048,450 @@ fn test_envelope_shared_object_methods() {
     assert!(tx.contains_shared_object());
     assert!(tx.is_consensus_tx());
 
-    // TransferCoin -> no shared objects
-    let transfer_data = TransactionData::new_transfer_coin(
+    // BalanceTransfer -> no shared objects
+    let transfer_data = balance_transfer_data(
         SomaAddress::random(),
         sender,
-        Some(100),
+        100,
         random_object_ref(),
     );
     let ssd2 = SenderSignedData::new(transfer_data, vec![]);
     let tx2 = Transaction::new(ssd2);
     assert!(!tx2.contains_shared_object());
     assert!(!tx2.is_consensus_tx());
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2: TransactionData::reservations() placeholder contract
+// ---------------------------------------------------------------------------
+//
+// The scheduler's reservation pre-pass (Stage 4 + 6d) calls
+// `tx.reservations(unit_fee)` for every tx in a commit. Coin-mode txs
+// (non-empty gas_payment) never declare reservations — replay/
+// insufficiency is caught at execution. Balance-mode txs (empty
+// gas_payment + ValidDuring) declare a USDC reservation for the gas
+// fee.
+
+const TEST_UNIT_FEE: u64 = 1_000;
+
+#[test]
+fn test_reservations_with_coin_mode_gas_skips_gas_reservation() {
+    // Stage 13b: BalanceTransfer with non-empty gas_payment (the
+    // legacy coin-mode-gas path) skips the USDC gas reservation
+    // — but still declares a SOMA reservation for the transfer
+    // amount itself. The deleted "TransferCoin had no reservation"
+    // semantic is replaced by this single check.
+    let (data, sender) = make_transfer_coin_data();
+    let reservations = data.reservations(TEST_UNIT_FEE);
+    // gas reservation skipped (gas_payment non-empty); transfer
+    // amount reservation present.
+    assert_eq!(reservations.len(), 1, "expected only the BalanceTransfer amount reservation");
+    assert_eq!(reservations[0].owner, sender);
+    assert_eq!(reservations[0].coin_type, crate::object::CoinType::Soma);
+    assert_eq!(reservations[0].amount, 1000);
+}
+
+#[test]
+fn test_reservations_genesis_is_empty() {
+    let data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
+        objects: vec![],
+    }));
+    assert!(data.reservations(TEST_UNIT_FEE).is_empty());
+}
+
+#[test]
+fn test_reservations_change_epoch_is_empty() {
+    let data = make_system_tx_data(TransactionKind::ChangeEpoch(ChangeEpoch {
+        epoch: 1,
+        epoch_start_timestamp_ms: 1000,
+        protocol_version: protocol_config::ProtocolVersion::MIN,
+        fees: 0,
+        epoch_randomness: vec![],
+    }));
+    assert!(data.reservations(TEST_UNIT_FEE).is_empty());
+}
+
+#[test]
+fn test_reservations_balance_mode_returns_gas_reservation() {
+    // Stage 6d: balance-mode tx (empty gas_payment) declares
+    // a USDC reservation = unit_fee × kind.fee_units().
+    use crate::balance::WithdrawalReservation;
+    use crate::object::CoinType;
+
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let recipient = SomaAddress::random();
+    let coin_ref = random_object_ref();
+
+    // Transfer with 1 input + 1 output → fee_units = 2.
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1)],
+        }),
+        sender,
+        Vec::new(), // empty gas_payment → balance-mode
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 0,
+        },
+    );
+
+    let reservations = data.reservations(TEST_UNIT_FEE);
+    // Stage 13b: balance-mode BalanceTransfer declares both the
+    // USDC gas reservation AND the SOMA transfer-amount
+    // reservation.
+    assert_eq!(reservations.len(), 2, "balance-mode BalanceTransfer declares gas + transfer");
+    let gas = reservations
+        .iter()
+        .find(|r| r.coin_type == CoinType::Usdc)
+        .expect("USDC gas reservation");
+    assert_eq!(*gas, WithdrawalReservation::new(sender, CoinType::Usdc, TEST_UNIT_FEE * 2));
+    let transfer = reservations
+        .iter()
+        .find(|r| r.coin_type == CoinType::Soma)
+        .expect("SOMA transfer reservation");
+    assert_eq!(transfer.owner, sender);
+    assert_eq!(transfer.amount, 1);
+}
+
+#[test]
+fn test_reservations_balance_mode_zero_unit_fee_skips_gas_reservation() {
+    // If unit_fee is 0 (e.g., a chain-wide fee waiver), the gas
+    // reservation is suppressed. The transfer-amount reservation
+    // still fires (it's independent of the fee model).
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let recipient = SomaAddress::random();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1)],
+        }),
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(0),
+            chain,
+            nonce: 0,
+        },
+    );
+    let reservations = data.reservations(0);
+    assert_eq!(reservations.len(), 1, "only the transfer reservation remains at 0 unit fee");
+    assert_eq!(reservations[0].coin_type, crate::object::CoinType::Soma);
+    assert_eq!(reservations[0].amount, 1);
+    assert_eq!(reservations[0].owner, sender);
+}
+
+// ---------------------------------------------------------------------------
+// Stage 5.5a: TransactionExpiration / replay-protection declaration
+// ---------------------------------------------------------------------------
+//
+// Structural validation of the expiration declaration. The "is the digest
+// in the executed cache?" check happens elsewhere and is tested in the
+// authority crate (Stage 5.5b/c).
+
+use crate::digests::ChainIdentifier;
+
+fn fresh_chain_id() -> ChainIdentifier {
+    // Build a deterministic non-default chain id for tests.
+    crate::digests::CheckpointDigest::new([7u8; 32]).into()
+}
+
+#[test]
+fn test_expiration_default_is_none() {
+    let (data, _) = make_transfer_coin_data();
+    assert!(matches!(data.expiration(), TransactionExpiration::None));
+    assert!(!data.expiration().is_replay_protected());
+}
+
+#[test]
+fn test_expiration_none_check_passes() {
+    // `None` always passes structural check — replay protection comes
+    // from owned-input version-bumps for these.
+    let (data, _) = make_transfer_coin_data();
+    let chain = fresh_chain_id();
+    data.check_expiration(0, &chain).expect("None expiration is always structurally valid");
+    data.check_expiration(999, &chain).expect("None expiration ignores epoch");
+}
+
+#[test]
+fn test_expiration_valid_during_within_window_passes() {
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        sender,
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 42,
+        },
+    );
+
+    data.check_expiration(5, &chain).expect("at min_epoch");
+    data.check_expiration(6, &chain).expect("at max_epoch");
+    assert!(data.expiration().is_replay_protected());
+}
+
+#[test]
+fn test_expiration_valid_during_premature_rejected() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(4, &chain).expect_err("epoch < min must reject");
+    assert!(matches!(err, SomaError::TransactionExpired { current_epoch: 4, .. }));
+}
+
+#[test]
+fn test_expiration_valid_during_expired_rejected() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(7, &chain).expect_err("epoch > max must reject");
+    assert!(matches!(err, SomaError::TransactionExpired { current_epoch: 7, .. }));
+}
+
+#[test]
+fn test_expiration_chain_mismatch_rejected() {
+    let chain_a = fresh_chain_id();
+    let chain_b: ChainIdentifier = crate::digests::CheckpointDigest::new([9u8; 32]).into();
+    assert_ne!(chain_a, chain_b);
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(5),
+            chain: chain_a,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(5, &chain_b).expect_err("cross-chain replay must reject");
+    assert!(matches!(err, SomaError::InvalidChainId { .. }));
+}
+
+#[test]
+fn test_expiration_oversized_window_rejected() {
+    // Width > 2 epochs would unbound the digest cache.
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(7), // width 3 — too wide
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(5, &chain).expect_err("width > 2 must reject");
+    assert!(matches!(err, SomaError::UnsupportedFeatureError { .. }));
+    assert!(!data.expiration().is_replay_protected(), "oversized window is not replay-protected");
+}
+
+#[test]
+fn test_expiration_missing_min_or_max_rejected() {
+    let chain = fresh_chain_id();
+    let cases = [
+        (None, Some(5)),
+        (Some(5), None),
+        (None, None),
+    ];
+    for (min_epoch, max_epoch) in cases {
+        let data = TransactionData::new_with_expiration(
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: crate::object::CoinType::Soma,
+                transfers: vec![(SomaAddress::random(), 1)],
+            }),
+            SomaAddress::random(),
+            vec![random_object_ref()],
+            TransactionExpiration::ValidDuring { min_epoch, max_epoch, chain, nonce: 0 },
+        );
+        let err = data.check_expiration(5, &chain).expect_err("missing bound must reject");
+        assert!(matches!(err, SomaError::UnsupportedFeatureError { .. }));
+        assert!(!data.expiration().is_replay_protected());
+    }
+}
+
+#[test]
+fn test_expiration_nonce_distinguishes_otherwise_identical_txs() {
+    // Different nonces produce different tx digests. This is the
+    // mechanism that lets clients legitimately re-send "the same"
+    // logical tx without colliding in the digest cache.
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 1)],
+    });
+    let gas = vec![random_object_ref()];
+
+    let d1 = TransactionData::new_with_expiration(
+        kind.clone(),
+        sender,
+        gas.clone(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 1,
+        },
+    );
+    let d2 = TransactionData::new_with_expiration(
+        kind,
+        sender,
+        gas,
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 2,
+        },
+    );
+    assert_ne!(d1.digest(), d2.digest(), "different nonces must produce different digests");
+}
+
+/// Critical: signing a tx with `ValidDuring` must produce a signature
+/// that round-trips through verification. If the BCS encoding of the
+/// new `expiration` field doesn't get included in the signed payload
+/// — or the verification path skips it — signatures break for every
+/// stateless tx. Catches Stage 5.5a regression.
+#[test]
+fn test_signed_transaction_with_valid_during_expiration() {
+    let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 99,
+        },
+    );
+
+    let tx = Transaction::from_data_and_signer(data.clone(), vec![&kp]);
+    let inner_data = tx.data().transaction_data();
+    assert_eq!(*inner_data, data, "TransactionData must round-trip through signed envelope");
+    assert!(matches!(
+        inner_data.expiration(),
+        TransactionExpiration::ValidDuring { nonce: 99, .. }
+    ));
+
+    // The actual signature verification path (used by validators).
+    crate::transaction::verify_sender_signed_data_message_signatures(tx.data())
+        .expect("ValidDuring tx signature must verify");
+}
+
+/// Mimic what the e2e wallet does (`keystore.sign_secure` ⇒
+/// `Signature::new_secure(&IntentMessage::new(intent, msg), key)`)
+/// vs. what the validator does (BCS-hash IntentMessage<TransactionData>
+/// and verify). Bytes signed and bytes verified must be identical for
+/// any sig to validate.
+///
+/// This is a no-op-looking but load-bearing test: if it passes here
+/// but the e2e fails, the divergence has to be in the test-cluster
+/// chain_identifier or some msim quirk — NOT in the bytes themselves.
+#[test]
+fn test_e2e_wallet_signing_path_for_valid_during() {
+    use crate::crypto::Signature;
+
+    let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 0,
+        },
+    );
+
+    // Sign mimicking the e2e wallet path: build IntentMessage<&T>,
+    // sign with the keypair, wrap in Transaction::from_data.
+    let sig = Signature::new_secure(
+        &IntentMessage::new(Intent::soma_transaction(), &data),
+        &kp,
+    );
+    let tx = Transaction::from_data(data.clone(), vec![sig]);
+
+    // Verify via the validator's path. Same data, same intent → same bytes.
+    crate::transaction::verify_sender_signed_data_message_signatures(tx.data())
+        .expect("e2e-wallet-equivalent signing path must produce verifying signature");
+}
+
+#[test]
+fn test_expiration_bcs_roundtrip() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(10),
+            max_epoch: Some(11),
+            chain,
+            nonce: 999_999,
+        },
+    );
+
+    let bytes = bcs::to_bytes(&data).expect("BCS serialize");
+    let decoded: TransactionData = bcs::from_bytes(&bytes).expect("BCS deserialize");
+    assert_eq!(data, decoded);
+    assert_eq!(data.digest(), decoded.digest());
 }

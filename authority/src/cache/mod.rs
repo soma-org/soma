@@ -18,7 +18,7 @@ use types::config::node_config::ExecutionCacheConfig;
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::TransactionEffects;
 use types::error::{SomaError, SomaResult};
-use types::object::{Object, ObjectID, ObjectRef, Version};
+use types::object::{CoinType, Object, ObjectID, ObjectRef, Version};
 use types::storage::object_store::ObjectStore;
 use types::storage::{FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone};
 use types::system_state::SystemState;
@@ -121,6 +121,14 @@ pub trait ExecutionCacheCommit: Send + Sync {
 
 pub trait ObjectCacheRead: Send + Sync {
     fn get_object(&self, id: &ObjectID) -> Option<Object>;
+
+    /// Stage 6d: read sender's balance from the accumulator. Used by
+    /// the consensus-handler reservation pre-pass to drop underfunded
+    /// balance-mode txs before dispatch.
+    ///
+    /// Returns 0 for accounts that have never held this currency
+    /// (matching the same convention as `AuthorityStore::get_balance`).
+    fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> u64;
 
     fn get_objects(&self, objects: &[ObjectID]) -> Vec<Option<Object>> {
         let mut ret = Vec::with_capacity(objects.len());
@@ -394,6 +402,18 @@ pub trait TransactionCacheRead: Send + Sync {
             .is_some()
     }
 
+    /// Stage 5.5c: was this digest executed in the *previous* epoch?
+    /// Used by `handle_vote_transaction` to reject stateless tx replays.
+    /// Returns false at epoch 0 (no previous epoch). Implementations
+    /// route to `AuthorityStore::was_transaction_executed_in_last_epoch`,
+    /// which reads the epoch-prefixed `executed_transaction_digests`
+    /// column family.
+    fn was_transaction_executed_in_last_epoch(
+        &self,
+        digest: &TransactionDigest,
+        current_epoch: EpochId,
+    ) -> bool;
+
     fn multi_get_executed_effects(
         &self,
         digests: &[TransactionDigest],
@@ -464,18 +484,6 @@ pub trait TransactionCacheRead: Send + Sync {
         .boxed()
     }
 
-    /// Get the execution outputs of a mysticeti fastpath certified transaction, if it exists.
-    fn get_mysticeti_fastpath_outputs(
-        &self,
-        tx_digest: &TransactionDigest,
-    ) -> Option<Arc<TransactionOutputs>>;
-
-    /// Wait until the outputs of the given transactions are available
-    /// in the temporary buffer holding mysticeti fastpath outputs.
-    fn notify_read_fastpath_transaction_outputs<'a>(
-        &'a self,
-        tx_digests: &'a [TransactionDigest],
-    ) -> BoxFuture<'a, Vec<Arc<TransactionOutputs>>>;
 }
 pub trait ExecutionCacheWrite: Send + Sync {
     /// Write the output of a transaction.
@@ -496,13 +504,6 @@ pub trait ExecutionCacheWrite: Send + Sync {
     /// called notify_read_objects_for_execution or notify_read_objects_for_signing for the object
     /// in question.
     fn write_transaction_outputs(&self, epoch_id: EpochId, tx_outputs: Arc<TransactionOutputs>);
-
-    /// Write the output of a Mysticeti fastpath certified transaction.
-    /// Such output cannot be written to the dirty cache right away because
-    /// the transaction may end up rejected by consensus later. We need to make sure
-    /// that it is not visible to any subsequent transaction until we observe it
-    /// from consensus or checkpoints.
-    fn write_fastpath_transaction_outputs(&self, tx_outputs: Arc<TransactionOutputs>);
 
     /// Attempt to acquire object locks for all of the owned input locks.
     fn acquire_transaction_locks(

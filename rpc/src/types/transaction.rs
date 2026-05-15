@@ -28,6 +28,10 @@ pub struct Transaction {
     pub kind: TransactionKind,
     pub sender: Address,
     pub gas_payment: Vec<ObjectReference>,
+    /// Stage 5.5 replay-protection declaration. CRITICAL: must round-
+    /// trip through proto/wire encoding because it's part of the
+    /// signed BCS payload — dropping it breaks signature verification.
+    pub expiration: types::transaction::TransactionExpiration,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -95,31 +99,28 @@ pub enum TransactionKind {
         new_rate: u64,
     },
 
-    // Transfers and payments
-    TransferCoin {
-        coin: ObjectReference,
-        amount: Option<u64>,
-        recipient: Address,
-    },
-    PayCoins {
-        coins: Vec<ObjectReference>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<Address>,
-    },
+    // Stage 13b: Transfer and MergeCoins variants deleted —
+    // BalanceTransfer (further below) replaces both.
     TransferObjects {
         objects: Vec<ObjectReference>,
         recipient: Address,
     },
 
     // Staking
+    //
+    // Stage 9d-C2: AddStake is balance-mode — no coin reference. The
+    // executor debits `amount` SOMA from the sender's accumulator.
     AddStake {
-        address: Address,
-        coin_ref: ObjectReference,
-        amount: Option<u64>,
+        validator: Address,
+        amount: u64,
     },
 
+    // Stage 9d-C3: WithdrawStake is balance-mode and keys off the
+    // F1 (pool, sender) row. `amount: None` withdraws the entire
+    // row's principal.
     WithdrawStake {
-        staked_soma: ObjectReference,
+        pool_id: Address,
+        amount: Option<u64>,
     },
 
     // Model transactions
@@ -156,6 +157,242 @@ pub enum TransactionKind {
     UndoReportSubmission {
         target_id: Address,
     },
+
+    // Bridge transactions
+    BridgeDeposit(BridgeDepositArgs),
+    BridgeWithdraw(BridgeWithdrawArgs),
+    BridgeEmergencyPause(BridgeEmergencyPauseArgs),
+    BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+    BridgeAttachWithdrawalSignatures(BridgeAttachWithdrawalSignaturesArgs),
+    BridgeUpdateCommitteeBlocklist(BridgeUpdateCommitteeBlocklistArgs),
+    BridgeRegisterBridgeKey(BridgeRegisterBridgeKeyArgs),
+
+    // Payment-channel transactions (Phase 1)
+    OpenChannel(OpenChannelArgs),
+    Settle(SettleArgs),
+    RequestClose(RequestCloseArgs),
+    WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
+    TopUp(TopUpArgs),
+    RateChannel(RateChannelArgs),
+
+    // Provider registry
+    RegisterProvider(RegisterProviderArgs),
+    UpdateProvider(UpdateProviderArgs),
+
+    // Per-(provider, model) offerings
+    RegisterOffering(RegisterOfferingArgs),
+    UpdateOffering(UpdateOfferingArgs),
+    DeactivateOffering(DeactivateOfferingArgs),
+
+    /// Per-commit accumulator settlement system transaction (Stage 6a).
+    /// Injected by the consensus handler exactly once per commit;
+    /// applies aggregated balance-event deltas to the on-chain
+    /// accumulator-balance table.
+    Settlement(SettlementTransaction),
+
+    /// Stage 7: stateless balance-mode value transfer.
+    BalanceTransfer(BalanceTransferArgs),
+}
+
+/// Stage 7 args struct (rpc::types layer).
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BalanceTransferArgs {
+    /// Coin denomination. Parsed at the proto→rpc::types boundary.
+    pub coin_type: types::object::CoinType,
+    pub transfers: Vec<(Address, u64)>,
+}
+
+/// Per-commit accumulator settlement (balances + delegations).
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SettlementTransaction {
+    pub epoch: u64,
+    pub round: u64,
+    pub sub_dag_index: Option<u64>,
+    pub changes: Vec<types::balance::BalanceEvent>,
+    pub delegation_changes: Vec<types::temporary_store::DelegationEvent>,
+}
+
+// Bridge arg types
+
+/// Labeled-pubkey signature envelope for bridge cert wire transit.
+/// `signer_pubkey` is a 33-byte compressed secp256k1 pubkey; `signature`
+/// is a 65-byte recoverable secp256k1 signature.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct PubkeySig {
+    pub signer_pubkey: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeDepositArgs {
+    pub nonce: u64,
+    pub eth_tx_hash: Vec<u8>,
+    pub recipient: Address,
+    pub amount: u64,
+    pub timestamp_ms: u64,
+    /// V2 wire-format field — 20-byte Eth address that locked USDC.
+    #[serde(default)]
+    pub sender_eth_address: Vec<u8>,
+    /// V2 wire-format field — destination chain id (byte value).
+    #[serde(default)]
+    pub target_chain: u8,
+    /// V2 wire-format field — token id. Always 3 (USDC) today.
+    #[serde(default)]
+    pub token_type: u8,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeWithdrawArgs {
+    pub amount: u64,
+    pub recipient_eth_address: Vec<u8>,
+    /// V2 wire-format field — destination Eth chain id (byte value).
+    #[serde(default)]
+    pub target_chain: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeEmergencyPauseArgs {
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeEmergencyUnpauseArgs {
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeAttachWithdrawalSignaturesArgs {
+    pub nonce: u64,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeUpdateCommitteeBlocklistArgs {
+    pub nonce: u64,
+    pub is_blocklist: bool,
+    pub eth_addresses: Vec<Vec<u8>>,
+    pub signatures: Vec<PubkeySig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeRegisterBridgeKeyArgs {
+    pub bridge_pubkey: Vec<u8>,
+    pub http_url: String,
+}
+
+// Payment-channel arg types (Phase 1)
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct OpenChannelArgs {
+    pub payee: Address,
+    pub authorized_signer: Address,
+    /// Coin denomination. Parsed from the proto string label
+    /// ("SOMA"/"USDC") at the proto→rpc::types boundary so a typo
+    /// fails fast in conversion rather than at consensus-time.
+    pub token: types::object::CoinType,
+    pub deposit_amount: u64,
+    /// Canonical model_id from the protocol-config ModelRegistry.
+    /// Channel binds to this single model for its lifetime; the
+    /// executor copies the `(payee, model_id)` offering's price + SLA
+    /// onto the channel at open.
+    pub model_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SettleArgs {
+    pub channel_id: Address,
+    pub cumulative_amount: u64,
+    pub cumulative_prompt_tokens: u64,
+    pub cumulative_completion_tokens: u64,
+    pub cumulative_cache_read_tokens: u64,
+    pub cumulative_cache_write_tokens: u64,
+    pub cumulative_requests: u64,
+    /// `GenericSignature` byte form (`flag || sig || pk`). Decoded
+    /// to `types::crypto::GenericSignature` by the executor.
+    pub voucher_signature: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RequestCloseArgs {
+    pub channel_id: Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct WithdrawAfterTimeoutArgs {
+    pub channel_id: Address,
+    pub payee: Address,
+}
+
+/// Args for `TopUp` (rpc::types layer). Coin type is parsed from the
+/// proto string at the proto→rpc::types boundary so a typo fails
+/// fast in conversion.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct TopUpArgs {
+    pub channel_id: Address,
+    pub coin_type: types::object::CoinType,
+    pub amount: u64,
+}
+
+/// Args for `RateChannel`. Payer flags a channel they've paid into
+/// as negative (`true`) or positive (`false`). Latest-wins.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RateChannelArgs {
+    pub channel_id: Address,
+    pub negative: bool,
+    /// Reason code — auto-emitted by the proxy for TTFT/TTOT breach
+    /// or no-response, or `Quality` for user-driven rates. Stored as
+    /// `u8` over the wire to allow future codes without breaking
+    /// readers (unknown codes project to `Other`).
+    pub reason_code: u8,
+}
+
+// Provider registry arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RegisterProviderArgs {
+    pub endpoint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct UpdateProviderArgs {
+    pub provider_id: Address,
+    pub endpoint: String,
+}
+
+// Per-(provider, model) offering arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RegisterOfferingArgs {
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct UpdateOfferingArgs {
+    pub offering_id: Address,
+    pub model_id: String,
+    pub prompt_micros_per_1k: u64,
+    pub completion_micros_per_1k: u64,
+    pub cache_read_micros_per_1k: u64,
+    pub cache_write_micros_per_1k: u64,
+    pub request_micros: u64,
+    pub ttft_bound_ms: u32,
+    pub ttot_bound_ms: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct DeactivateOfferingArgs {
+    pub offering_id: Address,
+    pub model_id: String,
 }
 
 // Supporting types for validator management
@@ -169,7 +406,6 @@ pub struct AddValidatorArgs {
     pub net_address: Vec<u8>,
     pub p2p_address: Vec<u8>,
     pub primary_address: Vec<u8>,
-    pub proxy_address: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -182,7 +418,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_network_address: Option<Vec<u8>>,
     pub next_epoch_p2p_address: Option<Vec<u8>>,
     pub next_epoch_primary_address: Option<Vec<u8>>,
-    pub next_epoch_proxy_address: Option<Vec<u8>>,
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
@@ -437,6 +672,7 @@ struct TransactionDataRef<'a> {
     kind: &'a TransactionKind,
     sender: &'a Address,
     gas_payment: &'a Vec<ObjectReference>,
+    expiration: &'a types::transaction::TransactionExpiration,
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -445,6 +681,7 @@ struct TransactionData {
     kind: TransactionKind,
     sender: Address,
     gas_payment: Vec<ObjectReference>,
+    expiration: types::transaction::TransactionExpiration,
 }
 
 impl Serialize for Transaction {
@@ -456,6 +693,7 @@ impl Serialize for Transaction {
             kind: &self.kind,
             sender: &self.sender,
             gas_payment: &self.gas_payment,
+            expiration: &self.expiration,
         };
 
         transaction.serialize(serializer)
@@ -467,8 +705,9 @@ impl<'de> Deserialize<'de> for Transaction {
     where
         D: Deserializer<'de>,
     {
-        let TransactionData { kind, sender, gas_payment } = Deserialize::deserialize(deserializer)?;
+        let TransactionData { kind, sender, gas_payment, expiration } =
+            Deserialize::deserialize(deserializer)?;
 
-        Ok(Transaction { kind, sender, gas_payment })
+        Ok(Transaction { kind, sender, gas_payment, expiration })
     }
 }

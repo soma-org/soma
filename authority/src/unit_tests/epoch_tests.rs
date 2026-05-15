@@ -77,27 +77,37 @@ async fn test_advance_epoch_wrong_epoch_rejected() {
 }
 
 #[tokio::test]
-async fn test_advance_epoch_returns_validator_rewards() {
+async fn test_advance_epoch_routes_fees_to_protocol_fund() {
+    // Under the new model, fees go to protocol_fund (not validators).
+    // Validators are paid only via SOMA emissions.
     let mut state = get_genesis_system_state().await;
+    let initial_fund = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
         protocol_config::Chain::default(),
     );
 
-    // Advance with some fees collected
     let fees = 1_000_000u64;
-    let result = state.advance_epoch(1, &protocol_config, fees, 1_000_000, vec![]);
+    // Use timestamp >= epoch_duration_ms so emissions are issued.
+    let next_ts = state.epoch_start_timestamp_ms() + state.epoch_duration_ms();
+    let result = state.advance_epoch(1, &protocol_config, fees, next_ts, vec![]);
 
     let validator_rewards = result.unwrap();
-    // With non-zero fees + emissions, validators should receive some rewards
-    // (unless validator_reward_allocation_bps is 0)
-    if state.parameters().validator_reward_allocation_bps > 0 {
-        assert!(
-            !validator_rewards.is_empty(),
-            "Validators should receive rewards when fees > 0 and allocation_bps > 0"
-        );
-    }
+
+    // Validators receive rewards from emissions (not fees).
+    assert!(
+        !validator_rewards.is_empty(),
+        "Validators should receive rewards from emissions"
+    );
+
+    // Fees should land in the protocol fund.
+    let fund_after = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
+    assert_eq!(fund_after, initial_fund + fees, "Fees should accumulate in protocol_fund");
 }
 
 // =============================================================================
@@ -108,10 +118,10 @@ async fn test_advance_epoch_returns_validator_rewards() {
 async fn test_advance_epoch_emission_pool_decreases() {
     let mut state = get_genesis_system_state().await;
     let initial_emission = state.emission_pool().balance;
-    let emission_per_epoch = state.emission_pool().emission_per_epoch;
+    let emission_amount = state.emission_pool().current_distribution_amount;
 
     assert!(initial_emission > 0, "Genesis emission pool should be positive");
-    assert!(emission_per_epoch > 0, "Emission per epoch should be positive");
+    assert!(emission_amount > 0, "Emission distribution amount should be positive");
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
@@ -141,113 +151,93 @@ async fn test_advance_epoch_emission_pool_decreases() {
 async fn test_advance_epoch_safe_mode_basic() {
     let mut state = get_genesis_system_state().await;
     let initial_epoch = state.epoch();
+    let initial_fund = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
+    let initial_emission_balance = state.emission_pool().balance;
+    let initial_protocol_version = state.protocol_version();
     let fees = 5000u64;
     let timestamp = 2_000_000u64;
 
-    // Call safe mode directly
-    state.advance_epoch_safe_mode(initial_epoch + 1, fees, timestamp);
+    // Call safe mode directly. Same protocol version (no upgrade in this test).
+    state.advance_epoch_safe_mode(initial_epoch + 1, initial_protocol_version, fees, timestamp);
 
-    assert_eq!(state.epoch(), initial_epoch + 1, "Epoch should still advance in safe mode");
+    assert_eq!(state.epoch(), initial_epoch + 1, "Epoch should advance in safe mode");
     assert!(state.safe_mode(), "Should be in safe mode");
-    assert_eq!(state.safe_mode_accumulated_fees(), fees, "Fees should accumulate in safe mode");
-    assert!(
-        state.safe_mode_accumulated_emissions() > 0,
-        "Emissions should accumulate in safe mode (emission_per_epoch > 0)"
-    );
+    assert_eq!(state.epoch_start_timestamp_ms(), timestamp);
+
+    // Fees should land in the protocol fund inline.
+    let fund_after = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
+    assert_eq!(fund_after, initial_fund + fees, "Fees route to protocol_fund inline");
+
+    // Emissions are forfeited — emission_pool is untouched.
     assert_eq!(
-        state.epoch_start_timestamp_ms(),
-        timestamp,
-        "Timestamp should be updated in safe mode"
+        state.emission_pool().balance,
+        initial_emission_balance,
+        "Emission pool balance untouched in safe mode"
     );
 }
 
 #[tokio::test]
-async fn test_advance_epoch_safe_mode_accumulates_across_epochs() {
+async fn test_advance_epoch_safe_mode_accumulates_fees_across_epochs() {
     let mut state = get_genesis_system_state().await;
+    let initial_fund = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
+    let pv = state.protocol_version();
 
-    // Enter safe mode for multiple epochs
-    state.advance_epoch_safe_mode(1, 1000, 1_000_000);
-    let first_fees = state.safe_mode_accumulated_fees();
-    let first_emissions = state.safe_mode_accumulated_emissions();
-
-    state.advance_epoch_safe_mode(2, 2000, 2_000_000);
+    state.advance_epoch_safe_mode(1, pv, 1000, 1_000_000);
+    state.advance_epoch_safe_mode(2, pv, 2000, 2_000_000);
 
     assert_eq!(state.epoch(), 2);
+    let fund_after = match &state {
+        types::system_state::SystemState::V1(v1) => v1.protocol_fund_balance,
+    };
     assert_eq!(
-        state.safe_mode_accumulated_fees(),
-        first_fees + 2000,
-        "Fees should accumulate across safe mode epochs"
-    );
-    assert!(
-        state.safe_mode_accumulated_emissions() > first_emissions,
-        "Emissions should accumulate across safe mode epochs"
+        fund_after,
+        initial_fund + 3000,
+        "Fees accumulate in protocol_fund across safe-mode epochs"
     );
 }
 
 #[tokio::test]
 async fn test_advance_epoch_recovery_from_safe_mode() {
     let mut state = get_genesis_system_state().await;
+    let pv = state.protocol_version();
 
     // Enter safe mode
-    state.advance_epoch_safe_mode(1, 5000, 1_000_000);
+    state.advance_epoch_safe_mode(1, pv, 5000, 1_000_000);
     assert!(state.safe_mode());
-    assert_eq!(state.safe_mode_accumulated_fees(), 5000);
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
         protocol_config::Chain::default(),
     );
 
-    // Recovery: successful advance_epoch should drain accumulators
+    // Recovery: successful advance_epoch should clear safe_mode flag.
     let result = state.advance_epoch(2, &protocol_config, 1000, 2_000_000, vec![]);
     assert!(result.is_ok(), "Recovery advance_epoch should succeed");
 
     assert!(!state.safe_mode(), "Should exit safe mode after successful advance");
-    assert_eq!(
-        state.safe_mode_accumulated_fees(),
-        0,
-        "Safe mode fees should be drained on recovery"
-    );
-    assert_eq!(
-        state.safe_mode_accumulated_emissions(),
-        0,
-        "Safe mode emissions should be drained on recovery"
-    );
 }
-
-// =============================================================================
-// Difficulty adjustment tests
-// =============================================================================
 
 #[tokio::test]
-async fn test_advance_epoch_hit_counter_tracking() {
+async fn test_advance_epoch_safe_mode_bumps_protocol_version() {
+    // Safe mode must update protocol_version so a fix can land via upgrade
+    // even while the chain is degraded. Matches Sui's behavior.
     let mut state = get_genesis_system_state().await;
+    let initial_version = state.protocol_version();
+    let new_version = initial_version + 1;
 
-    // Simulate some hits and targets
-    state.target_state_mut().record_target_generated();
-    state.target_state_mut().record_target_generated();
-    state.target_state_mut().record_hit();
+    state.advance_epoch_safe_mode(1, new_version, 0, 1_000_000);
 
-    let targets_before = state.target_state().targets_generated_this_epoch;
-    let hits_before = state.target_state().hits_this_epoch;
-    assert_eq!(targets_before, 2);
-    assert_eq!(hits_before, 1);
-
-    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version().into(),
-        protocol_config::Chain::default(),
-    );
-
-    let _ = state.advance_epoch(1, &protocol_config, 0, 1_000_000, vec![]);
-
-    // After epoch advance, hit rate counters should be reset for the new epoch
-    assert_eq!(state.target_state().hits_this_epoch, 0, "Hits should be reset after epoch advance");
-    assert_eq!(
-        state.target_state().targets_generated_this_epoch,
-        0,
-        "Targets generated should be reset after epoch advance"
-    );
+    assert!(state.safe_mode());
+    assert_eq!(state.protocol_version(), new_version, "protocol_version should bump in safe mode");
 }
+
+// Difficulty adjustment tests removed — target_state was stripped in Phase 1.
 
 // =============================================================================
 // BPS arithmetic safety

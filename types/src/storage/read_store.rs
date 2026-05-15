@@ -508,43 +508,55 @@ pub trait RpcIndexes: Send + Sync {
         >,
     >;
 
-    fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
+    /// Stage 13c: balance lookup is now accumulator-backed and
+    /// per-coin-type. Implementations should read directly from
+    /// the post-Settlement accumulator state, NOT the legacy
+    /// coin-object index (which goes stale because Stage 13a
+    /// stopped materializing Coin objects). `Ok(None)` means the
+    /// (owner, coin_type) row does not exist; callers typically
+    /// treat that as a balance of 0.
+    fn get_balance(
+        &self,
+        owner: &SomaAddress,
+        coin_type: crate::object::CoinType,
+    ) -> Result<Option<BalanceInfo>>;
+
+    /// Stage 9d: list every active delegation owned by `staker`.
+    /// Reads directly from the post-migration `delegations` column
+    /// family; eventual replacement for scanning StakedSomaV1 objects.
+    fn list_delegations(&self, staker: &SomaAddress) -> Result<Vec<DelegationInfo>>;
 
     fn get_highest_indexed_checkpoint_seq_number(&self)
     -> Result<Option<CheckpointSequenceNumber>>;
 
-    /// Iterate over Target objects with optional filtering by status and epoch.
-    ///
-    /// # Arguments
-    /// * `status_filter` - Optional filter: "open", "filled", or "claimed"
-    /// * `epoch_filter` - Optional filter by generation_epoch
-    /// * `cursor` - Optional cursor for pagination
-    fn targets_iter(
+    /// Get all bid object IDs for a given ask.
+    fn bids_for_ask(
         &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<TargetInfo>,
-    ) -> Result<
-        Box<dyn Iterator<Item = Result<TargetInfo, crate::storage::storage_error::Error>> + '_>,
-    >;
+        ask_id: &ObjectID,
+    ) -> Result<Vec<ObjectID>>;
+
+    /// Get all open ask object IDs.
+    fn open_asks(&self) -> Result<Vec<ObjectID>>;
+
+    /// Get all settlement object IDs for a given buyer.
+    fn settlements_by_buyer(
+        &self,
+        buyer: &SomaAddress,
+    ) -> Result<Vec<ObjectID>>;
+
+    /// Get all settlement object IDs for a given seller.
+    fn settlements_by_seller(
+        &self,
+        seller: &SomaAddress,
+    ) -> Result<Vec<ObjectID>>;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OwnedObjectInfo {
     pub owner: SomaAddress,
     pub object_type: ObjectType,
-    pub balance: Option<u64>,
     pub object_id: ObjectID,
     pub version: Version,
-}
-
-/// Information about a Target for indexing and pagination.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct TargetInfo {
-    pub target_id: ObjectID,
-    pub version: Version,
-    pub status: String,
-    pub generation_epoch: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
@@ -587,4 +599,19 @@ pub struct EpochInfo {
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct BalanceInfo {
     pub balance: u64,
+}
+
+/// A single row of the auto-compound `delegations` table. One row
+/// per `(pool, staker)`. Mirrors
+/// [`crate::system_state::staking::Delegation`] for read-store
+/// consumers — the RPC layer can compute current accrued reward by
+/// joining `index_at_last_collect` against the live pool's
+/// `cumulative_index`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DelegationInfo {
+    pub pool_id: ObjectID,
+    pub principal: u64,
+    pub index_at_last_collect: u128,
+    pub pending_principal: u64,
+    pub pending_added_at_epoch: u64,
 }

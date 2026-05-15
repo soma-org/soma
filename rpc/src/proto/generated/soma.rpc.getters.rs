@@ -6,6 +6,7 @@ mod _getter_impls {
             Self {
                 address: None,
                 amount: None,
+                coin_type: None,
             }
         }
         #[doc(hidden)]
@@ -19,6 +20,10 @@ mod _getter_impls {
         }
         pub fn with_amount(mut self, field: String) -> Self {
             self.amount = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
             self
         }
     }
@@ -493,6 +498,8 @@ mod _getter_impls {
                 output_owner: None,
                 id_operation: None,
                 object_type: None,
+                accumulator_operation: None,
+                accumulator_amount: None,
             }
         }
         #[doc(hidden)]
@@ -560,6 +567,14 @@ mod _getter_impls {
         }
         pub fn with_object_type(mut self, field: String) -> Self {
             self.object_type = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_operation(mut self, field: String) -> Self {
+            self.accumulator_operation = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_amount(mut self, field: u64) -> Self {
+            self.accumulator_amount = Some(field.into());
             self
         }
     }
@@ -1537,6 +1552,7 @@ mod _getter_impls {
                 kind: None,
                 address: None,
                 version: None,
+                accumulator_kind: None,
             }
         }
         #[doc(hidden)]
@@ -1550,6 +1566,10 @@ mod _getter_impls {
         }
         pub fn with_version(mut self, field: u64) -> Self {
             self.version = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_kind(mut self, field: String) -> Self {
+            self.accumulator_kind = Some(field.into());
             self
         }
     }
@@ -1954,7 +1974,10 @@ mod _getter_impls {
     }
     impl GetBalanceRequest {
         pub const fn const_default() -> Self {
-            Self { owner: None }
+            Self {
+                owner: None,
+                coin_type: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -1963,6 +1986,10 @@ mod _getter_impls {
         }
         pub fn with_owner(mut self, field: String) -> Self {
             self.owner = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
             self
         }
     }
@@ -2039,12 +2066,76 @@ mod _getter_impls {
             self
         }
     }
-    impl GetTargetRequest {
+    impl ListDelegationsRequest {
+        pub const fn const_default() -> Self {
+            Self { staker: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListDelegationsRequest = ListDelegationsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_staker(mut self, field: String) -> Self {
+            self.staker = Some(field.into());
+            self
+        }
+    }
+    impl DelegationEntry {
         pub const fn const_default() -> Self {
             Self {
-                target_id: None,
-                read_mask: None,
+                pool_id: None,
+                principal: None,
+                last_collected_period: None,
             }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: DelegationEntry = DelegationEntry::const_default();
+            &DEFAULT
+        }
+        pub fn with_pool_id(mut self, field: String) -> Self {
+            self.pool_id = Some(field.into());
+            self
+        }
+        pub fn with_principal(mut self, field: u64) -> Self {
+            self.principal = Some(field.into());
+            self
+        }
+        pub fn with_last_collected_period(mut self, field: u64) -> Self {
+            self.last_collected_period = Some(field.into());
+            self
+        }
+    }
+    impl ListDelegationsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                delegations: Vec::new(),
+                total_principal: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListDelegationsResponse = ListDelegationsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn delegations(&self) -> &[DelegationEntry] {
+            &self.delegations
+        }
+        pub fn delegations_mut(&mut self) -> &mut Vec<DelegationEntry> {
+            &mut self.delegations
+        }
+        pub fn with_delegations(mut self, field: Vec<DelegationEntry>) -> Self {
+            self.delegations = field;
+            self
+        }
+        pub fn with_total_principal(mut self, field: u64) -> Self {
+            self.total_principal = Some(field.into());
+            self
+        }
+    }
+    impl GetTargetRequest {
+        pub const fn const_default() -> Self {
+            Self { target_id: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -2065,22 +2156,22 @@ mod _getter_impls {
             static DEFAULT: GetTargetResponse = GetTargetResponse::const_default();
             &DEFAULT
         }
-        pub fn target(&self) -> &Target {
+        pub fn target(&self) -> &Object {
             self.target
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Target::default_instance() as _)
+                .unwrap_or_else(|| Object::default_instance() as _)
         }
-        pub fn target_opt(&self) -> Option<&Target> {
+        pub fn target_opt(&self) -> Option<&Object> {
             self.target.as_ref().map(|field| field as _)
         }
-        pub fn target_opt_mut(&mut self) -> Option<&mut Target> {
+        pub fn target_opt_mut(&mut self) -> Option<&mut Object> {
             self.target.as_mut().map(|field| field as _)
         }
-        pub fn target_mut(&mut self) -> &mut Target {
+        pub fn target_mut(&mut self) -> &mut Object {
             self.target.get_or_insert_default()
         }
-        pub fn with_target(mut self, field: Target) -> Self {
+        pub fn with_target(mut self, field: Object) -> Self {
             self.target = Some(field.into());
             self
         }
@@ -2088,12 +2179,10 @@ mod _getter_impls {
     impl ListTargetsRequest {
         pub const fn const_default() -> Self {
             Self {
-                status_filter: None,
-                epoch_filter: None,
+                status: None,
+                epoch: None,
                 page_size: None,
                 page_token: None,
-                read_mask: None,
-                submitter_filter: None,
             }
         }
         #[doc(hidden)]
@@ -2101,12 +2190,12 @@ mod _getter_impls {
             static DEFAULT: ListTargetsRequest = ListTargetsRequest::const_default();
             &DEFAULT
         }
-        pub fn with_status_filter(mut self, field: String) -> Self {
-            self.status_filter = Some(field.into());
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
             self
         }
-        pub fn with_epoch_filter(mut self, field: u64) -> Self {
-            self.epoch_filter = Some(field.into());
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
             self
         }
         pub fn with_page_size(mut self, field: u32) -> Self {
@@ -2115,10 +2204,6 @@ mod _getter_impls {
         }
         pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.page_token = Some(field.into());
-            self
-        }
-        pub fn with_submitter_filter(mut self, field: String) -> Self {
-            self.submitter_filter = Some(field.into());
             self
         }
     }
@@ -2134,13 +2219,13 @@ mod _getter_impls {
             static DEFAULT: ListTargetsResponse = ListTargetsResponse::const_default();
             &DEFAULT
         }
-        pub fn targets(&self) -> &[Target] {
+        pub fn targets(&self) -> &[Object] {
             &self.targets
         }
-        pub fn targets_mut(&mut self) -> &mut Vec<Target> {
+        pub fn targets_mut(&mut self) -> &mut Vec<Object> {
             &mut self.targets
         }
-        pub fn with_targets(mut self, field: Vec<Target>) -> Self {
+        pub fn with_targets(mut self, field: Vec<Object>) -> Self {
             self.targets = field;
             self
         }
@@ -2151,10 +2236,7 @@ mod _getter_impls {
     }
     impl GetChallengeRequest {
         pub const fn const_default() -> Self {
-            Self {
-                challenge_id: None,
-                read_mask: None,
-            }
+            Self { challenge_id: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -2175,22 +2257,22 @@ mod _getter_impls {
             static DEFAULT: GetChallengeResponse = GetChallengeResponse::const_default();
             &DEFAULT
         }
-        pub fn challenge(&self) -> &Challenge {
+        pub fn challenge(&self) -> &Object {
             self.challenge
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Challenge::default_instance() as _)
+                .unwrap_or_else(|| Object::default_instance() as _)
         }
-        pub fn challenge_opt(&self) -> Option<&Challenge> {
+        pub fn challenge_opt(&self) -> Option<&Object> {
             self.challenge.as_ref().map(|field| field as _)
         }
-        pub fn challenge_opt_mut(&mut self) -> Option<&mut Challenge> {
+        pub fn challenge_opt_mut(&mut self) -> Option<&mut Object> {
             self.challenge.as_mut().map(|field| field as _)
         }
-        pub fn challenge_mut(&mut self) -> &mut Challenge {
+        pub fn challenge_mut(&mut self) -> &mut Object {
             self.challenge.get_or_insert_default()
         }
-        pub fn with_challenge(mut self, field: Challenge) -> Self {
+        pub fn with_challenge(mut self, field: Object) -> Self {
             self.challenge = Some(field.into());
             self
         }
@@ -2199,11 +2281,9 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 target_id: None,
-                status_filter: None,
-                epoch_filter: None,
+                status: None,
                 page_size: None,
                 page_token: None,
-                read_mask: None,
             }
         }
         #[doc(hidden)]
@@ -2215,12 +2295,8 @@ mod _getter_impls {
             self.target_id = Some(field.into());
             self
         }
-        pub fn with_status_filter(mut self, field: String) -> Self {
-            self.status_filter = Some(field.into());
-            self
-        }
-        pub fn with_epoch_filter(mut self, field: u64) -> Self {
-            self.epoch_filter = Some(field.into());
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
             self
         }
         pub fn with_page_size(mut self, field: u32) -> Self {
@@ -2244,13 +2320,13 @@ mod _getter_impls {
             static DEFAULT: ListChallengesResponse = ListChallengesResponse::const_default();
             &DEFAULT
         }
-        pub fn challenges(&self) -> &[Challenge] {
+        pub fn challenges(&self) -> &[Object] {
             &self.challenges
         }
-        pub fn challenges_mut(&mut self) -> &mut Vec<Challenge> {
+        pub fn challenges_mut(&mut self) -> &mut Vec<Object> {
             &mut self.challenges
         }
-        pub fn with_challenges(mut self, field: Vec<Challenge>) -> Self {
+        pub fn with_challenges(mut self, field: Vec<Object>) -> Self {
             self.challenges = field;
             self
         }
@@ -2472,34 +2548,8 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 epoch_duration_ms: None,
-                validator_reward_allocation_bps: None,
-                model_min_stake: None,
-                model_architecture_version: None,
-                model_reveal_slash_rate_bps: None,
-                model_tally_slash_rate_bps: None,
-                target_epoch_fee_collection: None,
-                base_fee: None,
-                write_object_fee: None,
-                value_fee_bps: None,
-                min_value_fee_bps: None,
-                max_value_fee_bps: None,
-                fee_adjustment_rate_bps: None,
-                target_models_per_target: None,
-                target_embedding_dim: None,
-                target_initial_distance_threshold: None,
-                target_reward_allocation_bps: None,
-                target_hits_per_epoch: None,
-                target_hits_ema_decay_bps: None,
-                target_difficulty_adjustment_rate_bps: None,
-                target_max_distance_threshold: None,
-                target_min_distance_threshold: None,
-                target_initial_targets_per_epoch: None,
-                target_submitter_reward_share_bps: None,
-                target_model_reward_share_bps: None,
-                target_claimer_incentive_bps: None,
-                submission_bond_per_byte: None,
-                challenger_bond_per_byte: None,
-                max_submission_data_size: None,
+                unit_fee: None,
+                channel_grace_period_ms: None,
             }
         }
         #[doc(hidden)]
@@ -2511,116 +2561,12 @@ mod _getter_impls {
             self.epoch_duration_ms = Some(field.into());
             self
         }
-        pub fn with_validator_reward_allocation_bps(mut self, field: u64) -> Self {
-            self.validator_reward_allocation_bps = Some(field.into());
+        pub fn with_unit_fee(mut self, field: u64) -> Self {
+            self.unit_fee = Some(field.into());
             self
         }
-        pub fn with_model_min_stake(mut self, field: u64) -> Self {
-            self.model_min_stake = Some(field.into());
-            self
-        }
-        pub fn with_model_architecture_version(mut self, field: u64) -> Self {
-            self.model_architecture_version = Some(field.into());
-            self
-        }
-        pub fn with_model_reveal_slash_rate_bps(mut self, field: u64) -> Self {
-            self.model_reveal_slash_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_model_tally_slash_rate_bps(mut self, field: u64) -> Self {
-            self.model_tally_slash_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_epoch_fee_collection(mut self, field: u64) -> Self {
-            self.target_epoch_fee_collection = Some(field.into());
-            self
-        }
-        pub fn with_base_fee(mut self, field: u64) -> Self {
-            self.base_fee = Some(field.into());
-            self
-        }
-        pub fn with_write_object_fee(mut self, field: u64) -> Self {
-            self.write_object_fee = Some(field.into());
-            self
-        }
-        pub fn with_value_fee_bps(mut self, field: u64) -> Self {
-            self.value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_min_value_fee_bps(mut self, field: u64) -> Self {
-            self.min_value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_max_value_fee_bps(mut self, field: u64) -> Self {
-            self.max_value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_fee_adjustment_rate_bps(mut self, field: u64) -> Self {
-            self.fee_adjustment_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_models_per_target(mut self, field: u64) -> Self {
-            self.target_models_per_target = Some(field.into());
-            self
-        }
-        pub fn with_target_embedding_dim(mut self, field: u64) -> Self {
-            self.target_embedding_dim = Some(field.into());
-            self
-        }
-        pub fn with_target_initial_distance_threshold(mut self, field: f32) -> Self {
-            self.target_initial_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
-            self.target_reward_allocation_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_hits_per_epoch(mut self, field: u64) -> Self {
-            self.target_hits_per_epoch = Some(field.into());
-            self
-        }
-        pub fn with_target_hits_ema_decay_bps(mut self, field: u64) -> Self {
-            self.target_hits_ema_decay_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_difficulty_adjustment_rate_bps(mut self, field: u64) -> Self {
-            self.target_difficulty_adjustment_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_max_distance_threshold(mut self, field: f32) -> Self {
-            self.target_max_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_min_distance_threshold(mut self, field: f32) -> Self {
-            self.target_min_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_initial_targets_per_epoch(mut self, field: u64) -> Self {
-            self.target_initial_targets_per_epoch = Some(field.into());
-            self
-        }
-        pub fn with_target_submitter_reward_share_bps(mut self, field: u64) -> Self {
-            self.target_submitter_reward_share_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_model_reward_share_bps(mut self, field: u64) -> Self {
-            self.target_model_reward_share_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_claimer_incentive_bps(mut self, field: u64) -> Self {
-            self.target_claimer_incentive_bps = Some(field.into());
-            self
-        }
-        pub fn with_submission_bond_per_byte(mut self, field: u64) -> Self {
-            self.submission_bond_per_byte = Some(field.into());
-            self
-        }
-        pub fn with_challenger_bond_per_byte(mut self, field: u64) -> Self {
-            self.challenger_bond_per_byte = Some(field.into());
-            self
-        }
-        pub fn with_max_submission_data_size(mut self, field: u64) -> Self {
-            self.max_submission_data_size = Some(field.into());
+        pub fn with_channel_grace_period_ms(mut self, field: u64) -> Self {
+            self.channel_grace_period_ms = Some(field.into());
             self
         }
     }
@@ -2707,7 +2653,6 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
-                proxy_address: None,
                 voting_power: None,
                 commission_rate: None,
                 next_epoch_stake: None,
@@ -2719,7 +2664,6 @@ mod _getter_impls {
                 next_epoch_net_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
-                next_epoch_proxy_address: None,
                 proof_of_possession: None,
                 next_epoch_proof_of_possession: None,
             }
@@ -2755,10 +2699,6 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: String) -> Self {
             self.primary_address = Some(field.into());
-            self
-        }
-        pub fn with_proxy_address(mut self, field: String) -> Self {
-            self.proxy_address = Some(field.into());
             self
         }
         pub fn with_voting_power(mut self, field: u64) -> Self {
@@ -2827,10 +2767,6 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_primary_address(mut self, field: String) -> Self {
             self.next_epoch_primary_address = Some(field.into());
-            self
-        }
-        pub fn with_next_epoch_proxy_address(mut self, field: String) -> Self {
-            self.next_epoch_proxy_address = Some(field.into());
             self
         }
         pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
@@ -3354,6 +3290,7 @@ mod _getter_impls {
                 kind: None,
                 sender: None,
                 gas_payment: Vec::new(),
+                expiration: None,
             }
         }
         #[doc(hidden)]
@@ -3396,6 +3333,103 @@ mod _getter_impls {
         }
         pub fn with_gas_payment(mut self, field: Vec<ObjectReference>) -> Self {
             self.gas_payment = field;
+            self
+        }
+        pub fn expiration(&self) -> &TransactionExpiration {
+            self.expiration
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| TransactionExpiration::default_instance() as _)
+        }
+        pub fn expiration_opt(&self) -> Option<&TransactionExpiration> {
+            self.expiration.as_ref().map(|field| field as _)
+        }
+        pub fn expiration_opt_mut(&mut self) -> Option<&mut TransactionExpiration> {
+            self.expiration.as_mut().map(|field| field as _)
+        }
+        pub fn expiration_mut(&mut self) -> &mut TransactionExpiration {
+            self.expiration.get_or_insert_default()
+        }
+        pub fn with_expiration(mut self, field: TransactionExpiration) -> Self {
+            self.expiration = Some(field.into());
+            self
+        }
+    }
+    impl TransactionExpiration {
+        pub const fn const_default() -> Self {
+            Self { value: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: TransactionExpiration = TransactionExpiration::const_default();
+            &DEFAULT
+        }
+        pub fn valid_during(&self) -> &ValidDuring {
+            if let Some(transaction_expiration::Value::ValidDuring(field)) = &self.value
+            {
+                field as _
+            } else {
+                ValidDuring::default_instance() as _
+            }
+        }
+        pub fn valid_during_opt(&self) -> Option<&ValidDuring> {
+            if let Some(transaction_expiration::Value::ValidDuring(field)) = &self.value
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn valid_during_opt_mut(&mut self) -> Option<&mut ValidDuring> {
+            if let Some(transaction_expiration::Value::ValidDuring(field)) = &mut self
+                .value
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn valid_during_mut(&mut self) -> &mut ValidDuring {
+            if self.valid_during_opt_mut().is_none() {
+                self.value = Some(
+                    transaction_expiration::Value::ValidDuring(ValidDuring::default()),
+                );
+            }
+            self.valid_during_opt_mut().unwrap()
+        }
+        pub fn with_valid_during(mut self, field: ValidDuring) -> Self {
+            self.value = Some(transaction_expiration::Value::ValidDuring(field.into()));
+            self
+        }
+    }
+    impl ValidDuring {
+        pub const fn const_default() -> Self {
+            Self {
+                min_epoch: None,
+                max_epoch: None,
+                chain: None,
+                nonce: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ValidDuring = ValidDuring::const_default();
+            &DEFAULT
+        }
+        pub fn with_min_epoch(mut self, field: u64) -> Self {
+            self.min_epoch = Some(field.into());
+            self
+        }
+        pub fn with_max_epoch(mut self, field: u64) -> Self {
+            self.max_epoch = Some(field.into());
+            self
+        }
+        pub fn with_chain(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.chain = Some(field.into());
+            self
+        }
+        pub fn with_nonce(mut self, field: u32) -> Self {
+            self.nonce = Some(field.into());
             self
         }
     }
@@ -4488,6 +4522,1071 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::ClaimChallengeBond(field.into()));
             self
         }
+        pub fn bridge_deposit(&self) -> &BridgeDeposit {
+            if let Some(transaction_kind::Kind::BridgeDeposit(field)) = &self.kind {
+                field as _
+            } else {
+                BridgeDeposit::default_instance() as _
+            }
+        }
+        pub fn bridge_deposit_opt(&self) -> Option<&BridgeDeposit> {
+            if let Some(transaction_kind::Kind::BridgeDeposit(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_deposit_opt_mut(&mut self) -> Option<&mut BridgeDeposit> {
+            if let Some(transaction_kind::Kind::BridgeDeposit(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_deposit_mut(&mut self) -> &mut BridgeDeposit {
+            if self.bridge_deposit_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeDeposit(BridgeDeposit::default()),
+                );
+            }
+            self.bridge_deposit_opt_mut().unwrap()
+        }
+        pub fn with_bridge_deposit(mut self, field: BridgeDeposit) -> Self {
+            self.kind = Some(transaction_kind::Kind::BridgeDeposit(field.into()));
+            self
+        }
+        pub fn bridge_withdraw(&self) -> &BridgeWithdraw {
+            if let Some(transaction_kind::Kind::BridgeWithdraw(field)) = &self.kind {
+                field as _
+            } else {
+                BridgeWithdraw::default_instance() as _
+            }
+        }
+        pub fn bridge_withdraw_opt(&self) -> Option<&BridgeWithdraw> {
+            if let Some(transaction_kind::Kind::BridgeWithdraw(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_withdraw_opt_mut(&mut self) -> Option<&mut BridgeWithdraw> {
+            if let Some(transaction_kind::Kind::BridgeWithdraw(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_withdraw_mut(&mut self) -> &mut BridgeWithdraw {
+            if self.bridge_withdraw_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeWithdraw(BridgeWithdraw::default()),
+                );
+            }
+            self.bridge_withdraw_opt_mut().unwrap()
+        }
+        pub fn with_bridge_withdraw(mut self, field: BridgeWithdraw) -> Self {
+            self.kind = Some(transaction_kind::Kind::BridgeWithdraw(field.into()));
+            self
+        }
+        pub fn bridge_emergency_pause(&self) -> &BridgeEmergencyPause {
+            if let Some(transaction_kind::Kind::BridgeEmergencyPause(field)) = &self.kind
+            {
+                field as _
+            } else {
+                BridgeEmergencyPause::default_instance() as _
+            }
+        }
+        pub fn bridge_emergency_pause_opt(&self) -> Option<&BridgeEmergencyPause> {
+            if let Some(transaction_kind::Kind::BridgeEmergencyPause(field)) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_emergency_pause_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeEmergencyPause> {
+            if let Some(transaction_kind::Kind::BridgeEmergencyPause(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_emergency_pause_mut(&mut self) -> &mut BridgeEmergencyPause {
+            if self.bridge_emergency_pause_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeEmergencyPause(
+                        BridgeEmergencyPause::default(),
+                    ),
+                );
+            }
+            self.bridge_emergency_pause_opt_mut().unwrap()
+        }
+        pub fn with_bridge_emergency_pause(
+            mut self,
+            field: BridgeEmergencyPause,
+        ) -> Self {
+            self.kind = Some(transaction_kind::Kind::BridgeEmergencyPause(field.into()));
+            self
+        }
+        pub fn bridge_emergency_unpause(&self) -> &BridgeEmergencyUnpause {
+            if let Some(transaction_kind::Kind::BridgeEmergencyUnpause(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                BridgeEmergencyUnpause::default_instance() as _
+            }
+        }
+        pub fn bridge_emergency_unpause_opt(&self) -> Option<&BridgeEmergencyUnpause> {
+            if let Some(transaction_kind::Kind::BridgeEmergencyUnpause(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_emergency_unpause_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeEmergencyUnpause> {
+            if let Some(transaction_kind::Kind::BridgeEmergencyUnpause(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_emergency_unpause_mut(&mut self) -> &mut BridgeEmergencyUnpause {
+            if self.bridge_emergency_unpause_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeEmergencyUnpause(
+                        BridgeEmergencyUnpause::default(),
+                    ),
+                );
+            }
+            self.bridge_emergency_unpause_opt_mut().unwrap()
+        }
+        pub fn with_bridge_emergency_unpause(
+            mut self,
+            field: BridgeEmergencyUnpause,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeEmergencyUnpause(field.into()),
+            );
+            self
+        }
+        pub fn bridge_attach_withdrawal_signatures(
+            &self,
+        ) -> &BridgeAttachWithdrawalSignatures {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &self.kind
+            {
+                field as _
+            } else {
+                BridgeAttachWithdrawalSignatures::default_instance() as _
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_opt(
+            &self,
+        ) -> Option<&BridgeAttachWithdrawalSignatures> {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeAttachWithdrawalSignatures> {
+            if let Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field),
+            ) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_attach_withdrawal_signatures_mut(
+            &mut self,
+        ) -> &mut BridgeAttachWithdrawalSignatures {
+            if self.bridge_attach_withdrawal_signatures_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeAttachWithdrawalSignatures(
+                        BridgeAttachWithdrawalSignatures::default(),
+                    ),
+                );
+            }
+            self.bridge_attach_withdrawal_signatures_opt_mut().unwrap()
+        }
+        pub fn with_bridge_attach_withdrawal_signatures(
+            mut self,
+            field: BridgeAttachWithdrawalSignatures,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeAttachWithdrawalSignatures(field.into()),
+            );
+            self
+        }
+        pub fn bridge_update_committee_blocklist(
+            &self,
+        ) -> &BridgeUpdateCommitteeBlocklist {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                BridgeUpdateCommitteeBlocklist::default_instance() as _
+            }
+        }
+        pub fn bridge_update_committee_blocklist_opt(
+            &self,
+        ) -> Option<&BridgeUpdateCommitteeBlocklist> {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_update_committee_blocklist_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeUpdateCommitteeBlocklist> {
+            if let Some(transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_update_committee_blocklist_mut(
+            &mut self,
+        ) -> &mut BridgeUpdateCommitteeBlocklist {
+            if self.bridge_update_committee_blocklist_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(
+                        BridgeUpdateCommitteeBlocklist::default(),
+                    ),
+                );
+            }
+            self.bridge_update_committee_blocklist_opt_mut().unwrap()
+        }
+        pub fn with_bridge_update_committee_blocklist(
+            mut self,
+            field: BridgeUpdateCommitteeBlocklist,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeUpdateCommitteeBlocklist(field.into()),
+            );
+            self
+        }
+        pub fn bridge_register_bridge_key(&self) -> &BridgeRegisterBridgeKey {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                BridgeRegisterBridgeKey::default_instance() as _
+            }
+        }
+        pub fn bridge_register_bridge_key_opt(
+            &self,
+        ) -> Option<&BridgeRegisterBridgeKey> {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_register_bridge_key_opt_mut(
+            &mut self,
+        ) -> Option<&mut BridgeRegisterBridgeKey> {
+            if let Some(transaction_kind::Kind::BridgeRegisterBridgeKey(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn bridge_register_bridge_key_mut(
+            &mut self,
+        ) -> &mut BridgeRegisterBridgeKey {
+            if self.bridge_register_bridge_key_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BridgeRegisterBridgeKey(
+                        BridgeRegisterBridgeKey::default(),
+                    ),
+                );
+            }
+            self.bridge_register_bridge_key_opt_mut().unwrap()
+        }
+        pub fn with_bridge_register_bridge_key(
+            mut self,
+            field: BridgeRegisterBridgeKey,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::BridgeRegisterBridgeKey(field.into()),
+            );
+            self
+        }
+        pub fn open_channel(&self) -> &OpenChannel {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &self.kind {
+                field as _
+            } else {
+                OpenChannel::default_instance() as _
+            }
+        }
+        pub fn open_channel_opt(&self) -> Option<&OpenChannel> {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn open_channel_opt_mut(&mut self) -> Option<&mut OpenChannel> {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn open_channel_mut(&mut self) -> &mut OpenChannel {
+            if self.open_channel_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::OpenChannel(OpenChannel::default()),
+                );
+            }
+            self.open_channel_opt_mut().unwrap()
+        }
+        pub fn with_open_channel(mut self, field: OpenChannel) -> Self {
+            self.kind = Some(transaction_kind::Kind::OpenChannel(field.into()));
+            self
+        }
+        pub fn settle(&self) -> &Settle {
+            if let Some(transaction_kind::Kind::Settle(field)) = &self.kind {
+                field as _
+            } else {
+                Settle::default_instance() as _
+            }
+        }
+        pub fn settle_opt(&self) -> Option<&Settle> {
+            if let Some(transaction_kind::Kind::Settle(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settle_opt_mut(&mut self) -> Option<&mut Settle> {
+            if let Some(transaction_kind::Kind::Settle(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settle_mut(&mut self) -> &mut Settle {
+            if self.settle_opt_mut().is_none() {
+                self.kind = Some(transaction_kind::Kind::Settle(Settle::default()));
+            }
+            self.settle_opt_mut().unwrap()
+        }
+        pub fn with_settle(mut self, field: Settle) -> Self {
+            self.kind = Some(transaction_kind::Kind::Settle(field.into()));
+            self
+        }
+        pub fn request_close(&self) -> &RequestClose {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &self.kind {
+                field as _
+            } else {
+                RequestClose::default_instance() as _
+            }
+        }
+        pub fn request_close_opt(&self) -> Option<&RequestClose> {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn request_close_opt_mut(&mut self) -> Option<&mut RequestClose> {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn request_close_mut(&mut self) -> &mut RequestClose {
+            if self.request_close_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RequestClose(RequestClose::default()),
+                );
+            }
+            self.request_close_opt_mut().unwrap()
+        }
+        pub fn with_request_close(mut self, field: RequestClose) -> Self {
+            self.kind = Some(transaction_kind::Kind::RequestClose(field.into()));
+            self
+        }
+        pub fn withdraw_after_timeout(&self) -> &WithdrawAfterTimeout {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &self.kind
+            {
+                field as _
+            } else {
+                WithdrawAfterTimeout::default_instance() as _
+            }
+        }
+        pub fn withdraw_after_timeout_opt(&self) -> Option<&WithdrawAfterTimeout> {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn withdraw_after_timeout_opt_mut(
+            &mut self,
+        ) -> Option<&mut WithdrawAfterTimeout> {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn withdraw_after_timeout_mut(&mut self) -> &mut WithdrawAfterTimeout {
+            if self.withdraw_after_timeout_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::WithdrawAfterTimeout(
+                        WithdrawAfterTimeout::default(),
+                    ),
+                );
+            }
+            self.withdraw_after_timeout_opt_mut().unwrap()
+        }
+        pub fn with_withdraw_after_timeout(
+            mut self,
+            field: WithdrawAfterTimeout,
+        ) -> Self {
+            self.kind = Some(transaction_kind::Kind::WithdrawAfterTimeout(field.into()));
+            self
+        }
+        pub fn top_up(&self) -> &TopUp {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &self.kind {
+                field as _
+            } else {
+                TopUp::default_instance() as _
+            }
+        }
+        pub fn top_up_opt(&self) -> Option<&TopUp> {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn top_up_opt_mut(&mut self) -> Option<&mut TopUp> {
+            if let Some(transaction_kind::Kind::TopUp(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn top_up_mut(&mut self) -> &mut TopUp {
+            if self.top_up_opt_mut().is_none() {
+                self.kind = Some(transaction_kind::Kind::TopUp(TopUp::default()));
+            }
+            self.top_up_opt_mut().unwrap()
+        }
+        pub fn with_top_up(mut self, field: TopUp) -> Self {
+            self.kind = Some(transaction_kind::Kind::TopUp(field.into()));
+            self
+        }
+        pub fn rate_channel(&self) -> &RateChannel {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &self.kind {
+                field as _
+            } else {
+                RateChannel::default_instance() as _
+            }
+        }
+        pub fn rate_channel_opt(&self) -> Option<&RateChannel> {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn rate_channel_opt_mut(&mut self) -> Option<&mut RateChannel> {
+            if let Some(transaction_kind::Kind::RateChannel(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn rate_channel_mut(&mut self) -> &mut RateChannel {
+            if self.rate_channel_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RateChannel(RateChannel::default()),
+                );
+            }
+            self.rate_channel_opt_mut().unwrap()
+        }
+        pub fn with_rate_channel(mut self, field: RateChannel) -> Self {
+            self.kind = Some(transaction_kind::Kind::RateChannel(field.into()));
+            self
+        }
+        pub fn register_provider(&self) -> &RegisterProvider {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &self.kind {
+                field as _
+            } else {
+                RegisterProvider::default_instance() as _
+            }
+        }
+        pub fn register_provider_opt(&self) -> Option<&RegisterProvider> {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_provider_opt_mut(&mut self) -> Option<&mut RegisterProvider> {
+            if let Some(transaction_kind::Kind::RegisterProvider(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_provider_mut(&mut self) -> &mut RegisterProvider {
+            if self.register_provider_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RegisterProvider(RegisterProvider::default()),
+                );
+            }
+            self.register_provider_opt_mut().unwrap()
+        }
+        pub fn with_register_provider(mut self, field: RegisterProvider) -> Self {
+            self.kind = Some(transaction_kind::Kind::RegisterProvider(field.into()));
+            self
+        }
+        pub fn update_provider(&self) -> &UpdateProvider {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &self.kind {
+                field as _
+            } else {
+                UpdateProvider::default_instance() as _
+            }
+        }
+        pub fn update_provider_opt(&self) -> Option<&UpdateProvider> {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_provider_opt_mut(&mut self) -> Option<&mut UpdateProvider> {
+            if let Some(transaction_kind::Kind::UpdateProvider(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_provider_mut(&mut self) -> &mut UpdateProvider {
+            if self.update_provider_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UpdateProvider(UpdateProvider::default()),
+                );
+            }
+            self.update_provider_opt_mut().unwrap()
+        }
+        pub fn with_update_provider(mut self, field: UpdateProvider) -> Self {
+            self.kind = Some(transaction_kind::Kind::UpdateProvider(field.into()));
+            self
+        }
+        pub fn register_offering(&self) -> &RegisterOffering {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &self.kind {
+                field as _
+            } else {
+                RegisterOffering::default_instance() as _
+            }
+        }
+        pub fn register_offering_opt(&self) -> Option<&RegisterOffering> {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_offering_opt_mut(&mut self) -> Option<&mut RegisterOffering> {
+            if let Some(transaction_kind::Kind::RegisterOffering(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn register_offering_mut(&mut self) -> &mut RegisterOffering {
+            if self.register_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RegisterOffering(RegisterOffering::default()),
+                );
+            }
+            self.register_offering_opt_mut().unwrap()
+        }
+        pub fn with_register_offering(mut self, field: RegisterOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::RegisterOffering(field.into()));
+            self
+        }
+        pub fn update_offering(&self) -> &UpdateOffering {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &self.kind {
+                field as _
+            } else {
+                UpdateOffering::default_instance() as _
+            }
+        }
+        pub fn update_offering_opt(&self) -> Option<&UpdateOffering> {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_offering_opt_mut(&mut self) -> Option<&mut UpdateOffering> {
+            if let Some(transaction_kind::Kind::UpdateOffering(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn update_offering_mut(&mut self) -> &mut UpdateOffering {
+            if self.update_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UpdateOffering(UpdateOffering::default()),
+                );
+            }
+            self.update_offering_opt_mut().unwrap()
+        }
+        pub fn with_update_offering(mut self, field: UpdateOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::UpdateOffering(field.into()));
+            self
+        }
+        pub fn deactivate_offering(&self) -> &DeactivateOffering {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &self.kind {
+                field as _
+            } else {
+                DeactivateOffering::default_instance() as _
+            }
+        }
+        pub fn deactivate_offering_opt(&self) -> Option<&DeactivateOffering> {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn deactivate_offering_opt_mut(
+            &mut self,
+        ) -> Option<&mut DeactivateOffering> {
+            if let Some(transaction_kind::Kind::DeactivateOffering(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn deactivate_offering_mut(&mut self) -> &mut DeactivateOffering {
+            if self.deactivate_offering_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::DeactivateOffering(
+                        DeactivateOffering::default(),
+                    ),
+                );
+            }
+            self.deactivate_offering_opt_mut().unwrap()
+        }
+        pub fn with_deactivate_offering(mut self, field: DeactivateOffering) -> Self {
+            self.kind = Some(transaction_kind::Kind::DeactivateOffering(field.into()));
+            self
+        }
+        pub fn settlement(&self) -> &Settlement {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
+                field as _
+            } else {
+                Settlement::default_instance() as _
+            }
+        }
+        pub fn settlement_opt(&self) -> Option<&Settlement> {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settlement_opt_mut(&mut self) -> Option<&mut Settlement> {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settlement_mut(&mut self) -> &mut Settlement {
+            if self.settlement_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::Settlement(Settlement::default()),
+                );
+            }
+            self.settlement_opt_mut().unwrap()
+        }
+        pub fn with_settlement(mut self, field: Settlement) -> Self {
+            self.kind = Some(transaction_kind::Kind::Settlement(field.into()));
+            self
+        }
+        pub fn balance_transfer(&self) -> &BalanceTransfer {
+            if let Some(transaction_kind::Kind::BalanceTransfer(field)) = &self.kind {
+                field as _
+            } else {
+                BalanceTransfer::default_instance() as _
+            }
+        }
+        pub fn balance_transfer_opt(&self) -> Option<&BalanceTransfer> {
+            if let Some(transaction_kind::Kind::BalanceTransfer(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn balance_transfer_opt_mut(&mut self) -> Option<&mut BalanceTransfer> {
+            if let Some(transaction_kind::Kind::BalanceTransfer(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn balance_transfer_mut(&mut self) -> &mut BalanceTransfer {
+            if self.balance_transfer_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::BalanceTransfer(BalanceTransfer::default()),
+                );
+            }
+            self.balance_transfer_opt_mut().unwrap()
+        }
+        pub fn with_balance_transfer(mut self, field: BalanceTransfer) -> Self {
+            self.kind = Some(transaction_kind::Kind::BalanceTransfer(field.into()));
+            self
+        }
+    }
+    impl BalanceTransfer {
+        pub const fn const_default() -> Self {
+            Self {
+                coin_type: None,
+                transfers: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BalanceTransfer = BalanceTransfer::const_default();
+            &DEFAULT
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
+            self
+        }
+        pub fn transfers(&self) -> &[BalanceTransferEntry] {
+            &self.transfers
+        }
+        pub fn transfers_mut(&mut self) -> &mut Vec<BalanceTransferEntry> {
+            &mut self.transfers
+        }
+        pub fn with_transfers(mut self, field: Vec<BalanceTransferEntry>) -> Self {
+            self.transfers = field;
+            self
+        }
+    }
+    impl BalanceTransferEntry {
+        pub const fn const_default() -> Self {
+            Self {
+                recipient: None,
+                amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BalanceTransferEntry = BalanceTransferEntry::const_default();
+            &DEFAULT
+        }
+        pub fn with_recipient(mut self, field: String) -> Self {
+            self.recipient = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+    }
+    impl PubkeySig {
+        pub const fn const_default() -> Self {
+            Self {
+                signer_pubkey: None,
+                signature: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: PubkeySig = PubkeySig::const_default();
+            &DEFAULT
+        }
+        pub fn with_signer_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signer_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signature = Some(field.into());
+            self
+        }
+    }
+    impl BridgeDeposit {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                eth_tx_hash: None,
+                recipient: None,
+                amount: None,
+                timestamp_ms: None,
+                signatures: Vec::new(),
+                sender_eth_address: None,
+                target_chain: None,
+                token_type: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeDeposit = BridgeDeposit::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn with_eth_tx_hash(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.eth_tx_hash = Some(field.into());
+            self
+        }
+        pub fn with_recipient(mut self, field: String) -> Self {
+            self.recipient = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_timestamp_ms(mut self, field: u64) -> Self {
+            self.timestamp_ms = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+        pub fn with_sender_eth_address(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.sender_eth_address = Some(field.into());
+            self
+        }
+        pub fn with_target_chain(mut self, field: u32) -> Self {
+            self.target_chain = Some(field.into());
+            self
+        }
+        pub fn with_token_type(mut self, field: u32) -> Self {
+            self.token_type = Some(field.into());
+            self
+        }
+    }
+    impl BridgeWithdraw {
+        pub const fn const_default() -> Self {
+            Self {
+                amount: None,
+                recipient_eth_address: None,
+                target_chain: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeWithdraw = BridgeWithdraw::const_default();
+            &DEFAULT
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_recipient_eth_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.recipient_eth_address = Some(field.into());
+            self
+        }
+        pub fn with_target_chain(mut self, field: u32) -> Self {
+            self.target_chain = Some(field.into());
+            self
+        }
+    }
+    impl BridgeEmergencyPause {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeEmergencyPause = BridgeEmergencyPause::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeEmergencyUnpause {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeEmergencyUnpause = BridgeEmergencyUnpause::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeAttachWithdrawalSignatures = BridgeAttachWithdrawalSignatures::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub const fn const_default() -> Self {
+            Self {
+                nonce: None,
+                is_blocklist: None,
+                eth_addresses: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeUpdateCommitteeBlocklist = BridgeUpdateCommitteeBlocklist::const_default();
+            &DEFAULT
+        }
+        pub fn with_nonce(mut self, field: u64) -> Self {
+            self.nonce = Some(field.into());
+            self
+        }
+        pub fn with_is_blocklist(mut self, field: bool) -> Self {
+            self.is_blocklist = Some(field.into());
+            self
+        }
+        pub fn with_eth_addresses(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.eth_addresses = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[PubkeySig] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<PubkeySig> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<PubkeySig>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl BridgeRegisterBridgeKey {
+        pub const fn const_default() -> Self {
+            Self {
+                bridge_pubkey: None,
+                http_url: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeRegisterBridgeKey = BridgeRegisterBridgeKey::const_default();
+            &DEFAULT
+        }
+        pub fn with_bridge_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.bridge_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_http_url(mut self, field: String) -> Self {
+            self.http_url = Some(field.into());
+            self
+        }
     }
     impl AddValidator {
         pub const fn const_default() -> Self {
@@ -4498,7 +5597,6 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
-                proxy_address: None,
                 proof_of_possession: None,
             }
         }
@@ -4532,10 +5630,6 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.primary_address = Some(field.into());
-            self
-        }
-        pub fn with_proxy_address(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.proxy_address = Some(field.into());
             self
         }
         pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
@@ -4591,7 +5685,6 @@ mod _getter_impls {
                 next_epoch_network_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
-                next_epoch_proxy_address: None,
                 next_epoch_protocol_pubkey: None,
                 next_epoch_worker_pubkey: None,
                 next_epoch_network_pubkey: None,
@@ -4622,13 +5715,6 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.next_epoch_primary_address = Some(field.into());
-            self
-        }
-        pub fn with_next_epoch_proxy_address(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.next_epoch_proxy_address = Some(field.into());
             self
         }
         pub fn with_next_epoch_protocol_pubkey(
@@ -4789,8 +5875,7 @@ mod _getter_impls {
     impl AddStake {
         pub const fn const_default() -> Self {
             Self {
-                address: None,
-                coin_ref: None,
+                validator: None,
                 amount: None,
             }
         }
@@ -4799,27 +5884,8 @@ mod _getter_impls {
             static DEFAULT: AddStake = AddStake::const_default();
             &DEFAULT
         }
-        pub fn with_address(mut self, field: String) -> Self {
-            self.address = Some(field.into());
-            self
-        }
-        pub fn coin_ref(&self) -> &ObjectReference {
-            self.coin_ref
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn coin_ref_opt(&self) -> Option<&ObjectReference> {
-            self.coin_ref.as_ref().map(|field| field as _)
-        }
-        pub fn coin_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.coin_ref.as_mut().map(|field| field as _)
-        }
-        pub fn coin_ref_mut(&mut self) -> &mut ObjectReference {
-            self.coin_ref.get_or_insert_default()
-        }
-        pub fn with_coin_ref(mut self, field: ObjectReference) -> Self {
-            self.coin_ref = Some(field.into());
+        pub fn with_validator(mut self, field: String) -> Self {
+            self.validator = Some(field.into());
             self
         }
         pub fn with_amount(mut self, field: u64) -> Self {
@@ -4829,30 +5895,22 @@ mod _getter_impls {
     }
     impl WithdrawStake {
         pub const fn const_default() -> Self {
-            Self { staked_soma: None }
+            Self {
+                pool_id: None,
+                amount: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: WithdrawStake = WithdrawStake::const_default();
             &DEFAULT
         }
-        pub fn staked_soma(&self) -> &ObjectReference {
-            self.staked_soma
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        pub fn with_pool_id(mut self, field: String) -> Self {
+            self.pool_id = Some(field.into());
+            self
         }
-        pub fn staked_soma_opt(&self) -> Option<&ObjectReference> {
-            self.staked_soma.as_ref().map(|field| field as _)
-        }
-        pub fn staked_soma_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.staked_soma.as_mut().map(|field| field as _)
-        }
-        pub fn staked_soma_mut(&mut self) -> &mut ObjectReference {
-            self.staked_soma.get_or_insert_default()
-        }
-        pub fn with_staked_soma(mut self, field: ObjectReference) -> Self {
-            self.staked_soma = Some(field.into());
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
             self
         }
     }
@@ -5425,6 +6483,74 @@ mod _getter_impls {
             self
         }
     }
+    impl Settlement {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                round: None,
+                sub_dag_index: None,
+                changes: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Settlement = Settlement::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_round(mut self, field: u64) -> Self {
+            self.round = Some(field.into());
+            self
+        }
+        pub fn with_sub_dag_index(mut self, field: u64) -> Self {
+            self.sub_dag_index = Some(field.into());
+            self
+        }
+        pub fn changes(&self) -> &[SettlementChange] {
+            &self.changes
+        }
+        pub fn changes_mut(&mut self) -> &mut Vec<SettlementChange> {
+            &mut self.changes
+        }
+        pub fn with_changes(mut self, field: Vec<SettlementChange>) -> Self {
+            self.changes = field;
+            self
+        }
+    }
+    impl SettlementChange {
+        pub const fn const_default() -> Self {
+            Self {
+                owner: None,
+                coin_type: None,
+                amount: None,
+                is_credit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SettlementChange = SettlementChange::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_is_credit(mut self, field: bool) -> Self {
+            self.is_credit = Some(field.into());
+            self
+        }
+    }
     impl SubmitData {
         pub const fn const_default() -> Self {
             Self {
@@ -5644,6 +6770,343 @@ mod _getter_impls {
             self
         }
     }
+    impl OpenChannel {
+        pub const fn const_default() -> Self {
+            Self {
+                payee: None,
+                authorized_signer: None,
+                token: None,
+                deposit_amount: None,
+                model_id: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: OpenChannel = OpenChannel::const_default();
+            &DEFAULT
+        }
+        pub fn with_payee(mut self, field: String) -> Self {
+            self.payee = Some(field.into());
+            self
+        }
+        pub fn with_authorized_signer(mut self, field: String) -> Self {
+            self.authorized_signer = Some(field.into());
+            self
+        }
+        pub fn with_token(mut self, field: String) -> Self {
+            self.token = Some(field.into());
+            self
+        }
+        pub fn with_deposit_amount(mut self, field: u64) -> Self {
+            self.deposit_amount = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+    }
+    impl Settle {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                cumulative_amount: None,
+                voucher_signature: None,
+                cumulative_prompt_tokens: None,
+                cumulative_completion_tokens: None,
+                cumulative_cache_read_tokens: None,
+                cumulative_cache_write_tokens: None,
+                cumulative_requests: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Settle = Settle::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_amount(mut self, field: u64) -> Self {
+            self.cumulative_amount = Some(field.into());
+            self
+        }
+        pub fn with_voucher_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.voucher_signature = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_prompt_tokens(mut self, field: u64) -> Self {
+            self.cumulative_prompt_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_completion_tokens(mut self, field: u64) -> Self {
+            self.cumulative_completion_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_cache_read_tokens(mut self, field: u64) -> Self {
+            self.cumulative_cache_read_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_cache_write_tokens(mut self, field: u64) -> Self {
+            self.cumulative_cache_write_tokens = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_requests(mut self, field: u64) -> Self {
+            self.cumulative_requests = Some(field.into());
+            self
+        }
+    }
+    impl RequestClose {
+        pub const fn const_default() -> Self {
+            Self { channel_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RequestClose = RequestClose::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+    }
+    impl WithdrawAfterTimeout {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                payee: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: WithdrawAfterTimeout = WithdrawAfterTimeout::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_payee(mut self, field: String) -> Self {
+            self.payee = Some(field.into());
+            self
+        }
+    }
+    impl TopUp {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                coin_type: None,
+                amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: TopUp = TopUp::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+    }
+    impl RateChannel {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                negative: None,
+                reason_code: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RateChannel = RateChannel::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_negative(mut self, field: bool) -> Self {
+            self.negative = Some(field.into());
+            self
+        }
+        pub fn with_reason_code(mut self, field: u32) -> Self {
+            self.reason_code = Some(field.into());
+            self
+        }
+    }
+    impl RegisterOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                model_id: None,
+                prompt_micros_per_1k: None,
+                completion_micros_per_1k: None,
+                cache_read_micros_per_1k: None,
+                cache_write_micros_per_1k: None,
+                request_micros: None,
+                ttft_bound_ms: None,
+                ttot_bound_ms: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RegisterOffering = RegisterOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn with_prompt_micros_per_1k(mut self, field: u64) -> Self {
+            self.prompt_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_completion_micros_per_1k(mut self, field: u64) -> Self {
+            self.completion_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_read_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_read_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_write_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_write_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_request_micros(mut self, field: u64) -> Self {
+            self.request_micros = Some(field.into());
+            self
+        }
+        pub fn with_ttft_bound_ms(mut self, field: u32) -> Self {
+            self.ttft_bound_ms = Some(field.into());
+            self
+        }
+        pub fn with_ttot_bound_ms(mut self, field: u32) -> Self {
+            self.ttot_bound_ms = Some(field.into());
+            self
+        }
+    }
+    impl UpdateOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                offering_id: None,
+                model_id: None,
+                prompt_micros_per_1k: None,
+                completion_micros_per_1k: None,
+                cache_read_micros_per_1k: None,
+                cache_write_micros_per_1k: None,
+                request_micros: None,
+                ttft_bound_ms: None,
+                ttot_bound_ms: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UpdateOffering = UpdateOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_offering_id(mut self, field: String) -> Self {
+            self.offering_id = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn with_prompt_micros_per_1k(mut self, field: u64) -> Self {
+            self.prompt_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_completion_micros_per_1k(mut self, field: u64) -> Self {
+            self.completion_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_read_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_read_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_cache_write_micros_per_1k(mut self, field: u64) -> Self {
+            self.cache_write_micros_per_1k = Some(field.into());
+            self
+        }
+        pub fn with_request_micros(mut self, field: u64) -> Self {
+            self.request_micros = Some(field.into());
+            self
+        }
+        pub fn with_ttft_bound_ms(mut self, field: u32) -> Self {
+            self.ttft_bound_ms = Some(field.into());
+            self
+        }
+        pub fn with_ttot_bound_ms(mut self, field: u32) -> Self {
+            self.ttot_bound_ms = Some(field.into());
+            self
+        }
+    }
+    impl DeactivateOffering {
+        pub const fn const_default() -> Self {
+            Self {
+                offering_id: None,
+                model_id: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: DeactivateOffering = DeactivateOffering::const_default();
+            &DEFAULT
+        }
+        pub fn with_offering_id(mut self, field: String) -> Self {
+            self.offering_id = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+    }
+    impl RegisterProvider {
+        pub const fn const_default() -> Self {
+            Self { endpoint: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RegisterProvider = RegisterProvider::const_default();
+            &DEFAULT
+        }
+        pub fn with_endpoint(mut self, field: String) -> Self {
+            self.endpoint = Some(field.into());
+            self
+        }
+    }
+    impl UpdateProvider {
+        pub const fn const_default() -> Self {
+            Self {
+                provider_id: None,
+                endpoint: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UpdateProvider = UpdateProvider::const_default();
+            &DEFAULT
+        }
+        pub fn with_provider_id(mut self, field: String) -> Self {
+            self.provider_id = Some(field.into());
+            self
+        }
+        pub fn with_endpoint(mut self, field: String) -> Self {
+            self.endpoint = Some(field.into());
+            self
+        }
+    }
     impl ExecuteTransactionRequest {
         pub const fn const_default() -> Self {
             Self {
@@ -5780,29 +7243,12 @@ mod _getter_impls {
     }
     impl TransactionFee {
         pub const fn const_default() -> Self {
-            Self {
-                base_fee: None,
-                operation_fee: None,
-                value_fee: None,
-                total_fee: None,
-            }
+            Self { total_fee: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: TransactionFee = TransactionFee::const_default();
             &DEFAULT
-        }
-        pub fn with_base_fee(mut self, field: u64) -> Self {
-            self.base_fee = Some(field.into());
-            self
-        }
-        pub fn with_operation_fee(mut self, field: u64) -> Self {
-            self.operation_fee = Some(field.into());
-            self
-        }
-        pub fn with_value_fee(mut self, field: u64) -> Self {
-            self.value_fee = Some(field.into());
-            self
         }
         pub fn with_total_fee(mut self, field: u64) -> Self {
             self.total_fee = Some(field.into());

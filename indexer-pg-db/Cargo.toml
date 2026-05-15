@@ -13,9 +13,7 @@ diesel-async = { workspace = true, features = ["postgres", "bb8", "async-connect
 diesel_migrations.workspace = true
 bb8.workspace = true
 indexer-store-traits.workspace = true
-prometheus.workspace = true
 scoped-futures.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tempfile.workspace = true

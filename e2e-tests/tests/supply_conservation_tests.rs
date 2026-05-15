@@ -32,33 +32,27 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
     let emission = ss.emission_pool().balance as u128;
 
     let mut staking: u128 = 0;
+    // Auto-compound F1: every shannon held by the staking system
+    // lives in `active_stake` (rewards-eligible, F1 fold divisor) or
+    // `pending_active_stake` (mid-epoch addition awaiting promotion).
+    // No separate reward bank — rewards are folded directly into
+    // `active_stake` at each boundary.
     for v in &ss.validators().validators {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.active_stake as u128;
+        staking += v.staking_pool.pending_active_stake as u128;
     }
     for v in &ss.validators().pending_validators {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.active_stake as u128;
+        staking += v.staking_pool.pending_active_stake as u128;
     }
     for v in ss.validators().inactive_validators.values() {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.active_stake as u128;
+        staking += v.staking_pool.pending_active_stake as u128;
     }
-    for (_, m) in ss.model_registry().active_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-    for (_, m) in ss.model_registry().pending_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-    for (_, m) in ss.model_registry().inactive_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-
-    let safe_mode =
-        ss.safe_mode_accumulated_fees() as u128 + ss.safe_mode_accumulated_emissions() as u128;
+    // Safe-mode accumulators no longer exist (Phase 1 fee model). Safe mode now
+    // routes fees inline to protocol_fund and forfeits emissions. Returning 0
+    // preserves the tuple shape for callers that still expect three values.
+    let safe_mode = 0u128;
 
     (emission, staking, safe_mode)
 }
@@ -85,7 +79,11 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             5
         ])
         .build()
@@ -98,23 +96,17 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     // Execute several AddStake transactions to move SOMA from coins -> staking pools.
     let validator_address = pre_ss.validators().validators[0].metadata.soma_address;
 
+    // Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+    // gas (USDC) — no per-tx coin object needed.
     for i in 0..3 {
         let sender = test_cluster.get_addresses()[i];
-        let gas = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
-            .expect("Should have gas");
-
-        let tx_data = TransactionData::new(
-            TransactionKind::AddStake {
-                address: validator_address,
-                coin_ref: gas,
-                amount: Some(1_000_000),
-            },
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
             sender,
-            vec![gas],
+            TransactionKind::AddStake {
+                validator: validator_address,
+                amount: 1_000_000,
+            },
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -160,7 +152,11 @@ async fn test_supply_conservation_multi_epoch() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             10
         ])
         .build()
@@ -176,23 +172,16 @@ async fn test_supply_conservation_multi_epoch() {
     for epoch in 0..3 {
         info!("--- Epoch {epoch}: executing transactions ---");
 
-        // Stake from a different address each epoch.
+        // Stake from a different address each epoch. Stage 13c:
+        // balance-mode for both stake and gas.
         let sender = test_cluster.get_addresses()[epoch];
-        let gas = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
-            .expect("Should have gas");
-
-        let tx_data = TransactionData::new(
-            TransactionKind::AddStake {
-                address: validator_address,
-                coin_ref: gas,
-                amount: Some(500_000),
-            },
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
             sender,
-            vec![gas],
+            TransactionKind::AddStake {
+                validator: validator_address,
+                amount: 500_000,
+            },
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -232,7 +221,11 @@ async fn test_emission_pool_accounting() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             3
         ])
         .build()
@@ -240,7 +233,7 @@ async fn test_emission_pool_accounting() {
 
     let initial_ss = get_system_state(&test_cluster);
     let (initial_emission, initial_staking, _) = system_state_balances(&initial_ss);
-    let emission_per_epoch = initial_ss.emission_pool().emission_per_epoch;
+    let emission_per_epoch = initial_ss.emission_pool().current_distribution_amount;
 
     info!(
         "Initial: emission_pool={initial_emission}, emission_per_epoch={emission_per_epoch}, \
@@ -250,17 +243,14 @@ async fn test_emission_pool_accounting() {
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
     let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-    let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas,
-            amount: Some(1_000_000),
-        },
+    // Stage 13c: AddStake is balance-mode for both stake and gas.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
         sender,
-        vec![gas],
+        TransactionKind::AddStake {
+            validator: validator_address,
+            amount: 1_000_000,
+        },
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());

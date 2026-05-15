@@ -41,23 +41,6 @@ pub fn check_transaction_input(
     Ok(input_objects.into_checked())
 }
 
-pub fn check_transaction_input_with_given_gas(
-    protocol_config: &ProtocolConfig,
-
-    transaction: &TransactionData,
-    mut input_objects: InputObjects,
-    receiving_objects: ReceivingObjects,
-    gas_object: Object,
-) -> SomaResult<CheckedInputObjects> {
-    let gas_object_ref = gas_object.compute_object_reference();
-    input_objects.push(ObjectReadResult::new_from_gas_object(&gas_object));
-
-    check_transaction_input_inner(protocol_config, transaction, &input_objects, &[gas_object_ref])?;
-    check_receiving_objects(&input_objects, &receiving_objects)?;
-
-    Ok(input_objects.into_checked())
-}
-
 // Since the purpose of this function is to audit certified transactions,
 // the checks here should be a strict subset of the checks in check_transaction_input().
 // For checks not performed in this function but in check_transaction_input(),
@@ -86,7 +69,18 @@ fn check_transaction_input_inner(
 ) -> SomaResult {
     let gas = if gas_override.is_empty() { &transaction.gas() } else { gas_override };
 
-    check_gas(input_objects, gas, transaction.kind())?;
+    // Stage 13c: gas is balance-mode for non-system txs — gas
+    // comes from the sender's USDC accumulator, validated by
+    // `prepare_gas` at execution time. A non-empty `gas_payment`
+    // on a non-system tx means the caller is using an obsolete
+    // coin-mode path; reject up-front. System txs may carry a
+    // non-empty `gas_payment` from older test fixtures; the
+    // executor ignores it for them.
+    if !gas.is_empty() && !transaction.is_system_tx() {
+        return Err(SomaError::GasPaymentError(
+            "Stage 13c: gas_payment must be empty (balance-mode gas only)".to_string(),
+        ));
+    }
     check_objects(transaction, input_objects)?;
 
     Ok(())
@@ -166,6 +160,11 @@ fn check_receiving_objects(
                 Owner::Immutable => {
                     return Err(SomaError::MutableParameterExpected { object_id: *object_id });
                 }
+                Owner::Accumulator { .. } => {
+                    // Stage 14a: accumulator objects are system-managed
+                    // and cannot be the target of a `Receiving` capability.
+                    return Err(SomaError::NotOwnedObjectError);
+                }
             };
         }
 
@@ -175,50 +174,6 @@ fn check_receiving_objects(
 
         objects_in_txn.insert(*object_id);
     }
-    Ok(())
-}
-
-/// Check transaction gas data/info and gas coins consistency.
-fn check_gas(objects: &InputObjects, gas: &[ObjectRef], tx_kind: &TransactionKind) -> SomaResult {
-    if tx_kind.is_system_tx() {
-        return Ok(()); // System transactions don't need gas
-    }
-
-    // Check 1: Ensure we have at least one gas object
-    if gas.is_empty() {
-        return Err(SomaError::GasPaymentError("No gas payment provided".to_string()));
-    }
-
-    // Build a map of object ID to ObjectReadResult for efficient lookup
-    let objects_map: BTreeMap<ObjectID, &ObjectReadResult> =
-        objects.iter().map(|o| (o.id(), o)).collect();
-
-    // Check 2: Load all gas objects and verify they exist
-    for obj_ref in gas {
-        let obj_result = objects_map
-            .get(&obj_ref.0)
-            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
-
-        // Get the actual object
-        let object = obj_result
-            .as_object()
-            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
-
-        // Check 3: Verify gas object is owned by an address (not shared/immutable)
-        if !object.owner.is_address_owned() {
-            return Err(SomaError::GasPaymentError(format!(
-                "Gas object {:?} must be owned by an address, not {:?}",
-                obj_ref.0, object.owner
-            )));
-        }
-
-        // Check 4: Verify it's actually a coin
-        let balance = object.as_coin().ok_or(SomaError::GasPaymentError(format!(
-            "Gas object {:?} is not a coin",
-            obj_ref.0
-        )))?;
-    }
-
     Ok(())
 }
 
@@ -236,7 +191,16 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
         }
     }
 
-    if !(transaction.is_genesis_tx() || transaction.is_system_tx()) && objects.is_empty() {
+    // Stage 7: stateless balance-mode txs (e.g. BalanceTransfer) have
+    // no owned inputs and no gas coin — empty `InputObjects` is the
+    // correct shape, not an arity violation. The replay-protection
+    // path (`is_replay_protected()` + `executed_transaction_digests`)
+    // covers the safety hole that owned-object versioning used to
+    // close.
+    let is_balance_mode = transaction.gas().is_empty();
+    if !(transaction.is_genesis_tx() || transaction.is_system_tx() || is_balance_mode)
+        && objects.is_empty()
+    {
         return Err(SomaError::ObjectInputArityViolation);
     }
 
@@ -258,6 +222,9 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
             ObjectReadResultKind::DeletedSharedObject(_, _) => (),
             // We skip checking shared objects from cancelled transactions since we are not reading it.
             ObjectReadResultKind::CancelledTransactionSharedObject(_) => (),
+            // Lazy-create inputs that never materialized — nothing to check;
+            // executor decides whether the missing-object case is acceptable.
+            ObjectReadResultKind::NotYetCreated(_) => (),
         }
     }
 
@@ -313,6 +280,14 @@ fn check_one_object(
                     // specifies it as an owned object. This is inconsistent.
                     return Err(SomaError::NotOwnedObjectError);
                 }
+                Owner::Accumulator { .. } => {
+                    // Stage 14a: accumulator objects can never be
+                    // declared as `ImmOrOwnedObject` inputs by user
+                    // transactions. Only privileged executors load
+                    // them, and they enter the input set via a
+                    // distinct path.
+                    return Err(SomaError::NotOwnedObjectError);
+                }
             };
         }
 
@@ -326,7 +301,7 @@ fn check_one_object(
             }
 
             match &object.owner {
-                Owner::AddressOwner(_) | Owner::Immutable => {
+                Owner::AddressOwner(_) | Owner::Immutable | Owner::Accumulator { .. } => {
                     // When someone locks an object as shared it must be shared already.
                     return Err(SomaError::NotSharedObjectError);
                 }

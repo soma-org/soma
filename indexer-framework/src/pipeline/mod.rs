@@ -84,7 +84,7 @@ impl<P: Processor> IndexedCheckpoint<P> {
     ) -> Self {
         Self {
             watermark: CommitterWatermark {
-                epoch,
+                epoch_hi_inclusive: epoch,
                 checkpoint_hi_inclusive: cp_sequence_number,
                 tx_hi,
                 timestamp_ms_hi_inclusive: timestamp_ms,

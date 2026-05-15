@@ -21,7 +21,7 @@ use types::storage::ObjectKey;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
 use types::storage::read_store::{
-    BalanceInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader, TargetInfo,
+    BalanceInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader,
 };
 use types::storage::storage_error::{Error as StorageError, Result};
 use types::storage::write_store::WriteStore;
@@ -445,7 +445,6 @@ impl RpcIndexes for RestReadStore {
         let cursor = cursor.map(|cursor| OwnerIndexKey {
             owner: cursor.owner,
             object_type: cursor.object_type,
-            inverted_balance: cursor.balance.map(std::ops::Not::not),
             object_id: cursor.object_id,
         });
 
@@ -453,16 +452,10 @@ impl RpcIndexes for RestReadStore {
             result
                 .map(
                     |(
-                        OwnerIndexKey { owner, object_id, object_type, inverted_balance },
+                        OwnerIndexKey { owner, object_id, object_type },
                         OwnerIndexInfo { version },
                     )| {
-                        OwnedObjectInfo {
-                            owner,
-                            object_type,
-                            balance: inverted_balance.map(std::ops::Not::not),
-                            object_id,
-                            version,
-                        }
+                        OwnedObjectInfo { owner, object_type, object_id, version }
                     },
                 )
                 .map_err(Into::into)
@@ -474,8 +467,41 @@ impl RpcIndexes for RestReadStore {
     fn get_balance(
         &self,
         owner: &SomaAddress,
+        coin_type: types::object::CoinType,
     ) -> types::storage::storage_error::Result<Option<BalanceInfo>> {
-        self.index()?.get_balance(owner)?.map(|info| info.into()).pipe(Ok)
+        // Stage 13c: bypass the rpc_index entirely. The index
+        // tracked Coin-object balances, but Stage 13a stopped
+        // materializing Coin objects — the accumulator is the
+        // sole source of truth. Read straight from it.
+        let store = self.state.database_for_testing();
+        let balance = store
+            .get_balance(*owner, coin_type)
+            .map_err(types::storage::storage_error::Error::custom)?;
+        Ok(Some(BalanceInfo { balance }))
+    }
+
+    /// Stage 9d-C1: route through `AuthorityStore::iter_delegations_for_staker`
+    /// which scans the F1-shaped `delegations` column family directly.
+    fn list_delegations(
+        &self,
+        staker: &SomaAddress,
+    ) -> types::storage::storage_error::Result<
+        Vec<types::storage::read_store::DelegationInfo>,
+    > {
+        let store = self.state.database_for_testing();
+        let rows = store
+            .iter_delegations_for_staker(*staker)
+            .map_err(types::storage::storage_error::Error::custom)?;
+        Ok(rows
+            .into_iter()
+            .map(|(pool_id, delegation)| types::storage::read_store::DelegationInfo {
+                pool_id,
+                principal: delegation.principal,
+                index_at_last_collect: delegation.index_at_last_collect,
+                pending_principal: delegation.pending_principal,
+                pending_added_at_epoch: delegation.pending_added_at_epoch,
+            })
+            .collect())
     }
 
     fn get_highest_indexed_checkpoint_seq_number(
@@ -484,18 +510,30 @@ impl RpcIndexes for RestReadStore {
         self.index()?.get_highest_indexed_checkpoint_seq_number().map_err(Into::into)
     }
 
-    fn targets_iter(
+    fn bids_for_ask(
         &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<TargetInfo>,
-    ) -> Result<
-        Box<dyn Iterator<Item = Result<TargetInfo, types::storage::storage_error::Error>> + '_>,
-    > {
-        let iter = self
-            .index()?
-            .targets_iter(status_filter, epoch_filter, cursor)?
-            .map(|r| r.map_err(Into::into));
-        Ok(Box::new(iter))
+        _ask_id: &types::object::ObjectID,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        Ok(vec![])
+    }
+
+    fn open_asks(
+        &self,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        Ok(vec![])
+    }
+
+    fn settlements_by_buyer(
+        &self,
+        _buyer: &types::base::SomaAddress,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        Ok(vec![])
+    }
+
+    fn settlements_by_seller(
+        &self,
+        _seller: &types::base::SomaAddress,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        Ok(vec![])
     }
 }

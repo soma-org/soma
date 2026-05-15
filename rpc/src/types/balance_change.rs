@@ -19,6 +19,11 @@ pub struct BalanceChange {
     /// Owner of the balance change
     pub address: Address,
 
+    /// Coin denomination this delta applies to. Stage 13m: previously
+    /// implicit; now explicit because Soma's address-balance
+    /// accumulator keys per `(address, coin_type)`.
+    pub coin_type: String,
+
     /// The amount indicate the balance value changes.
     ///
     /// A negative amount means spending coin value and positive means receiving coin value.

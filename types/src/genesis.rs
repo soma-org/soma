@@ -2,6 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -11,6 +12,7 @@ use fastcrypto::hash::HashFunction as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tracing::trace;
 
+use crate::base::SomaAddress;
 use crate::checkpoints::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary, VerifiedCheckpoint,
 };
@@ -23,7 +25,7 @@ use crate::consensus::commit::{CommitDigest, CommitRef, CommittedSubDag};
 use crate::crypto::DefaultHash;
 use crate::effects::{self, TransactionEffects};
 use crate::error::SomaResult;
-use crate::object::{Object, ObjectID};
+use crate::object::{CoinType, Object, ObjectID};
 use crate::system_state::{SystemState, SystemStateTrait, get_system_state};
 use crate::transaction::{CertifiedTransaction, Transaction};
 
@@ -34,6 +36,17 @@ pub struct Genesis {
     transaction: Transaction,
     effects: TransactionEffects,
     objects: Vec<Object>,
+    /// Initial accumulator-balance entries to seed at genesis. Keyed by
+    /// (owner, coin_type) and maps to the balance amount. Stage 1c of the
+    /// account-balance migration: populated alongside coin objects so the
+    /// new balance column family is non-empty from epoch 0. Will become
+    /// the sole source of fungible balances after Stage 13 deletes coins.
+    balances: BTreeMap<(SomaAddress, CoinType), u64>,
+    /// Stage 9d-C1: initial delegation entries to seed at genesis.
+    /// Keyed by (pool_id, staker) → principal — F1's row schema is
+    /// ONE row per (validator, user). The table consumer materialises
+    /// these as `Delegation { principal, last_collected_period: 0 }`.
+    delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
@@ -43,6 +56,9 @@ pub struct UnsignedGenesis {
     pub transaction: Transaction,
     pub effects: TransactionEffects,
     pub objects: Vec<Object>,
+    pub balances: BTreeMap<(SomaAddress, CoinType), u64>,
+    /// Stage 9d genesis-time delegation seeds — see `Genesis::delegations`.
+    pub delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
 }
 
 impl PartialEq for Genesis {
@@ -60,6 +76,8 @@ impl PartialEq for Genesis {
             && self.transaction == other.transaction
             && self.effects == other.effects
             && self.objects == other.objects
+            && self.balances == other.balances
+            && self.delegations == other.delegations
     }
 }
 
@@ -70,12 +88,34 @@ impl Genesis {
         transaction: Transaction,
         effects: TransactionEffects,
         objects: Vec<Object>,
+        balances: BTreeMap<(SomaAddress, CoinType), u64>,
+        delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
     ) -> Self {
-        Self { checkpoint, checkpoint_contents, transaction, effects, objects }
+        Self {
+            checkpoint,
+            checkpoint_contents,
+            transaction,
+            effects,
+            objects,
+            balances,
+            delegations,
+        }
     }
 
     pub fn objects(&self) -> &[Object] {
         &self.objects
+    }
+
+    /// Returns the initial (owner, coin_type) → balance entries to seed
+    /// the accumulator-balance table at genesis.
+    pub fn balances(&self) -> &BTreeMap<(SomaAddress, CoinType), u64> {
+        &self.balances
+    }
+
+    /// Stage 9d-C1: returns the initial (pool_id, staker) → principal
+    /// entries to seed the delegations table at genesis.
+    pub fn delegations(&self) -> &BTreeMap<(ObjectID, SomaAddress), u64> {
+        &self.delegations
     }
 
     pub fn object(&self, id: ObjectID) -> Option<Object> {
@@ -160,6 +200,8 @@ impl Serialize for Genesis {
             transaction: &'a Transaction,
             effects: &'a TransactionEffects,
             objects: &'a [Object],
+            balances: &'a BTreeMap<(SomaAddress, CoinType), u64>,
+            delegations: &'a BTreeMap<(ObjectID, SomaAddress), u64>,
         }
 
         let raw_genesis = RawGenesis {
@@ -168,6 +210,8 @@ impl Serialize for Genesis {
             transaction: &self.transaction,
             effects: &self.effects,
             objects: &self.objects,
+            balances: &self.balances,
+            delegations: &self.delegations,
         };
 
         let bytes = bcs::to_bytes(&raw_genesis).map_err(|e| Error::custom(e.to_string()))?;
@@ -195,6 +239,8 @@ impl<'de> Deserialize<'de> for Genesis {
             transaction: Transaction,
             effects: TransactionEffects,
             objects: Vec<Object>,
+            balances: BTreeMap<(SomaAddress, CoinType), u64>,
+            delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
         }
 
         let bytes = if deserializer.is_human_readable() {
@@ -205,16 +251,37 @@ impl<'de> Deserialize<'de> for Genesis {
             data
         };
 
-        let RawGenesis { checkpoint, checkpoint_contents, transaction, effects, objects } =
-            bcs::from_bytes(&bytes).map_err(|e| Error::custom(e.to_string()))?;
+        let RawGenesis {
+            checkpoint,
+            checkpoint_contents,
+            transaction,
+            effects,
+            objects,
+            balances,
+            delegations,
+        } = bcs::from_bytes(&bytes).map_err(|e| Error::custom(e.to_string()))?;
 
-        Ok(Genesis { checkpoint, checkpoint_contents, transaction, effects, objects })
+        Ok(Genesis {
+            checkpoint,
+            checkpoint_contents,
+            transaction,
+            effects,
+            objects,
+            balances,
+            delegations,
+        })
     }
 }
 
 impl UnsignedGenesis {
     pub fn objects(&self) -> &[Object] {
         &self.objects
+    }
+
+    /// Returns the initial (owner, coin_type) → balance entries to seed
+    /// the accumulator-balance table at genesis.
+    pub fn balances(&self) -> &BTreeMap<(SomaAddress, CoinType), u64> {
+        &self.balances
     }
 
     pub fn object(&self, id: ObjectID) -> Option<Object> {

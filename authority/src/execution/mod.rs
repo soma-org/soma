@@ -4,13 +4,18 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use balance_transfer::BalanceTransferExecutor;
+use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
-use coin::CoinExecutor;
-use model::ModelExecutor;
+use channel::ChannelExecutor;
+// Stage 13b: CoinExecutor deleted along with the Transfer /
+// MergeCoins tx kinds.
 use object::ObjectExecutor;
-use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
+use offering::OfferingExecutor;
+use prepare_gas::{GasPreparationResult, prepare_gas};
+use provider::ProviderExecutor;
+use settlement::SettlementExecutor;
 use staking::StakingExecutor;
-use submission::SubmissionExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
 use types::base::SomaAddress;
@@ -30,13 +35,17 @@ use types::transaction::{
 use types::tx_fee::TransactionFee;
 use validator::ValidatorExecutor;
 
+mod balance_transfer;
+mod bridge;
 mod change_epoch;
-mod coin;
-mod model;
+mod channel;
+// Stage 13b: mod coin removed.
 mod object;
+mod offering;
 mod prepare_gas;
+mod provider;
+mod settlement;
 mod staking;
-mod submission;
 mod system;
 mod validator;
 
@@ -76,40 +85,26 @@ pub(crate) fn checked_sum<I: Iterator<Item = u64>>(
     iter.try_fold(0u64, |acc, x| checked_add(acc, x))
 }
 
-/// Core trait for all transaction executors
-trait TransactionExecutor: FeeCalculator {
+/// Core trait for all transaction executors.
+///
+/// Each executor reports its **fee units** for an op based on the op's actual
+/// shape (e.g. `MergeCoins` returns `coins.len()`). The protocol-level
+/// `unit_fee` is multiplied by these units to produce the total tx fee, which
+/// is deducted up front in `prepare_gas`.
+trait TransactionExecutor {
+    /// Number of fee units this op should be charged for.
+    /// Returning 0 means the op is gasless (system tx). The default is 1.
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        1
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        value_fee: u64,
     ) -> ExecutionResult<()>;
-}
-
-/// Trait for calculating transaction fees based on transaction type
-pub trait FeeCalculator {
-    /// Calculate the value-based fee for a transaction
-    fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
-        // Default: use the store's fee parameters
-        0
-    }
-
-    /// Get the base fee (now reads from store)
-    fn base_fee(&self, store: &TemporaryStore) -> u64 {
-        store.fee_parameters.base_fee
-    }
-
-    /// Calculate fee per object write
-    fn write_fee_per_object(&self, store: &TemporaryStore) -> u64 {
-        store.fee_parameters.write_object_fee
-    }
-
-    /// Calculate operation fee for a given number of objects
-    fn calculate_operation_fee(&self, store: &TemporaryStore, num_objects: u64) -> u64 {
-        num_objects.saturating_mul(self.write_fee_per_object(store))
-    }
 }
 
 pub fn execute_transaction(
@@ -124,6 +119,27 @@ pub fn execute_transaction(
     execution_params: ExecutionOrEarlyError,
     fee_parameters: FeeParameters,
     chain: protocol_config::Chain,
+    // Stage 6c: pre-read sender USDC balance for balance-mode gas.
+    // `Some(balance)` when `gas_payment.is_empty()` and the tx is not
+    // a system tx; `None` otherwise. The caller is responsible for
+    // reading the accumulator before calling.
+    sender_usdc_balance: Option<u64>,
+    // Stage 9d-C2: pre-read signer's delegation rows so the staking
+    // executor can fold F1 rewards without reaching into the
+    // perpetual store. Caller reads `iter_delegations_for_staker(signer)`
+    // for AddStake/WithdrawStake and passes the (pool_id → Delegation)
+    // map; empty for other tx kinds.
+    prefetched_delegations: std::collections::BTreeMap<
+        types::object::ObjectID,
+        types::system_state::staking::Delegation,
+    >,
+    // Stage 14c.7: pre-loaded `Owner::Accumulator` objects for the
+    // settlement system tx. The SettlementScheduler reads each
+    // touched accumulator from the cache at dispatch time and passes
+    // them through here so the settlement executor can mutate them
+    // via `mutate_input_object` without going through the standard
+    // InputObjectKind pipeline. Empty for every other tx kind.
+    pre_loaded_accumulators: Vec<types::object::Object>,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
@@ -140,12 +156,128 @@ pub fn execute_transaction(
         execution_version,
         chain,
     );
+    temporary_store.prefetched_delegations = prefetched_delegations;
+
+    // SIP-58 single-path replay-safety: for the per-cp Settlement
+    // system tx, load every BalanceAccumulator / DelegationAccumulator
+    // object referenced in `settlement.changes` / `delegation_changes`
+    // **directly from the canonical object store** (the `store: &dyn
+    // ObjectStore` argument), not from `ExecutionEnv`. This makes
+    // settlement effects deterministic across:
+    //   - the original-execution path (driven by SettlementScheduler
+    //     after the cp builder publishes the TX), AND
+    //   - state-sync / checkpoint replay (which doesn't go through
+    //     SettlementScheduler at all — `ExecutionEnv::pre_loaded_accumulators`
+    //     is empty in that path).
+    // For non-Settlement transactions the `pre_loaded_accumulators`
+    // arg passes through unchanged.
+    //
+    // Settlement tx-data has no traditional inputs, so its
+    // `lamport_timestamp` defaults to `Version::MIN + 1 = 1`. Fold
+    // each accumulator's prior version into `lamport_timestamp` so
+    // the settlement always lands at one above the highest input.
+    let resolved_accumulators: Vec<types::object::Object> = match &kind {
+        TransactionKind::Settlement(settlement) => {
+            use types::accumulator::{BalanceAccumulator, DelegationAccumulator};
+            let mut out: Vec<types::object::Object> = Vec::new();
+            let mut seen: std::collections::HashSet<types::object::ObjectID> =
+                std::collections::HashSet::new();
+            for ev in &settlement.changes {
+                let id = BalanceAccumulator::derive_id(ev.owner(), ev.coin_type());
+                if seen.insert(id) {
+                    if let Some(obj) = store.get_object(&id) {
+                        out.push(obj);
+                    }
+                }
+            }
+            for de in &settlement.delegation_changes {
+                let id = DelegationAccumulator::derive_id(de.pool_id, de.staker);
+                if seen.insert(id) {
+                    if let Some(obj) = store.get_object(&id) {
+                        out.push(obj);
+                    }
+                }
+            }
+            out
+        }
+        TransactionKind::ChangeEpoch(_) => {
+            // F1/F9 audit fix (auto-compound rephrasing): ChangeEpoch
+            // credits validator-commission rewards directly to each
+            // validator's `(pool, validator)` delegation row.
+            // Pre-fix the credit landed only in the `delegations` CF,
+            // leaving the `DelegationAccumulator` object stale and
+            // the row's `index_at_last_collect` unchanged. The
+            // executor now mutates the object directly via
+            // `mutate_input_object` (so the object world stays in
+            // sync with the CF), and snapshots
+            // `index_at_last_collect` to the post-fold
+            // `cumulative_index` (so subsequent compound reads don't
+            // over-pay rewards on the commission for the period
+            // predating it). To enable that, we pre-load every
+            // active+pending+inactive validator's
+            // `DelegationAccumulator` from the canonical store here —
+            // mirroring the Settlement pre-load above.
+            use types::accumulator::DelegationAccumulator;
+            use types::SYSTEM_STATE_OBJECT_ID;
+            let mut out: Vec<types::object::Object> = Vec::new();
+            let mut seen: std::collections::HashSet<types::object::ObjectID> =
+                std::collections::HashSet::new();
+            // SystemState lives in input_objects (declared as mutable
+            // shared input by every ChangeEpoch tx). Find + deserialize
+            // it to enumerate validators.
+            if let Some(state_obj) = input_objects
+                .iter_objects()
+                .find(|o| o.id() == SYSTEM_STATE_OBJECT_ID)
+            {
+                if let Ok(state) = bcs::from_bytes::<types::system_state::SystemState>(
+                    state_obj.as_inner().data.contents(),
+                ) {
+                    let mut visit = |pool_id: types::object::ObjectID,
+                                     validator: types::base::SomaAddress| {
+                        let id = DelegationAccumulator::derive_id(pool_id, validator);
+                        if seen.insert(id) {
+                            if let Some(obj) = store.get_object(&id) {
+                                out.push(obj);
+                            }
+                        }
+                    };
+                    for v in &state.validators().validators {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                    for v in &state.validators().pending_validators {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                    for v in state.validators().inactive_validators.values() {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                }
+            }
+            out
+        }
+        _ => pre_loaded_accumulators,
+    };
+
+    for acc in resolved_accumulators {
+        let acc_version = acc.version();
+        temporary_store.add_object_from_store(acc);
+        if acc_version.value() >= temporary_store.lamport_timestamp.value() {
+            temporary_store.lamport_timestamp =
+                types::object::Version::lamport_increment([acc_version]);
+        }
+    }
 
     let mut executor = create_executor(&kind);
 
     // Phase 1: Gas preparation (validation, smashing, base fee deduction)
     let gas_result =
-        match prepare_gas(&mut temporary_store, &kind, &signer, gas_payment, &*executor) {
+        match prepare_gas(
+            &mut temporary_store,
+            &kind,
+            &signer,
+            gas_payment,
+            &*executor,
+            sender_usdc_balance,
+        ) {
             Ok(result) => result,
             Err((error_status, transaction_fee)) => {
                 // Gas preparation failed.
@@ -229,13 +361,7 @@ pub fn execute_transaction(
     let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
 
     // Execute the transaction
-    let result = executor.execute(
-        &mut temporary_store,
-        signer,
-        kind.clone(),
-        tx_digest,
-        gas_result.value_fee,
-    );
+    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
 
     // Check execution status
     let (mut execution_status, mut execution_error) = match result {
@@ -252,56 +378,28 @@ pub fn execute_transaction(
         }
     };
 
-    // Initialize the final transaction fee to what was deducted during gas preparation
-    let mut final_transaction_fee = gas_result.transaction_fee.clone();
+    // Fee was fully deducted up front in prepare_gas; this is what gets reported.
+    let final_transaction_fee = gas_result.transaction_fee.clone();
 
-    // Phase 4: Calculate and deduct remaining transaction fee if execution succeeded
+    // Phase 4: Check ownership invariants if execution succeeded
     if execution_status.is_ok() {
-        match calculate_and_deduct_remaining_fees(
-            &mut temporary_store,
-            &kind,
-            &*executor,
-            &gas_result,
-        ) {
-            Ok(updated_fee) => {
-                final_transaction_fee = updated_fee;
+        let is_epoch_change = kind.is_epoch_change();
+        let mutable_inputs = temporary_store.get_mutable_input_ids();
 
-                // Phase 5: Check ownership invariants
-                let is_epoch_change = kind.is_epoch_change();
-                let mutable_inputs = temporary_store.get_mutable_input_ids();
+        if let Err(err) =
+            temporary_store.check_ownership_invariants(&signer, &mutable_inputs, is_epoch_change)
+        {
+            // Ownership invariant check failed, revert to post-gas changes state
+            revert_non_gas_changes(
+                &mut temporary_store,
+                pre_execution_objects,
+                pre_execution_deleted,
+            );
 
-                if let Err(err) = temporary_store.check_ownership_invariants(
-                    &signer,
-                    &mutable_inputs,
-                    is_epoch_change,
-                ) {
-                    // Ownership invariant check failed, revert to post-gas changes state
-                    revert_non_gas_changes(
-                        &mut temporary_store,
-                        pre_execution_objects,
-                        pre_execution_deleted,
-                    );
-
-                    // Update execution status to failure
-                    let error_msg = format!("Ownership invariant violated: {}", err);
-                    let error_status =
-                        ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
-                    execution_status = ExecutionStatus::Failure { error: error_status.clone() };
-                    execution_error = Some(ExecutionError::new(error_status, None));
-                }
-            }
-            Err(err) => {
-                // Execution succeeded but fee deduction failed, revert to post-gas changes state
-                revert_non_gas_changes(
-                    &mut temporary_store,
-                    pre_execution_objects,
-                    pre_execution_deleted,
-                );
-
-                // Update execution status to failure
-                execution_status = ExecutionStatus::Failure { error: err.clone() };
-                execution_error = Some(ExecutionError::new(err, None));
-            }
+            let error_msg = format!("Ownership invariant violated: {}", err);
+            let error_status = ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
+            execution_status = ExecutionStatus::Failure { error: error_status.clone() };
+            execution_error = Some(ExecutionError::new(error_status, None));
         }
     }
 
@@ -340,32 +438,44 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
         TransactionKind::ConsensusCommitPrologueV1(_) => Box::new(ConsensusCommitExecutor::new()),
 
-        // Coin and object transactions
-        TransactionKind::TransferCoin { .. } | TransactionKind::PayCoins { .. } => {
-            Box::new(CoinExecutor::new())
-        }
+        // Object transactions (Stage 13b: Transfer / MergeCoins deleted)
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
-        // Staking transactions - both validator and model staking
+        // Staking transactions (validator only)
         TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
             Box::new(StakingExecutor::new())
         }
 
-        // Model transactions
-        TransactionKind::CreateModel(_)
-        | TransactionKind::CommitModel(_)
-        | TransactionKind::RevealModel(_)
-        | TransactionKind::AddStakeToModel { .. }
-        | TransactionKind::SetModelCommissionRate { .. }
-        | TransactionKind::DeactivateModel { .. }
-        | TransactionKind::ReportModel { .. }
-        | TransactionKind::UndoReportModel { .. } => Box::new(ModelExecutor::new()),
+        // Bridge transactions
+        TransactionKind::BridgeDeposit(_)
+        | TransactionKind::BridgeWithdraw(_)
+        | TransactionKind::BridgeEmergencyPause(_)
+        | TransactionKind::BridgeEmergencyUnpause(_)
+        | TransactionKind::BridgeAttachWithdrawalSignatures(_)
+        | TransactionKind::BridgeUpdateCommitteeBlocklist(_)
+        | TransactionKind::BridgeRegisterBridgeKey(_) => Box::new(BridgeExecutor::new()),
 
-        // Submission transactions
-        TransactionKind::SubmitData(_)
-        | TransactionKind::ClaimRewards(_)
-        | TransactionKind::ReportSubmission { .. }
-        | TransactionKind::UndoReportSubmission { .. } => Box::new(SubmissionExecutor::new()),
+        // Payment-channel transactions
+        TransactionKind::OpenChannel(_)
+        | TransactionKind::Settle(_)
+        | TransactionKind::RequestClose(_)
+        | TransactionKind::WithdrawAfterTimeout(_)
+        | TransactionKind::TopUp(_)
+        | TransactionKind::RateChannel(_) => Box::new(ChannelExecutor::new()),
+
+        // Provider registry
+        TransactionKind::RegisterOffering(_)
+        | TransactionKind::UpdateOffering(_)
+        | TransactionKind::DeactivateOffering(_) => Box::new(OfferingExecutor::new()),
+        TransactionKind::RegisterProvider(_) | TransactionKind::UpdateProvider(_) => {
+            Box::new(ProviderExecutor::new())
+        }
+
+        // Per-commit balance settlement (Stage 3)
+        TransactionKind::Settlement(_) => Box::new(SettlementExecutor::new()),
+
+        // Balance-mode value transfer (Stage 7)
+        TransactionKind::BalanceTransfer(_) => Box::new(BalanceTransferExecutor::new()),
     }
 }
 
@@ -482,13 +592,7 @@ fn handle_shared_object_transaction(
     let mut executor = create_executor(&kind);
 
     // Execute the transaction
-    let result = executor.execute(
-        &mut temporary_store,
-        signer,
-        kind.clone(),
-        tx_digest,
-        gas_result.value_fee,
-    );
+    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
 
     // Convert result to execution status and error
     let (execution_status, execution_error) = match result {
@@ -521,42 +625,9 @@ fn handle_shared_object_transaction(
         }
     };
 
-    // Execution status should be success here
+    // Fee was fully deducted up front in prepare_gas.
+    let final_transaction_fee = gas_result.transaction_fee.clone();
 
-    // Initialize the final transaction fee to what was deducted during gas preparation
-    let mut final_transaction_fee = gas_result.transaction_fee.clone();
-
-    match calculate_and_deduct_remaining_fees(&mut temporary_store, &kind, &*executor, &gas_result)
-    {
-        Ok(updated_fee) => {
-            final_transaction_fee = updated_fee;
-        }
-        Err(err) => {
-            revert_non_gas_changes(
-                &mut temporary_store,
-                pre_execution_objects.clone(),
-                pre_execution_deleted.clone(),
-            );
-
-            // Return with failure status but keep gas changes
-            let execution_status = ExecutionStatus::Failure { error: err.clone() };
-
-            if temporary_store.execution_version >= 1 {
-                temporary_store.ensure_active_inputs_mutated();
-            }
-            let (inner, effects) = temporary_store.into_effects(
-                shared_object_refs,
-                &tx_digest,
-                transaction_dependencies,
-                execution_status,
-                epoch_id,
-                gas_result.transaction_fee, // Use original fee that was successfully deducted
-                gas_result.primary_gas_id,
-            );
-
-            return (inner, effects, Some(ExecutionError::new(err, None)));
-        }
-    }
     // Prepare to collect objects for the output
     let mut object_changes = BTreeMap::new();
     let mut written_objects = BTreeMap::new();
@@ -723,7 +794,10 @@ fn handle_shared_object_transaction(
         })
         .collect();
 
-    // Create effects
+    // Create effects. This path is the legacy/object-only construction
+    // (used by some test/synthetic flows that don't run through
+    // TemporaryStore::into_effects). It emits no balance/delegation
+    // events because no executor mutates those families on this path.
     let effects = TransactionEffects::new(
         execution_status.clone(),
         epoch_id,
@@ -734,6 +808,8 @@ fn handle_shared_object_transaction(
         transaction_dependencies.into_iter().collect(),
         final_transaction_fee, // Include transaction fee
         gas_result.primary_gas_id,
+        Vec::new(),
+        Vec::new(),
     );
 
     // Create InnerTemporaryStore
@@ -770,6 +846,8 @@ fn error_result(
         transaction_dependencies.into_iter().collect(),
         transaction_fee,
         gas_object,
+        Vec::new(),
+        Vec::new(),
     );
 
     let inner_store = InnerTemporaryStore::new(

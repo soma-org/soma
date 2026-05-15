@@ -2,14 +2,18 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Transfer an object to a recipient
+Transfer SOMA or USDC to one or more recipients
 
-Usage: soma transfer [OPTIONS] --to <TO> --object-id <OBJECT_ID>
+Usage: soma transfer [OPTIONS] <AMOUNT> <RECIPIENTS>...
+
+Arguments:
+  <AMOUNT>         Amount to send (in SOMA by default, or USDC with --usdc)
+  <RECIPIENTS>...  Recipient address(es) or alias(es)
 
 Options:
-      --to <TO>                         Recipient address or alias
-      --object-id <OBJECT_ID>           Object ID to transfer
-      --gas <GAS>                       Gas object (auto-selected if not provided)
+      --usdc                            Send USDC instead of SOMA
+      --amounts <AMOUNTS>               Per-recipient amounts (comma-separated). Overrides the positional amount
+      --coins <COINS>                   Input coin object IDs (comma-separated, auto-selected if not provided)
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
       --simulate                        Perform a dry run (simulation) of the transaction, without executing it
       --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
@@ -18,5 +22,8 @@ Options:
   -h, --help                            Print help
 
 EXAMPLES:
-    soma transfer --to 0x1234...5678 --object-id 0xABCD...
-    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS...
+    soma transfer 10 0x1234...5678              # send 10 SOMA
+    soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
+    soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
+    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
+    soma transfer 10 0xABC... --coins 0xC1,0xC2 # use specific input coins

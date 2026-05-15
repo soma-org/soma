@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use crate::effects::TransactionEffects;
 use crate::error::{ExecutionError, ExecutionResult, SomaError};
 use crate::full_checkpoint_content::ObjectSet;
-use crate::object::{Object, ObjectID};
+use crate::object::Object;
 use crate::quorum_driver::{
     ExecuteTransactionRequest, ExecuteTransactionResponse, QuorumDriverError,
 };
@@ -34,7 +34,6 @@ pub struct SimulateTransactionResult {
     pub effects: TransactionEffects,
     pub objects: ObjectSet,
     pub execution_result: ExecutionResult,
-    pub mock_gas_id: Option<ObjectID>,
 }
 
 #[derive(Default, Debug, Copy, Clone)]

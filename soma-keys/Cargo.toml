@@ -20,5 +20,8 @@ signature = "1.6.4"
 colored = "2.2.0"
 tokio.workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["tiny-bip39"]
+
 [lints]
 workspace = true

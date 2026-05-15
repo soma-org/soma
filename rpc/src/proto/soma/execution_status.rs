@@ -27,6 +27,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
         let (kind, error_details) = match value {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
 
+            E::InvalidGasCoinType { object_id } => (
+                ExecutionErrorKind::InvalidGasCoinType,
+                Some(ErrorDetails::ObjectId(object_id.to_string())),
+            ),
+
             E::InvalidOwnership { object_id } => (
                 ExecutionErrorKind::InvalidOwnership,
                 Some(ErrorDetails::ObjectId(object_id.to_string())),
@@ -114,10 +119,6 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 ExecutionErrorKind::EmbeddingDimensionMismatch,
                 Some(ErrorDetails::OtherError(format!("expected={}, actual={}", expected, actual))),
             ),
-            E::DistanceExceedsThreshold { score, threshold } => (
-                ExecutionErrorKind::DistanceExceedsThreshold,
-                Some(ErrorDetails::OtherError(format!("score={}, threshold={}", score, threshold))),
-            ),
             E::InsufficientBond { required, provided } => (
                 ExecutionErrorKind::InsufficientBond,
                 Some(ErrorDetails::OtherError(format!(
@@ -162,6 +163,98 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::OtherError(msg) => {
                 (ExecutionErrorKind::OtherError, Some(ErrorDetails::OtherError(msg)))
             }
+
+            // Payment-channel typed errors.
+            E::ChannelCallerNotPayee { expected, actual } => (
+                ExecutionErrorKind::ChannelCallerNotPayee,
+                Some(ErrorDetails::OtherError(format!(
+                    "expected={expected}, actual={actual}"
+                ))),
+            ),
+            E::ChannelCallerNotPayer { expected, actual } => (
+                ExecutionErrorKind::ChannelCallerNotPayer,
+                Some(ErrorDetails::OtherError(format!(
+                    "expected={expected}, actual={actual}"
+                ))),
+            ),
+            E::ChannelVoucherNotMonotonic { cumulative, settled } => (
+                ExecutionErrorKind::ChannelVoucherNotMonotonic,
+                Some(ErrorDetails::OtherError(format!(
+                    "cumulative={cumulative}, settled={settled}"
+                ))),
+            ),
+            E::ChannelOverspend { cumulative, available } => (
+                ExecutionErrorKind::ChannelOverspend,
+                Some(ErrorDetails::OtherError(format!(
+                    "cumulative={cumulative}, available={available}"
+                ))),
+            ),
+            E::ChannelGraceNotElapsed { now_ms, earliest_ms } => (
+                ExecutionErrorKind::ChannelGraceNotElapsed,
+                Some(ErrorDetails::OtherError(format!(
+                    "now_ms={now_ms}, earliest_ms={earliest_ms}"
+                ))),
+            ),
+            E::ChannelCloseAlreadyPending => (ExecutionErrorKind::ChannelCloseAlreadyPending, None),
+            E::ChannelNoCloseRequest => (ExecutionErrorKind::ChannelNoCloseRequest, None),
+            E::ChannelInvalidVoucherSignature { reason } => (
+                ExecutionErrorKind::ChannelInvalidVoucherSignature,
+                Some(ErrorDetails::OtherError(reason)),
+            ),
+            E::ChannelAmountZero => (ExecutionErrorKind::ChannelAmountZero, None),
+            E::ChannelInvalidInput { reason } => (
+                ExecutionErrorKind::ChannelInvalidInput,
+                Some(ErrorDetails::OtherError(reason)),
+            ),
+            E::ChannelCoinTypeMismatch => (ExecutionErrorKind::ChannelCoinTypeMismatch, None),
+            E::NotAChannel { object_id } => (
+                ExecutionErrorKind::NotAChannel,
+                Some(ErrorDetails::ObjectId(object_id.to_string())),
+            ),
+            E::ChannelClockMissing => (ExecutionErrorKind::ChannelClockMissing, None),
+
+            // Provider registry typed errors.
+            E::ProviderAlreadyExists => (ExecutionErrorKind::ProviderAlreadyExists, None),
+            E::ProviderNotFound => (ExecutionErrorKind::ProviderNotFound, None),
+            E::ProviderCallerMismatch => (ExecutionErrorKind::ProviderCallerMismatch, None),
+            E::ProviderInvalidEndpoint { reason } => (
+                ExecutionErrorKind::ProviderInvalidEndpoint,
+                Some(ErrorDetails::OtherError(reason)),
+            ),
+            E::ProviderClockMissing => (ExecutionErrorKind::ProviderClockMissing, None),
+            E::ChannelTooManyOpenForPair { current, max } => (
+                ExecutionErrorKind::ChannelTooManyOpenForPair,
+                Some(ErrorDetails::OtherError(format!(
+                    "current={}, max={}",
+                    current, max
+                ))),
+            ),
+            E::ChannelInboxPayeeMismatch { declared, actual } => (
+                ExecutionErrorKind::ChannelInboxPayeeMismatch,
+                Some(ErrorDetails::OtherError(format!(
+                    "declared={}, actual={}",
+                    declared, actual
+                ))),
+            ),
+            E::NotAProviderInbox { object_id } => (
+                ExecutionErrorKind::NotAProviderInbox,
+                Some(ErrorDetails::ObjectId(object_id.to_string())),
+            ),
+
+            E::OfferingAlreadyExists => (ExecutionErrorKind::OfferingAlreadyExists, None),
+            E::OfferingNotFound => (ExecutionErrorKind::OfferingNotFound, None),
+            E::OfferingCallerMismatch => (ExecutionErrorKind::OfferingCallerMismatch, None),
+            E::OfferingUnknownModel { model_id } => (
+                ExecutionErrorKind::OfferingUnknownModel,
+                Some(ErrorDetails::OtherError(format!("model_id={}", model_id))),
+            ),
+            E::ChannelOfferingMissing { payee, model_id } => (
+                ExecutionErrorKind::ChannelOfferingMissing,
+                Some(ErrorDetails::OtherError(format!(
+                    "payee={}, model_id={}",
+                    payee, model_id
+                ))),
+            ),
         };
 
         Self { description, kind: Some(kind.into()), error_details }
@@ -212,6 +305,18 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             }
 
             K::InsufficientGas => Ok(Self::InsufficientGas),
+
+            K::InvalidGasCoinType => {
+                if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
+                    Ok(Self::InvalidGasCoinType {
+                        object_id: object_id
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else {
+                    Err(TryFromProtoError::missing("object_id for InvalidGasCoinType"))
+                }
+            }
 
             K::InvalidOwnership => {
                 if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
@@ -345,8 +450,9 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::EmbeddingDimensionMismatch { expected, actual })
             }
             K::DistanceExceedsThreshold => {
-                let (score, threshold) = parse_two_f32s(&value.error_details, "score", "threshold");
-                Ok(Self::DistanceExceedsThreshold { score, threshold })
+                // Deprecated variant - map to OtherError
+                let msg = value.description.clone().unwrap_or_else(|| "Distance exceeds threshold (deprecated)".to_string());
+                Ok(Self::OtherError(msg))
             }
             K::InsufficientBond => {
                 let (required, provided) =
@@ -402,8 +508,169 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 };
                 Ok(Self::OtherError(msg))
             }
+
+            // Payment-channel kinds carry typed payloads serialized
+            // via the `OtherError` string in `ErrorDetails`. The
+            // string format mirrors what `From<ExecutionFailureStatus>
+            // for ExecutionError` produces in `rpc_proto_conversions`.
+            K::ChannelCallerNotPayee => {
+                let (expected, actual) =
+                    parse_two_addresses(&value.error_details, "expected", "actual");
+                Ok(Self::ChannelCallerNotPayee { expected, actual })
+            }
+            K::ChannelCallerNotPayer => {
+                let (expected, actual) =
+                    parse_two_addresses(&value.error_details, "expected", "actual");
+                Ok(Self::ChannelCallerNotPayer { expected, actual })
+            }
+            K::ChannelVoucherNotMonotonic => {
+                let (cumulative, settled) =
+                    parse_two_u64s(&value.error_details, "cumulative", "settled");
+                Ok(Self::ChannelVoucherNotMonotonic { cumulative, settled })
+            }
+            K::ChannelOverspend => {
+                let (cumulative, available) =
+                    parse_two_u64s(&value.error_details, "cumulative", "available");
+                Ok(Self::ChannelOverspend { cumulative, available })
+            }
+            K::ChannelGraceNotElapsed => {
+                let (now_ms, earliest_ms) =
+                    parse_two_u64s(&value.error_details, "now_ms", "earliest_ms");
+                Ok(Self::ChannelGraceNotElapsed { now_ms, earliest_ms })
+            }
+            K::ChannelCloseAlreadyPending => Ok(Self::ChannelCloseAlreadyPending),
+            K::ChannelNoCloseRequest => Ok(Self::ChannelNoCloseRequest),
+            K::ChannelInvalidVoucherSignature => {
+                let reason = if let Some(ErrorDetails::OtherError(r)) = &value.error_details {
+                    r.clone()
+                } else {
+                    "voucher signature verification failed".to_string()
+                };
+                Ok(Self::ChannelInvalidVoucherSignature { reason })
+            }
+            K::ChannelAmountZero => Ok(Self::ChannelAmountZero),
+            K::ChannelInvalidInput => {
+                let reason = if let Some(ErrorDetails::OtherError(r)) = &value.error_details {
+                    r.clone()
+                } else {
+                    "invalid channel input".to_string()
+                };
+                Ok(Self::ChannelInvalidInput { reason })
+            }
+            K::ChannelCoinTypeMismatch => Ok(Self::ChannelCoinTypeMismatch),
+            K::NotAChannel => {
+                if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
+                    Ok(Self::NotAChannel {
+                        object_id: object_id
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else if let Some(ErrorDetails::OtherError(other)) = &value.error_details {
+                    Ok(Self::NotAChannel {
+                        object_id: other
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else {
+                    Err(TryFromProtoError::missing("object_id for NotAChannel"))
+                }
+            }
+            K::ChannelClockMissing => Ok(Self::ChannelClockMissing),
+
+            // Provider registry typed errors.
+            K::ProviderAlreadyExists => Ok(Self::ProviderAlreadyExists),
+            K::ProviderNotFound => Ok(Self::ProviderNotFound),
+            K::ProviderCallerMismatch => Ok(Self::ProviderCallerMismatch),
+            K::ProviderInvalidEndpoint => {
+                let reason = if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                    s.clone()
+                } else {
+                    String::new()
+                };
+                Ok(Self::ProviderInvalidEndpoint { reason })
+            }
+            K::ProviderClockMissing => Ok(Self::ProviderClockMissing),
+            K::ChannelTooManyOpenForPair => {
+                let (current, max) =
+                    parse_two_u64s(&value.error_details, "current", "max");
+                Ok(Self::ChannelTooManyOpenForPair {
+                    current: current as u32,
+                    max: max as u32,
+                })
+            }
+            K::ChannelInboxPayeeMismatch => {
+                let (declared, actual) =
+                    parse_two_addresses(&value.error_details, "declared", "actual");
+                Ok(Self::ChannelInboxPayeeMismatch { declared, actual })
+            }
+            K::NotAProviderInbox => {
+                if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
+                    Ok(Self::NotAProviderInbox {
+                        object_id: object_id
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else {
+                    Err(TryFromProtoError::missing("object_id for NotAProviderInbox"))
+                }
+            }
+
+            // Per-(provider, model) Offering errors.
+            K::OfferingAlreadyExists => Ok(Self::OfferingAlreadyExists),
+            K::OfferingNotFound => Ok(Self::OfferingNotFound),
+            K::OfferingCallerMismatch => Ok(Self::OfferingCallerMismatch),
+            K::OfferingUnknownModel => {
+                let model_id =
+                    if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                        s.strip_prefix("model_id=").unwrap_or(s).to_string()
+                    } else {
+                        String::new()
+                    };
+                Ok(Self::OfferingUnknownModel { model_id })
+            }
+            K::ChannelOfferingMissing => {
+                use crate::types::Address;
+                let (mut payee, mut model_id) = (Address::ZERO, String::new());
+                if let Some(ErrorDetails::OtherError(s)) = &value.error_details {
+                    for part in s.split(", ") {
+                        if let Some(v) = part.strip_prefix("payee=") {
+                            payee = v.parse().unwrap_or(Address::ZERO);
+                        } else if let Some(v) = part.strip_prefix("model_id=") {
+                            model_id = v.to_string();
+                        }
+                    }
+                }
+                Ok(Self::ChannelOfferingMissing { payee, model_id })
+            }
         }
     }
+}
+
+/// Parse two `Address`-like values from an `ErrorDetails::OtherError`
+/// string of the form "key1=val1, key2=val2" (comma-separated to
+/// match `parse_two_u64s`'s wire format).
+fn parse_two_addresses(
+    details: &Option<execution_error::ErrorDetails>,
+    key1: &str,
+    key2: &str,
+) -> (crate::types::Address, crate::types::Address) {
+    use crate::types::Address;
+    let mut a1 = Address::ZERO;
+    let mut a2 = Address::ZERO;
+    if let Some(execution_error::ErrorDetails::OtherError(s)) = details {
+        for part in s.split(", ") {
+            if let Some(v) = part.strip_prefix(&format!("{}=", key1)) {
+                if let Ok(parsed) = v.parse::<Address>() {
+                    a1 = parsed;
+                }
+            } else if let Some(v) = part.strip_prefix(&format!("{}=", key2)) {
+                if let Ok(parsed) = v.parse::<Address>() {
+                    a2 = parsed;
+                }
+            }
+        }
+    }
+    (a1, a2)
 }
 
 /// Parse two u64 values from an `ErrorDetails::OtherError` string of the form "key1=val1, key2=val2".

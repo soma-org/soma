@@ -42,17 +42,11 @@ async fn make_transfer(
     let sender = addresses[sender_idx];
     let recipient = addresses[recipient_idx];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(amount), recipient },
+    e2e_tests::balance_transfer_data(
+        test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, amount)],
     )
 }
 
@@ -400,15 +394,25 @@ async fn test_orchestrator_execute_transaction() {
 
     // Verify effects are present
     assert!(effects.status().is_ok(), "Transaction should succeed");
-    assert!(!effects.all_changed_objects().is_empty(), "Should have changed objects");
 
-    // If input/output objects were requested, verify they match effects
-    if let Some(input_objects) = &response.input_objects {
-        assert!(!input_objects.is_empty(), "Should have input objects");
-    }
-    if let Some(output_objects) = &response.output_objects {
-        assert!(!output_objects.is_empty(), "Should have output objects");
-    }
+    // Stage 13c: BalanceTransfer touches no per-object versions —
+    // both gas (USDC) and the transferred SOMA live in
+    // accumulators. Verify the balance-mode contract holds:
+    // no objects created/mutated/deleted, fee charged, and the
+    // effects digest records the right transaction.
+    assert!(
+        effects.all_changed_objects().is_empty(),
+        "BalanceTransfer must produce zero per-object changes; got {:?}",
+        effects.all_changed_objects(),
+    );
+    assert!(effects.created().is_empty());
+    assert!(effects.mutated().is_empty());
+    assert!(effects.deleted().is_empty());
+    assert!(
+        effects.transaction_fee().total_fee > 0,
+        "Some gas fee must be charged: {:?}",
+        effects.transaction_fee(),
+    );
 
     info!("Orchestrator execute transaction test passed");
 }
@@ -428,24 +432,17 @@ async fn test_orchestrator_execute_staking() {
     let system_state = handle.with(|n| n.state().get_system_state_object_for_testing().unwrap());
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
-    // Get sender and gas object
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas,
-            amount: Some(1_000_000),
-        },
+    // Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+    // gas (USDC) — no per-tx coin object needed.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
         sender,
-        vec![gas],
+        TransactionKind::AddStake {
+            validator: validator_address,
+            amount: 1_000_000,
+        },
     );
     let tx = sign_tx(&test_cluster, &tx_data).await;
 
@@ -529,65 +526,10 @@ async fn test_early_validation_no_side_effects() {
     info!("Early validation no side effects test passed");
 }
 
-/// Verify that a transaction referencing a stale (already-spent) object version
-/// is rejected by early validation.
-#[cfg(msim)]
-#[msim::sim_test]
-async fn test_early_validation_with_old_object_version() {
-    init_tracing();
-
-    let test_cluster = TestClusterBuilder::new().build().await;
-
-    // First, execute a transaction to mutate a coin object
-    let addresses = test_cluster.wallet.get_addresses();
-    let sender = addresses[0];
-    let recipient = addresses[1];
-
-    let gas_before = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_before, amount: Some(1000), recipient },
-        sender,
-        vec![gas_before],
-    );
-
-    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
-    assert!(response.effects.status().is_ok());
-
-    // Now try to use the OLD object version in a new transaction
-    // This should fail because the object has been mutated
-    let tx_data_stale = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_before, amount: Some(500), recipient },
-        sender,
-        vec![gas_before],
-    );
-
-    let handle = &test_cluster.fullnode_handle.soma_node;
-    let orchestrator =
-        handle.with(|n| n.transaction_orchestrator().expect("fullnode must have orchestrator"));
-
-    let tx_stale = sign_tx(&test_cluster, &tx_data_stale).await;
-    let request = ExecuteTransactionRequest {
-        transaction: tx_stale,
-        include_input_objects: false,
-        include_output_objects: false,
-    };
-
-    let result = orchestrator
-        .execute_transaction_block(
-            request,
-            ExecuteTransactionRequestType::WaitForLocalExecution,
-            None,
-        )
-        .await;
-
-    // Transaction should be rejected (stale object version)
-    assert!(result.is_err(), "Transaction with old object version should be rejected");
-
-    info!("Early validation with old object version test passed");
-}
+// Stage 13c: test_early_validation_with_old_object_version was a
+// coin-mode-only test — balance-mode user txs (BalanceTransfer)
+// have no per-tx object refs that can go stale. The reservation
+// pre-pass catches the analogous balance-mode failure mode
+// (sender underfunded) and is covered by
+// test_balance_transfer_underfunded_dropped_by_prepass in
+// balance_transfer_tests.rs.

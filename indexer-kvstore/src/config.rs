@@ -86,10 +86,6 @@ pub struct PipelineLayer {
     pub objects: ConcurrentLayer,
     pub epoch_start: ConcurrentLayer,
     pub epoch_end: ConcurrentLayer,
-    // Soma-specific
-    pub soma_targets: ConcurrentLayer,
-    pub soma_models: ConcurrentLayer,
-    pub soma_rewards: ConcurrentLayer,
 }
 
 #[derive(Clone, Debug, Deserialize)]

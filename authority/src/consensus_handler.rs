@@ -30,7 +30,7 @@ use types::consensus::{
 use types::digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest};
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::transaction::{
-    SenderSignedData, TrustedExecutableTransaction, VerifiedCertificate,
+    SenderSignedData, TransactionKey, TrustedExecutableTransaction, VerifiedCertificate,
     VerifiedExecutableTransaction, VerifiedTransaction,
 };
 
@@ -85,10 +85,22 @@ impl ConsensusHandlerInitializer {
         let new_epoch_start_state = self.epoch_store.epoch_start_state();
         let consensus_committee = new_epoch_start_state.get_committee();
 
+        // Stage 14d: construct a fresh SettlementScheduler per epoch.
+        // Mirrors Sui's `new_consensus_handler` — the scheduler holds
+        // a `Mutex<Option<SettlementQueueSender>>` that lazily spawns
+        // a queue runner bound to a specific `epoch_store`. Sharing one
+        // scheduler across epochs would leak the prior epoch's runner
+        // (still parked on the old epoch_store's
+        // `wait_for_settlement_transactions`) into the new epoch where
+        // it would never wake — the cluster would silently wedge.
+        let settlement_scheduler = crate::settlement_scheduler::SettlementScheduler::new(
+            (*self.state.execution_scheduler).clone(),
+        );
+
         ConsensusHandler::new(
             self.epoch_store.clone(),
             self.checkpoint_service.clone(),
-            self.state.execution_scheduler().clone(),
+            settlement_scheduler,
             self.consensus_adapter.clone(),
             self.state.get_object_cache_reader().clone(),
             self.low_scoring_authorities.clone(),
@@ -346,7 +358,7 @@ impl<C> ConsensusHandler<C> {
     pub(crate) fn new(
         epoch_store: Arc<AuthorityPerEpochStore>,
         checkpoint_service: Arc<C>,
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         consensus_adapter: Arc<ConsensusAdapter>,
         cache_reader: Arc<dyn ObjectCacheRead>,
         low_scoring_authorities: Arc<ArcSwap<HashMap<AuthorityName, u64>>>,
@@ -363,7 +375,7 @@ impl<C> ConsensusHandler<C> {
             last_consensus_stats.stats = ConsensusStats::new(committee.size());
         }
         let execution_scheduler_sender =
-            ExecutionSchedulerSender::start(execution_scheduler, epoch_store.clone());
+            ExecutionSchedulerSender::start(settlement_scheduler, epoch_store.clone());
         let commit_rate_estimate_window_size =
             epoch_store.protocol_config().get_consensus_commit_rate_estimation_window_size();
         Self {
@@ -634,8 +646,31 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let checkpoint_height =
             self.epoch_store.calculate_pending_checkpoint_height(commit_info.round);
 
+        // Stage 14d (SIP-58 single-path): split schedulables into
+        // real-tx roots and the settlement placeholder. The settlement
+        // placeholder doesn't have an executed-tx digest yet — the
+        // CheckpointBuilder constructs the settlement from the cp's
+        // user-tx effects and registers it via
+        // `epoch_store.notify_settlement_transactions_ready`. Mirrors
+        // Sui's `CheckpointRoots { tx_roots, settlement_root }`.
+        let mut tx_roots: Vec<TransactionKey> = Vec::with_capacity(schedulables.len());
+        let mut settlement_root: Option<TransactionKey> = None;
+        for s in schedulables {
+            if s.as_tx().is_some() {
+                tx_roots.push(s.key());
+            } else {
+                debug_assert!(
+                    settlement_root.is_none(),
+                    "consensus_handler emitted multiple AccumulatorSettlement placeholders \
+                     in a single cp — only one is supported"
+                );
+                settlement_root = Some(s.key());
+            }
+        }
+
         let pending_checkpoint = PendingCheckpoint {
-            roots: schedulables.iter().map(|s| s.key()).collect(),
+            roots: tx_roots,
+            settlement_root,
             details: PendingCheckpointInfo {
                 timestamp_ms: commit_info.timestamp,
                 last_of_epoch: final_round,
@@ -656,7 +691,24 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let protocol_config = self.epoch_store.protocol_config();
         let epoch = self.epoch_store.epoch();
 
-        let transactions_to_schedule = user_transactions;
+        // Stage 6d: scheduler reservation pre-pass. Drop balance-mode
+        // txs whose declared `WithdrawalReservation`s exceed the
+        // sender's pre-commit accumulator balance. This is the
+        // parallel-safety primitive (multiple txs from one sender in
+        // a single commit can each individually pass `prepare_gas`'s
+        // balance read, but their cumulative withdraws would underflow
+        // settlement; the pre-pass deterministically drops the later
+        // ones).
+        //
+        // For now no kind reserves anything except gas (Stage 6c+).
+        // Coin-mode txs return [] from `reservations()` and fall
+        // through unaffected.
+        let unit_fee = self
+            .epoch_store
+            .epoch_start_state()
+            .fee_parameters()
+            .unit_fee;
+        let transactions_to_schedule = self.run_reservation_prepass(user_transactions, unit_fee);
 
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
             state,
@@ -664,11 +716,54 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             transactions_to_schedule.iter().map(Schedulable::Transaction),
         );
 
-        let schedulables: Vec<_> = itertools::chain!(
-            consensus_commit_prologue.into_iter(),
-            transactions_to_schedule.into_iter(),
+        // SIP-58 single-path: emit a `Schedulable::AccumulatorSettlement`
+        // placeholder. The cp builder is the **producer** —
+        // `construct_and_execute_settlement` runs
+        // `AccumulatorSettlementTxBuilder` against the cp's user-tx
+        // effects, wraps the result as a system tx, and publishes it
+        // via `epoch_store.notify_settlement_transactions_ready`. The
+        // `SettlementScheduler` is the **thin consumer** — its queue
+        // runner awaits the published TX and forwards to the main
+        // `ExecutionScheduler`.
+        //
+        // The `settlement_key` is a synthetic Blake2b-256 digest over
+        // `(epoch, round, sub_dag_index)`. It anchors the producer/
+        // consumer rendezvous and acts as a routing key in the
+        // per-epoch notify channel. Same `(epoch, round, sub_dag_index)`
+        // → same key (idempotent on consensus replay); different
+        // commits → different keys (no channel collisions).
+        let settlement_placeholder = {
+            use crate::shared_obj_version_manager::{AssignedVersions, SettlementBatchInfo};
+            use fastcrypto::hash::{Blake2b256, HashFunction as _};
+
+            let tx_digests: Vec<_> = transactions_to_schedule
+                .iter()
+                .map(|tx| *tx.digest())
+                .collect();
+
+            let mut hasher = Blake2b256::default();
+            hasher.update(b"soma/settlement-key/v1");
+            hasher.update(epoch.to_le_bytes());
+            hasher.update(commit_info.round.to_le_bytes());
+            hasher.update(commit_info.sub_dag_index.to_le_bytes());
+            let settlement_digest_bytes: [u8; 32] = hasher.finalize().into();
+            let settlement_key = types::transaction::TransactionKey::Digest(
+                types::digests::TransactionDigest::new(settlement_digest_bytes),
+            );
+
+            Schedulable::AccumulatorSettlement(Box::new(SettlementBatchInfo {
+                settlement_key,
+                tx_digests,
+                checkpoint_seq: commit_info.round,
+                assigned_versions: AssignedVersions::default(),
+            }))
+        };
+
+        let schedulables: Vec<Schedulable> = itertools::chain!(
+            consensus_commit_prologue.into_iter().map(Schedulable::Transaction),
+            transactions_to_schedule.into_iter().map(Schedulable::Transaction),
+            std::iter::once(settlement_placeholder),
         )
-        .map(Schedulable::Transaction)
         .collect();
 
         let assigned_versions = self
@@ -683,6 +778,62 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         self.epoch_store.process_user_signatures(schedulables.iter());
 
         (schedulables, assigned_versions)
+    }
+
+    /// Stage 6d: deterministic reservation pre-pass.
+    ///
+    /// Walks `txs` in commit order, asks each for its
+    /// `WithdrawalReservation`s, and uses the pure
+    /// `check_reservations` to maintain running tentative balances
+    /// per `(owner, coin_type)`. Txs whose reservations would
+    /// underflow are filtered out — they will not reach execution.
+    ///
+    /// Determinism: the running tentatives are seeded from
+    /// `cache_reader.get_balance` (which all validators see
+    /// identically as of pre-commit state), and the pure check is
+    /// itself deterministic. Every validator drops the same set.
+    fn run_reservation_prepass(
+        &self,
+        txs: Vec<VerifiedExecutableTransaction>,
+        unit_fee: u64,
+    ) -> Vec<VerifiedExecutableTransaction> {
+        // Pre-compute reservations once per tx; pure function over
+        // immutable tx data, no IO.
+        let per_tx_reservations: Vec<Vec<types::balance::WithdrawalReservation>> = txs
+            .iter()
+            .map(|tx| tx.transaction_data().reservations(unit_fee))
+            .collect();
+
+        // Fast path: if no tx declares any reservation, nothing to
+        // check. Saves the cache_reader hit for the common (current)
+        // case where all txs are coin-mode.
+        if per_tx_reservations.iter().all(|r| r.is_empty()) {
+            return txs;
+        }
+
+        let reservation_refs: Vec<&[types::balance::WithdrawalReservation]> =
+            per_tx_reservations.iter().map(|v| v.as_slice()).collect();
+
+        let cache_reader = self.cache_reader.clone();
+        let decisions = types::balance::check_reservations(&reservation_refs, |owner, coin_type| {
+            cache_reader.get_balance(owner, coin_type)
+        });
+
+        // Filter txs by Accept; log Drops for observability.
+        txs.into_iter()
+            .zip(decisions)
+            .filter_map(|(tx, decision)| match decision {
+                types::balance::ReservationDecision::Accept => Some(tx),
+                types::balance::ReservationDecision::Drop { reason } => {
+                    debug!(
+                        digest = ?tx.digest(),
+                        ?reason,
+                        "reservation pre-pass dropping underfunded tx"
+                    );
+                    None
+                }
+            })
+            .collect()
     }
 
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update
@@ -1123,11 +1274,11 @@ pub(crate) struct ExecutionSchedulerSender {
 
 impl ExecutionSchedulerSender {
     fn start(
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) -> Self {
         let (sender, recv) = mpsc::unbounded_channel();
-        tokio::spawn(Self::run(recv, execution_scheduler, epoch_store));
+        tokio::spawn(Self::run(recv, settlement_scheduler, epoch_store));
         Self { sender }
     }
 
@@ -1146,13 +1297,17 @@ impl ExecutionSchedulerSender {
         let _ = self.sender.send((transactions, assigned_versions, scheduling_source));
     }
 
+    /// Stage 14c.5e: routes through `SettlementScheduler::enqueue`,
+    /// which splits real transactions to the main `ExecutionScheduler`
+    /// and `Schedulable::AccumulatorSettlement` placeholders to the
+    /// dedicated settlement queue.
     async fn run(
         mut recv: mpsc::UnboundedReceiver<(
             Vec<Schedulable>,
             AssignedTxAndVersions,
             SchedulingSource,
         )>,
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
         while let Some((transactions, assigned_versions, scheduling_source)) = recv.recv().await {
@@ -1169,7 +1324,7 @@ impl ExecutionSchedulerSender {
                     (txn, env)
                 })
                 .collect();
-            execution_scheduler.enqueue(txns, &epoch_store);
+            settlement_scheduler.enqueue(txns, &epoch_store);
         }
     }
 }
@@ -1183,11 +1338,13 @@ impl MysticetiConsensusHandler {
     pub(crate) fn new(
         last_processed_commit_at_startup: CommitIndex,
         mut consensus_handler: ConsensusHandler<CheckpointService>,
-        consensus_block_handler: ConsensusBlockHandler,
         mut commit_receiver: mpsc::UnboundedReceiver<types::consensus::commit::CommittedSubDag>,
-        mut block_receiver: mpsc::UnboundedReceiver<types::consensus::block::CertifiedBlocksOutput>,
         commit_consumer_monitor: Arc<CommitConsumerMonitor>,
     ) -> Self {
+        // Stage 5b: the per-block fastpath handler (and its
+        // `block_receiver` subscription) are gone. Only the
+        // commit-receiver task remains; every transaction now flows
+        // through consensus commits.
         let mut tasks = JoinSet::new();
         tasks.spawn(async move {
             // TODO: pause when execution is overloaded, so consensus can detect the backpressure.
@@ -1199,12 +1356,6 @@ impl MysticetiConsensusHandler {
                     consensus_handler.handle_consensus_commit(consensus_commit).await;
                 }
                 commit_consumer_monitor.set_highest_handled_commit(commit_index);
-            }
-        });
-
-        tasks.spawn(async move {
-            while let Some(blocks) = block_receiver.recv().await {
-                consensus_block_handler.handle_certified_blocks(blocks).await;
             }
         });
 
@@ -1410,111 +1561,6 @@ impl SequencedConsensusTransaction {
             consensus_index: Default::default(),
             transaction: SequencedConsensusTransactionKind::External(transaction),
         }
-    }
-}
-
-/// Handles certified and rejected transactions output by consensus.
-pub(crate) struct ConsensusBlockHandler {
-    /// Per-epoch store.
-    epoch_store: Arc<AuthorityPerEpochStore>,
-    /// Enqueues transactions to the execution scheduler via a separate task.
-    execution_scheduler_sender: ExecutionSchedulerSender,
-    /// Backpressure subscriber to wait for backpressure to be resolved.
-    backpressure_subscriber: BackpressureSubscriber,
-}
-
-impl ConsensusBlockHandler {
-    pub fn new(
-        epoch_store: Arc<AuthorityPerEpochStore>,
-        execution_scheduler_sender: ExecutionSchedulerSender,
-        backpressure_subscriber: BackpressureSubscriber,
-    ) -> Self {
-        Self { epoch_store, execution_scheduler_sender, backpressure_subscriber }
-    }
-
-    #[instrument(level = "debug", skip_all)]
-    async fn handle_certified_blocks(&self, blocks_output: CertifiedBlocksOutput) {
-        self.backpressure_subscriber.await_no_backpressure().await;
-
-        // Avoid triggering fastpath execution or setting transaction status to fastpath certified, during reconfiguration.
-        let reconfiguration_lock = self.epoch_store.get_reconfig_state_read_lock_guard();
-        if !reconfiguration_lock.should_accept_user_certs() {
-            debug!(
-                "Skipping fastpath execution because epoch {} is closing user transactions: {}",
-                self.epoch_store.epoch(),
-                blocks_output.blocks.iter().map(|b| b.block.reference().to_string()).join(", "),
-            );
-            return;
-        }
-
-        let epoch = self.epoch_store.epoch();
-        let parsed_transactions = blocks_output
-            .blocks
-            .into_iter()
-            .map(|certified_block| {
-                let block_ref = certified_block.block.reference();
-                let transactions =
-                    parse_block_transactions(&certified_block.block, &certified_block.rejected);
-                (block_ref, transactions)
-            })
-            .collect::<Vec<_>>();
-        let mut executable_transactions = vec![];
-        for (block, transactions) in parsed_transactions.into_iter() {
-            // Set the "ping" transaction status for this block. This is ncecessary as there might be some ping requests waiting for the ping transaction to be certified.
-            self.epoch_store.set_consensus_tx_status(
-                ConsensusPosition::ping(epoch, block),
-                ConsensusTxStatus::FastpathCertified,
-            );
-
-            for (txn_idx, parsed) in transactions.into_iter().enumerate() {
-                let position =
-                    ConsensusPosition { epoch, block, index: txn_idx as TransactionIndex };
-
-                let status_str = if parsed.rejected { "rejected" } else { "certified" };
-                if let ConsensusTransactionKind::UserTransaction(tx) = &parsed.transaction.kind {
-                    debug!(
-                        "User Transaction in position: {:} with digest {:} is {:}",
-                        position,
-                        tx.digest(),
-                        status_str
-                    );
-                } else {
-                    debug!("System Transaction in position: {:} is {:}", position, status_str);
-                }
-
-                if parsed.rejected {
-                    // TODO(fastpath): avoid parsing blocks twice between handling commit and fastpath transactions?
-                    self.epoch_store.set_consensus_tx_status(position, ConsensusTxStatus::Rejected);
-                    continue;
-                }
-
-                if let ConsensusTransactionKind::UserTransaction(tx) = parsed.transaction.kind {
-                    if tx.is_consensus_tx() {
-                        continue;
-                    }
-                    // Only set fastpath certified status on transactions intended for fastpath execution.
-                    self.epoch_store
-                        .set_consensus_tx_status(position, ConsensusTxStatus::FastpathCertified);
-                    let tx = VerifiedTransaction::new_unchecked(*tx);
-                    executable_transactions.push(Schedulable::Transaction(
-                        VerifiedExecutableTransaction::new_from_consensus(
-                            tx,
-                            self.epoch_store.epoch(),
-                        ),
-                    ));
-                }
-            }
-        }
-
-        if executable_transactions.is_empty() {
-            return;
-        }
-
-        self.execution_scheduler_sender.send(
-            executable_transactions,
-            Default::default(),
-            SchedulingSource::MysticetiFastPath,
-        );
     }
 }
 

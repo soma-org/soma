@@ -49,6 +49,7 @@ async fn test_reconfig_with_committee_change_basic() {
     let mut test_cluster = TestClusterBuilder::new()
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![VALIDATOR_STARTING_STAKE * 1_000],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)
@@ -148,6 +149,7 @@ async fn do_test_reconfig_with_committee_change_stress() {
     let mut test_cluster = TestClusterBuilder::new()
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(7)
@@ -220,6 +222,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         )
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![DEFAULT_GAS_AMOUNT * initial_num_validators as u64 * 3],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)
@@ -386,6 +389,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
         .with_validators(initial_validators)
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![10 * VALIDATOR_STARTING_STAKE * initial_num_validators as u64],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)
@@ -475,25 +479,20 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
 async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNodeHandle) {
     let address = handle.with(|node| node.get_config().soma_address());
 
-    let gas_object = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(address)
-        .await
-        .unwrap()
-        .expect("Can't get gas object for address");
-
+    // Stage 13c: validator-management txs are balance-mode — gas
+    // comes from the validator's USDC accumulator.
+    let signer_address: SomaAddress = handle
+        .with(|node| (&node.get_config().account_key_pair.keypair().public()).into());
+    let kind = handle.with(|node| {
+        TransactionKind::RemoveValidator(RemoveValidatorArgs {
+            pubkey_bytes: bcs::to_bytes(&node.get_config().account_key_pair.keypair().public())
+                .unwrap(),
+        })
+    });
+    let tx_data = e2e_tests::stateless_tx_data(test_cluster, signer_address, kind);
     let tx = handle.with(|node| {
         Transaction::from_data_and_signer(
-            TransactionData::new(
-                TransactionKind::RemoveValidator(RemoveValidatorArgs {
-                    pubkey_bytes: bcs::to_bytes(
-                        &node.get_config().account_key_pair.keypair().public(),
-                    )
-                    .unwrap(),
-                }),
-                (&node.get_config().account_key_pair.keypair().public()).into(),
-                vec![gas_object],
-            ),
+            tx_data,
             vec![node.get_config().account_key_pair.keypair()],
         )
     });
@@ -519,39 +518,25 @@ async fn execute_add_validator_transactions(
         system_state.validators().pending_validators.len()
     });
 
-    let gas_object = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address((&new_validator.account_key_pair.public()).into())
-        .await
-        .unwrap()
-        .expect("Can't get gas object for address");
-
-    let tx = Transaction::from_data_and_signer(
-        TransactionData::new(
-            TransactionKind::AddValidator({
-                let sender_address = SomaAddress::from(&new_validator.account_key_pair.public());
-                let pop = types::crypto::generate_proof_of_possession(
-                    &new_validator.key_pair,
-                    sender_address,
-                );
-                AddValidatorArgs {
-                    pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
-                    network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public())
-                        .unwrap(),
-                    worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
-                        .unwrap(),
-                    proof_of_possession: pop.as_ref().to_vec(),
-                    net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                    p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
-                    primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
-                    proxy_address: bcs::to_bytes(&new_validator.proxy_address).unwrap(),
-                }
-            }),
-            (&new_validator.account_key_pair.public()).into(),
-            vec![gas_object],
-        ),
-        vec![&new_validator.account_key_pair],
-    );
+    // Stage 13c: AddValidator is balance-mode — no per-tx gas coin.
+    let sender_address = SomaAddress::from(&new_validator.account_key_pair.public());
+    let kind = TransactionKind::AddValidator({
+        let pop = types::crypto::generate_proof_of_possession(
+            &new_validator.key_pair,
+            sender_address,
+        );
+        AddValidatorArgs {
+            pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
+            network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public()).unwrap(),
+            worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public()).unwrap(),
+            proof_of_possession: pop.as_ref().to_vec(),
+            net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
+            p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
+            primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
+        }
+    });
+    let tx_data = e2e_tests::stateless_tx_data(test_cluster, sender_address, kind);
+    let tx = Transaction::from_data_and_signer(tx_data, vec![&new_validator.account_key_pair]);
 
     info!(?tx, "Executing add validator tx {}", &new_validator.network_address.to_string());
 
@@ -587,19 +572,15 @@ async fn execute_add_stake_transaction(
     address: SomaAddress,
     stake: u64,
 ) {
-    let gas_object = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address((&signer.public()).into())
-        .await
-        .unwrap()
-        .expect("Can't get gas object for address");
-
+    let signer_address: SomaAddress = (&signer.public()).into();
+    // Stage 13c: AddStake is balance-mode for both stake and gas.
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        signer_address,
+        TransactionKind::AddStake { validator: address, amount: stake },
+    );
     let tx = Transaction::from_data_and_signer(
-        TransactionData::new(
-            TransactionKind::AddStake { address, coin_ref: gas_object, amount: Some(stake) },
-            (&signer.public()).into(),
-            vec![gas_object],
-        ),
+        tx_data,
         vec![&signer],
     );
 
@@ -750,7 +731,10 @@ async fn test_validator_candidate_pool_read() {
             pending.staking_pool.deactivation_epoch.is_none(),
             "Pending validator pool should not be deactivated"
         );
-        assert!(pending.staking_pool.soma_balance > 0, "Pending validator should have stake");
+        assert!(
+            pending.staking_pool.active_stake + pending.staking_pool.pending_active_stake > 0,
+            "Pending validator should have stake",
+        );
     });
 
     // Verify the committee hasn't changed yet.
@@ -886,40 +870,35 @@ async fn test_create_advance_epoch_tx_race() {
             break;
         }
 
-        // Get a gas object and submit a stake transaction.
-        let gas_object =
-            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap();
+        // Stage 13c: AddStake is balance-mode for both stake and
+        // gas — no per-tx coin objects.
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            sender,
+            TransactionKind::AddStake {
+                validator: validator_address,
+                amount: 1_000_000,
+            },
+        );
 
-        if let Some(gas_object) = gas_object {
-            let tx_data = TransactionData::new(
-                TransactionKind::AddStake {
-                    address: validator_address,
-                    coin_ref: gas_object,
-                    amount: Some(1_000_000),
-                },
-                sender,
-                vec![gas_object],
-            );
+        let tx = test_cluster.wallet.sign_transaction(&tx_data).await;
+        submitted += 1;
 
-            let tx = test_cluster.wallet.sign_transaction(&tx_data).await;
-            submitted += 1;
-
-            match tokio::time::timeout(
-                Duration::from_secs(30),
-                test_cluster.execute_transaction(tx),
-            )
-            .await
-            {
-                Ok(response) => {
-                    if response.effects.status().is_ok() {
-                        succeeded += 1;
-                    } else {
-                        failed += 1;
-                    }
-                }
-                Err(_timeout) => {
+        match tokio::time::timeout(
+            Duration::from_secs(30),
+            test_cluster.execute_transaction(tx),
+        )
+        .await
+        {
+            Ok(response) => {
+                if response.effects.status().is_ok() {
+                    succeeded += 1;
+                } else {
                     failed += 1;
                 }
+            }
+            Err(_timeout) => {
+                failed += 1;
             }
         }
 
@@ -941,110 +920,12 @@ async fn test_create_advance_epoch_tx_race() {
     assert_eq!(system_state.validators().validators.len(), 4, "Committee should remain unchanged");
 }
 
-/// Test that object locks from the current epoch are correctly handled across
-/// epoch boundaries. A gas object consumed in epoch N should not be usable
-/// with the stale ObjectRef in epoch N+1.
-#[cfg(msim)]
-#[msim::sim_test]
-async fn test_expired_locks() {
-    init_tracing();
-
-    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
-
-    let sender = test_cluster.get_addresses()[0];
-
-    // Get a validator address to stake with.
-    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
-            .metadata
-            .soma_address
-    });
-
-    // Get a gas object in epoch 0.
-    let gas_object_epoch0 = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("Should have a gas object");
-
-    // Execute a stake transaction in epoch 0, consuming the gas object version.
-    let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas_object_epoch0,
-            amount: Some(1_000_000),
-        },
-        sender,
-        vec![gas_object_epoch0],
-    );
-    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
-    assert!(response.effects.status().is_ok(), "First stake should succeed");
-
-    // Trigger reconfiguration to epoch 1.
-    test_cluster.trigger_reconfiguration().await;
-
-    let current_epoch = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().epoch_store_for_testing().epoch());
-    assert_eq!(current_epoch, 1, "Should be in epoch 1");
-
-    // Now try to use the stale object ref from epoch 0 (pre-mutation version).
-    // This should fail because the object version has been consumed.
-    let stale_tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas_object_epoch0,
-            amount: Some(500_000),
-        },
-        sender,
-        vec![gas_object_epoch0],
-    );
-    let stale_tx = test_cluster.wallet.sign_transaction(&stale_tx_data).await;
-
-    // The stale transaction should fail (the object version was already consumed).
-    let result = tokio::time::timeout(
-        Duration::from_secs(15),
-        test_cluster.wallet.execute_transaction_may_fail(stale_tx),
-    )
-    .await;
-
-    match result {
-        Ok(Ok(response)) => {
-            assert!(!response.effects.status().is_ok(), "Stale object ref transaction should fail");
-        }
-        Ok(Err(_)) => {
-            info!("Stale ref correctly rejected at submission level");
-        }
-        Err(_) => {
-            info!("Stale ref transaction timed out (expected)");
-        }
-    }
-
-    // Verify we can still use the latest version of the object in the new epoch.
-    let fresh_gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("Should still have a gas object in epoch 1");
-
-    let fresh_tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: fresh_gas,
-            amount: Some(500_000),
-        },
-        sender,
-        vec![fresh_gas],
-    );
-    let fresh_response = test_cluster.sign_and_execute_transaction(&fresh_tx_data).await;
-    assert!(
-        fresh_response.effects.status().is_ok(),
-        "Fresh object ref transaction should succeed in new epoch"
-    );
-}
+// Stage 13c: test_expired_locks deleted. It tested stale ObjectRef
+// rejection across epoch boundaries using a coin gas/stake-coin
+// pair. With balance-mode there are no per-tx coin refs that can go
+// stale; the analogous "stale by epoch boundary" property is now
+// owned by `test_replay_rejected_across_epoch_boundary` (digest
+// cache + ValidDuring expiration).
 
 /// Test passive reconfiguration under active transaction load.
 /// Verifies that the network can reconfigure through multiple epochs while
@@ -1083,34 +964,30 @@ async fn test_passive_reconfig_with_tx_load() {
             break;
         }
 
-        let gas_object =
-            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap();
+        // Stage 13c: AddStake is balance-mode — both stake and gas
+        // come from accumulators, no per-tx coin refs.
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            sender,
+            TransactionKind::AddStake {
+                validator: validator_address,
+                amount: 1_000_000,
+            },
+        );
 
-        if let Some(gas_object) = gas_object {
-            let tx_data = TransactionData::new(
-                TransactionKind::AddStake {
-                    address: validator_address,
-                    coin_ref: gas_object,
-                    amount: Some(1_000_000),
-                },
-                sender,
-                vec![gas_object],
-            );
-
-            match tokio::time::timeout(
-                Duration::from_secs(30),
-                test_cluster.sign_and_execute_transaction(&tx_data),
-            )
-            .await
-            {
-                Ok(response) => {
-                    if response.effects.status().is_ok() {
-                        total_txs += 1;
-                    }
+        match tokio::time::timeout(
+            Duration::from_secs(30),
+            test_cluster.sign_and_execute_transaction(&tx_data),
+        )
+        .await
+        {
+            Ok(response) => {
+                if response.effects.status().is_ok() {
+                    total_txs += 1;
                 }
-                Err(_) => {
-                    info!("Transaction timed out near epoch boundary");
-                }
+            }
+            Err(_) => {
+                info!("Transaction timed out near epoch boundary");
             }
         }
 
@@ -1131,4 +1008,143 @@ async fn test_passive_reconfig_with_tx_load() {
     });
     assert!(system_state.epoch() >= target_epoch);
     assert_eq!(system_state.validators().validators.len(), 4);
+}
+
+/// Stage 5.5c: end-to-end replay rejection.
+///
+/// Submit a tx in epoch 0 → reconfigure to epoch 1 → re-submit the
+/// exact same signed bytes → verify rejection.
+///
+/// In epoch 1, the validator's `handle_vote_transaction` consults the
+/// `executed_transaction_digests` cache and finds the digest at
+/// `(epoch=0, digest)` (the previous epoch). It returns
+/// `SomaError::TransactionAlreadyExecuted` rather than re-executing
+/// or accepting the replay.
+///
+/// This is distinct from `test_expired_locks` (which exercises stale
+/// owned-object versions): this test verifies the digest-cache check
+/// fires *before* and independently of input-version validation. The
+/// distinction matters because post-Stage 6 stateless txs won't have
+/// owned inputs to anchor replay protection — the digest cache will
+/// be the sole defense.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_replay_rejected_across_epoch_boundary() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+
+    let sender = test_cluster.get_addresses()[0];
+    let recipient = SomaAddress::random();
+
+    // Build and sign a BalanceTransfer once. The signed bytes — and
+    // therefore the digest — are identical for both submissions.
+    // Stage 13c: balance-mode tx, no gas coin. ValidDuring [0, 1]
+    // so the same signed bytes remain valid both at epoch 0 (initial
+    // submission) and epoch 1 (replay attempt).
+    let tx_data = e2e_tests::balance_transfer_data_with_window(
+        &test_cluster,
+        types::object::CoinType::Usdc,
+        sender,
+        vec![(recipient, 1)],
+        0,
+        1,
+    );
+    let signed_tx = test_cluster.wallet.sign_transaction(&tx_data).await;
+    let tx_digest = *signed_tx.digest();
+
+    // Execute at epoch 0 — happy path.
+    let initial_response = test_cluster.execute_transaction(signed_tx.clone()).await;
+    assert!(
+        initial_response.effects.status().is_ok(),
+        "Initial submission must succeed in epoch 0"
+    );
+
+    // Confirm the digest is in the executed_transaction_digests cache
+    // at (0, tx_digest). The fullnode's perpetual store is the cache.
+    let cache_hit_at_prev_epoch = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .database_for_testing()
+            .was_transaction_executed_in_last_epoch(&tx_digest, 1)
+            .unwrap()
+    });
+    // Note: at this point we're still in epoch 0, so this lookup
+    // (which checks epoch-1 = 0) reflects what the cache will look
+    // like to a vote handler running in epoch 1. We assert it after
+    // reconfig instead — see below.
+    let _ = cache_hit_at_prev_epoch;
+
+    // Trigger reconfiguration to epoch 1.
+    test_cluster.trigger_reconfiguration().await;
+    let current_epoch = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().epoch_store_for_testing().epoch());
+    assert_eq!(current_epoch, 1, "Should be in epoch 1");
+
+    // Sanity: the cache lookup that the vote handler will run finds
+    // the original digest in the previous epoch.
+    let cache_hit = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .database_for_testing()
+            .was_transaction_executed_in_last_epoch(&tx_digest, current_epoch)
+            .unwrap()
+    });
+    assert!(
+        cache_hit,
+        "executed_transaction_digests must contain the digest at (epoch=0, digest)"
+    );
+
+    // Re-submit the *identical* signed transaction. The replay-
+    // protection path must reject it.
+    let replay_result = tokio::time::timeout(
+        Duration::from_secs(15),
+        test_cluster.wallet.execute_transaction_may_fail(signed_tx),
+    )
+    .await;
+
+    match replay_result {
+        Ok(Ok(response)) => {
+            // If the framework somehow accepted the replay, effects
+            // must at minimum not be Success.
+            assert!(
+                !response.effects.status().is_ok(),
+                "Replay must not produce a successful execution"
+            );
+        }
+        Ok(Err(e)) => {
+            // Validators rejected at submission time. Acceptable —
+            // the rejection may surface as different gRPC error
+            // strings, but should mention either "already executed"
+            // (our new path) or stale input (the owned-object backstop).
+            let msg = format!("{e:#}");
+            info!("Replay rejected at submission: {msg}");
+        }
+        Err(_) => {
+            // Timeout is also acceptable — a network of validators
+            // unanimously refusing to sign is observationally
+            // similar to a slow response.
+            info!("Replay submission timed out (expected — validators refusing to sign)");
+        }
+    }
+
+    // The fresh-tx control: in epoch 1, a brand-new tx (different
+    // digest — different recipient) must still execute. This
+    // verifies we haven't accidentally broken the validation path
+    // for legitimate txs in the new epoch.
+    let fresh_recipient = SomaAddress::random();
+    // The fresh tx runs at epoch 1, so its window must include 1.
+    let fresh_tx_data = e2e_tests::balance_transfer_data_with_window(
+        &test_cluster,
+        types::object::CoinType::Usdc,
+        sender,
+        vec![(fresh_recipient, 1)],
+        1,
+        2,
+    );
+    let fresh_response = test_cluster.sign_and_execute_transaction(&fresh_tx_data).await;
+    assert!(
+        fresh_response.effects.status().is_ok(),
+        "Fresh tx with different digest must succeed in epoch 1"
+    );
 }

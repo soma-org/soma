@@ -53,7 +53,7 @@ impl TransactionInputLoader {
 
         for (i, kind) in input_object_kinds.iter().enumerate() {
             match kind {
-                InputObjectKind::SharedObject { .. } => {
+                InputObjectKind::SharedObject { initial_shared_version, .. } => {
                     let input_full_id = kind.full_object_id();
 
                     // Load the most current version from the cache.
@@ -79,7 +79,22 @@ impl TransactionInputLoader {
                                     ),
                                 });
                             } else {
-                                return Err(SomaError::from(kind.object_not_found_error()));
+                                // Lazy-create patterns (ProviderInbox created by the first
+                                // OpenChannel for a payee; Offering snapshotted by OpenChannel
+                                // but only existing once the payee has registered it) declare
+                                // a shared input whose object may not yet exist. Surface this
+                                // as `NotYetCreated` so the tx still goes through consensus
+                                // and the executor handles the missing-object case (creating
+                                // it for inbox; failing with `ChannelOfferingMissing` for
+                                // offering reads). Without this, the validator would reject
+                                // the tx at signing time with a "retriable" ObjectNotFound,
+                                // and the transaction driver would loop until timeout.
+                                input_results[i] = Some(ObjectReadResult {
+                                    input_object_kind: *kind,
+                                    object: ObjectReadResultKind::NotYetCreated(
+                                        *initial_shared_version,
+                                    ),
+                                });
                             }
                         }
                     }
@@ -184,7 +199,7 @@ impl TransactionInputLoader {
                 {
                     ObjectReadResult { input_object_kind: *input, object: obj.into() }
                 }
-                (_, InputObjectKind::SharedObject { .. }) => {
+                (_, InputObjectKind::SharedObject { initial_shared_version, .. }) => {
                     assert!(key.1.is_valid());
                     // If the full ID on a shared input doesn't match, check if the object
                     // was removed from consensus by a concurrently certified tx.
@@ -196,6 +211,16 @@ impl TransactionInputLoader {
                         ObjectReadResult {
                             input_object_kind: *input,
                             object: ObjectReadResultKind::DeletedSharedObject(version, dependency),
+                        }
+                    } else if version == *initial_shared_version {
+                        // Lazy-create pattern: the scheduler assigned the declared
+                        // initial_shared_version because no prior tx had ever materialized
+                        // this shared id. Pass NotYetCreated through to the executor — for
+                        // ProviderInbox the executor creates it on write; for Offering reads
+                        // (OpenChannel) the executor rejects with ChannelOfferingMissing.
+                        ObjectReadResult {
+                            input_object_kind: *input,
+                            object: ObjectReadResultKind::NotYetCreated(*initial_shared_version),
                         }
                     } else {
                         panic!(

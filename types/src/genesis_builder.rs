@@ -18,32 +18,31 @@ use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::base::{ExecutionDigests, SomaAddress};
 use crate::checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary};
 use crate::config::genesis_config::{
-    GenesisCeremonyParameters, GenesisModelConfig, TOTAL_SUPPLY_SHANNONS,
-    TokenDistributionSchedule, ValidatorGenesisConfig,
+    GenesisCeremonyParameters, TOTAL_SUPPLY_SHANNONS, TokenDistributionSchedule,
+    ValidatorGenesisConfig,
 };
 use crate::crypto::{
     AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo, AuthoritySignInfoTrait as _,
     AuthoritySignature,
 };
-use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, TransactionDigest};
+use crate::digests::TransactionDigest;
 use crate::effects::{ExecutionStatus, TransactionEffects};
 use crate::envelope::Message as _;
 use crate::genesis::{Genesis, UnsignedGenesis};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::object::{Object, ObjectData, ObjectID, ObjectType, Owner, Version};
+use crate::committee::EpochId;
+use crate::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::staking::StakingPool;
 use crate::system_state::validator::{Validator, ValidatorMetadata};
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::system_state::{FeeParameters, SystemState, SystemStateTrait, get_system_state};
-use crate::target::{generate_target, make_target_seed};
 use crate::temporary_store::TemporaryStore;
-use crate::tensor::SomaTensor;
 use crate::transaction::{InputObjects, Transaction, VerifiedTransaction};
 use crate::tx_fee::TransactionFee;
 use crate::validator_info::GenesisValidatorInfo;
 
 const GENESIS_BUILDER_COMMITTEE_DIR: &str = "committee";
-const GENESIS_BUILDER_MODELS_DIR: &str = "models";
 const GENESIS_BUILDER_PARAMETERS_FILE: &str = "parameters";
 const GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE: &str = "token-distribution-schedule";
 const GENESIS_BUILDER_SIGNATURE_DIR: &str = "signatures";
@@ -53,9 +52,10 @@ pub struct GenesisBuilder {
     parameters: GenesisCeremonyParameters,
     token_distribution_schedule: Option<TokenDistributionSchedule>,
     validators: Vec<GenesisValidatorInfo>,
-    genesis_models: Vec<GenesisModelConfig>,
     signatures: BTreeMap<AuthorityPublicKeyBytes, AuthoritySignInfo>,
     built_genesis: Option<UnsignedGenesis>,
+    marketplace_params: Option<MarketplaceParameters>,
+    bridge_committee: Option<BridgeCommittee>,
 }
 
 impl Default for GenesisBuilder {
@@ -70,14 +70,25 @@ impl GenesisBuilder {
             parameters: GenesisCeremonyParameters::default(),
             token_distribution_schedule: None,
             validators: Vec::new(),
-            genesis_models: Vec::new(),
             signatures: BTreeMap::new(),
             built_genesis: None,
+            marketplace_params: None,
+            bridge_committee: None,
         }
     }
 
     pub fn with_parameters(mut self, parameters: GenesisCeremonyParameters) -> Self {
         self.parameters = parameters;
+        self
+    }
+
+    pub fn with_marketplace_params(mut self, params: MarketplaceParameters) -> Self {
+        self.marketplace_params = Some(params);
+        self
+    }
+
+    pub fn with_bridge_committee(mut self, committee: BridgeCommittee) -> Self {
+        self.bridge_committee = Some(committee);
         self
     }
 
@@ -123,26 +134,8 @@ impl GenesisBuilder {
         self
     }
 
-    /// Add seed models to be created at genesis (skip commit-reveal).
-    pub fn with_genesis_models(mut self, models: Vec<GenesisModelConfig>) -> Self {
-        self.genesis_models = models;
-        self.built_genesis = None;
-        self
-    }
-
-    /// Add a single seed model to be created at genesis (ceremony workflow).
-    pub fn add_model(mut self, model: GenesisModelConfig) -> Self {
-        self.genesis_models.push(model);
-        self.built_genesis = None;
-        self
-    }
-
     pub fn validators(&self) -> &[GenesisValidatorInfo] {
         &self.validators
-    }
-
-    pub fn genesis_models(&self) -> &[GenesisModelConfig] {
-        &self.genesis_models
     }
 
     pub fn unsigned_genesis_checkpoint(&self) -> Option<UnsignedGenesis> {
@@ -181,7 +174,7 @@ impl GenesisBuilder {
         // Sort validators by account address for deterministic genesis output
         self.validators.sort_by_key(|v| v.info.account_address);
 
-        let (system_state, objects) = self.create_genesis_state();
+        let (system_state, objects, balances, delegations) = self.create_genesis_state();
         let (transaction, effects, final_objects) =
             self.create_genesis_transaction(objects, &system_state);
         let (checkpoint, checkpoint_contents) =
@@ -193,6 +186,8 @@ impl GenesisBuilder {
             transaction,
             effects,
             objects: final_objects,
+            balances,
+            delegations,
         };
 
         self.built_genesis = Some(unsigned.clone());
@@ -216,6 +211,8 @@ impl GenesisBuilder {
             unsigned.transaction,
             unsigned.effects,
             unsigned.objects,
+            unsigned.balances,
+            unsigned.delegations,
         )
     }
 
@@ -323,27 +320,6 @@ impl GenesisBuilder {
             }
         }
 
-        // Load genesis models (sorted by filename for deterministic ordering)
-        let mut genesis_models = Vec::new();
-        let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
-        if models_dir.exists() {
-            let mut entries: Vec<_> = models_dir
-                .read_dir_utf8()?
-                .filter_map(|e| e.ok())
-                .filter(|e| !e.file_name().starts_with('.'))
-                .collect();
-            entries.sort_by_key(|e| e.file_name().to_string());
-            for entry in entries {
-                let model_path = entry.path();
-                let model_bytes = fs::read(model_path)?;
-                let model_config: GenesisModelConfig = serde_yaml::from_slice(&model_bytes)
-                    .with_context(|| {
-                        format!("unable to load genesis model config for {}", model_path)
-                    })?;
-                genesis_models.push(model_config);
-            }
-        }
-
         // Load signatures
         let mut signatures = BTreeMap::new();
         let signature_dir = path.join(GENESIS_BUILDER_SIGNATURE_DIR);
@@ -366,9 +342,10 @@ impl GenesisBuilder {
             parameters,
             token_distribution_schedule,
             validators,
-            genesis_models,
             signatures,
             built_genesis: None,
+            marketplace_params: None,
+            bridge_committee: None,
         };
 
         // Load unsigned genesis if present and verify via BCS comparison
@@ -426,14 +403,6 @@ impl GenesisBuilder {
             )?;
         }
 
-        // Write genesis models (index-based filenames; model_id is assigned at build time)
-        let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
-        fs::create_dir_all(&models_dir)?;
-        for (i, model) in self.genesis_models.iter().enumerate() {
-            let model_bytes = serde_yaml::to_string(model)?;
-            fs::write(models_dir.join(format!("model_{i}")), model_bytes)?;
-        }
-
         // Write signatures
         let signature_dir = path.join(GENESIS_BUILDER_SIGNATURE_DIR);
         fs::create_dir_all(&signature_dir)?;
@@ -468,27 +437,26 @@ impl GenesisBuilder {
         ObjectID::new(hash.digest[..ObjectID::LENGTH].try_into().unwrap())
     }
 
-    /// Generate a deterministic embedding for a genesis model.
-    /// Uses the model_id as a seed to produce reproducible embeddings.
-    fn generate_genesis_embedding(model_id: &ObjectID, dim: usize) -> SomaTensor {
-        // Use Blake2b256 (not DefaultHasher which is randomized per-process)
-        let mut hasher = Blake2b256::default();
-        hasher.update(b"soma-genesis-model-embedding");
-        hasher.update(model_id.as_ref());
-        let hash = hasher.finalize();
-        let seed = u64::from_le_bytes(hash.digest[..8].try_into().unwrap());
-
-        let values: Vec<f32> = (0..dim)
-            .map(|i| {
-                let x = ((seed.wrapping_add(i as u64)).wrapping_mul(2654435761) % 1000) as f32;
-                (x / 1000.0) - 0.5 // Normalize to [-0.5, 0.5]
-            })
-            .collect();
-        SomaTensor::new(values, vec![dim])
-    }
-
-    fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
+    fn create_genesis_state(
+        &self,
+    ) -> (
+        SystemState,
+        Vec<Object>,
+        BTreeMap<(SomaAddress, CoinType), u64>,
+        BTreeMap<(ObjectID, SomaAddress), u64>,
+    ) {
         let mut objects = Vec::new();
+        // Accumulator-balance entries seeded alongside coin objects. Stake
+        // allocations do NOT contribute here — those tokens live in the
+        // validator's StakingPool, not the holder's spendable balance.
+        let mut balances: BTreeMap<(SomaAddress, CoinType), u64> = BTreeMap::new();
+        // Stage 9d-C1: delegation entries seeded alongside StakedSomaV1
+        // objects. F1 row schema is ONE row per (pool, staker), so
+        // multiple genesis allocations from the same staker into the
+        // same validator collapse into a single principal sum. The
+        // table consumer materialises these as `Delegation { principal,
+        // last_collected_period: 0 }`.
+        let mut delegations: BTreeMap<(ObjectID, SomaAddress), u64> = BTreeMap::new();
         let mut id_counter: u64 = 0;
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
@@ -516,7 +484,6 @@ impl GenesisBuilder {
                             net_address: v.info.network_address.clone(),
                             p2p_address: v.info.p2p_address.clone(),
                             primary_address: v.info.primary_address.clone(),
-                            proxy_address: v.info.proxy_address.clone(),
                             proof_of_possession: pop,
                             next_epoch_protocol_pubkey: None,
                             next_epoch_network_pubkey: None,
@@ -525,14 +492,14 @@ impl GenesisBuilder {
                             next_epoch_primary_address: None,
                             next_epoch_worker_pubkey: None,
                             next_epoch_proof_of_possession: None,
-                            next_epoch_proxy_address: None,
+                            bridge_ecdsa_pubkey: None,
+                            next_epoch_bridge_ecdsa_pubkey: None,
                         },
                         voting_power: 0, // Will be set by set_voting_power()
                         staking_pool: StakingPool::new(Self::deterministic_object_id(
                             &mut id_counter,
                         )),
                         commission_rate: v.info.commission_rate,
-                        next_epoch_stake: 0,
                         next_epoch_commission_rate: v.info.commission_rate,
                     }
                 }
@@ -549,203 +516,76 @@ impl GenesisBuilder {
                 .as_ref()
                 .map(|s| s.emission_fund_shannons)
                 .unwrap_or(0),
-            self.parameters.emission_per_epoch,
+            self.parameters.emission_initial_distribution_amount,
+            self.parameters.emission_period_length,
+            self.parameters.emission_decrease_rate,
             Some(self.parameters.epoch_duration_ms),
+            self.marketplace_params.clone().unwrap_or_default(),
+            self.bridge_committee.clone().unwrap_or_else(BridgeCommittee::empty),
         );
-
-        // Apply target_embedding_dim override if set (for small-model testing)
-        if let Some(dim) = self.parameters.target_embedding_dim_override {
-            system_state.parameters_mut().target_embedding_dim = dim;
-        }
-
-        // Add genesis models (skip commit-reveal, created directly as active)
-        // model_id, embedding, embedding_commitment, and decryption_key_commitment
-        // are all auto-generated at build time.
-        let embedding_dim = system_state.parameters().target_embedding_dim as usize;
-        for model_config in &self.genesis_models {
-            let model_id = Self::deterministic_object_id(&mut id_counter);
-
-            // Generate deterministic embedding from model_id
-            let embedding = Self::generate_genesis_embedding(&model_id, embedding_dim);
-
-            // Compute embedding commitment: hash(bcs(embedding))
-            let embedding_commitment = {
-                let embedding_bytes =
-                    bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
-                let mut hasher = Blake2b256::default();
-                hasher.update(&embedding_bytes);
-                let hash = hasher.finalize();
-                EmbeddingCommitment::new(hash.digest[..32].try_into().unwrap())
-            };
-
-            // Compute decryption key commitment: hash(key_bytes)
-            let decryption_key_commitment = {
-                let mut hasher = Blake2b256::default();
-                hasher.update(model_config.decryption_key.as_bytes());
-                let hash = hasher.finalize();
-                DecryptionKeyCommitment::new(hash.digest[..32].try_into().unwrap())
-            };
-
-            system_state.add_model_at_genesis(
-                model_id,
-                model_config.owner,
-                model_config.manifest.clone(),
-                model_config.decryption_key,
-                model_config.weights_commitment,
-                model_config.architecture_version,
-                embedding_commitment,
-                decryption_key_commitment,
-                embedding,
-                model_config.commission_rate,
-            );
-
-            // Handle initial stake: deduct from emission pool and stake with the model
-            if model_config.initial_stake > 0 {
-                system_state.emission_pool_mut().balance -= model_config.initial_stake;
-                let staked_soma = system_state
-                    .request_add_stake_to_model_at_genesis(&model_id, model_config.initial_stake)
-                    .expect("Failed to stake with model at genesis");
-
-                let staked_object = Object::new_staked_soma_object(
-                    Self::deterministic_object_id(&mut id_counter),
-                    staked_soma,
-                    Owner::AddressOwner(model_config.owner),
-                    TransactionDigest::default(),
-                );
-                objects.push(staked_object);
-            }
-        }
 
         // Process token allocations
         if let Some(schedule) = &self.token_distribution_schedule {
             for allocation in &schedule.allocations {
                 if let Some(validator) = allocation.staked_with_validator {
-                    let staked_soma = system_state
-                        .request_add_stake_at_genesis(
-                            allocation.recipient_address,
-                            validator,
-                            allocation.amount_shannons,
-                        )
+                    // Stage 9d-C5: bump the validator's pool
+                    // total_stake; the (pool, staker) row is captured
+                    // in the genesis delegations map below.
+                    let pool_id = system_state
+                        .add_stake_to_validator_at_genesis(validator, allocation.amount_shannons)
                         .expect("Failed to stake with validator at genesis");
 
-                    let staked_object = Object::new_staked_soma_object(
-                        Self::deterministic_object_id(&mut id_counter),
-                        staked_soma,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(staked_object);
-                } else if let Some(model_id) = allocation.staked_with_model {
-                    let staked_soma = system_state
-                        .request_add_stake_to_model_at_genesis(
-                            &model_id,
-                            allocation.amount_shannons,
-                        )
-                        .expect("Failed to stake with model at genesis");
-
-                    let staked_object = Object::new_staked_soma_object(
-                        Self::deterministic_object_id(&mut id_counter),
-                        staked_soma,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(staked_object);
+                    let key = (pool_id, allocation.recipient_address);
+                    let entry = delegations.entry(key).or_insert(0);
+                    *entry = entry
+                        .checked_add(allocation.amount_shannons)
+                        .expect("genesis delegation principal overflow");
                 } else {
-                    let coin_object = Object::new_coin(
-                        Self::deterministic_object_id(&mut id_counter),
-                        allocation.amount_shannons,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(coin_object);
+                    // Stage 13a: SOMA allocations land directly in
+                    // the balance accumulator; no Coin object output.
+                    // The accumulator is the sole source of truth
+                    // for fungible balances post-Stage-13.
+                    let entry = balances
+                        .entry((allocation.recipient_address, CoinType::Soma))
+                        .or_insert(0);
+                    *entry = entry
+                        .checked_add(allocation.amount_shannons)
+                        .expect("genesis SOMA balance overflow");
                 }
             }
+
+            // Stage 13a: USDC allocations (test environments only)
+            // also land balance-only.
+            for usdc in &schedule.usdc_allocations {
+                let entry =
+                    balances.entry((usdc.recipient_address, CoinType::Usdc)).or_insert(0);
+                *entry = entry
+                    .checked_add(usdc.amount_microdollars)
+                    .expect("genesis USDC balance overflow");
+            }
+        }
+
+        // Stage 13a: validator starter USDC also lands in the
+        // accumulator only. Validators submit balance-mode txs (gas
+        // is debited from this USDC balance directly) so they don't
+        // need a Coin object hand-out. USDC is a bridged token with
+        // its own supply path, so seeding here is fine.
+        // SOMA total supply is fixed (TOTAL_SUPPLY_SHANNONS) and
+        // accounted for by the genesis schedule, so we do NOT seed
+        // unstaked SOMA into validators here — tests that need a
+        // validator with spendable SOMA should allocate it via the
+        // genesis schedule.
+        const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
+        for v in &self.validators {
+            let entry =
+                balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
+            *entry = entry
+                .checked_add(VALIDATOR_GENESIS_USDC)
+                .expect("genesis validator USDC balance overflow");
         }
 
         // Set voting power and build committee
         system_state.validators_mut().set_voting_power();
-
-        // Generate seed targets at genesis (after models are active)
-        // Only generate targets if we have at least one active model
-        if system_state.model_registry().has_active_models() {
-            tracing::info!(
-                "Genesis target generation: {} active models, emission_pool={}, target_initial_targets_per_epoch={}",
-                system_state.model_registry().active_model_count(),
-                system_state.emission_pool().balance,
-                system_state.parameters().target_initial_targets_per_epoch,
-            );
-            // Calculate initial reward_per_target for genesis
-            // Use emission_per_epoch * target_allocation_bps as the pool, divided by estimated targets
-            let emission_per_epoch = system_state.emission_pool().emission_per_epoch;
-            let target_allocation_bps = system_state.parameters().target_reward_allocation_bps;
-            let bps_denominator: u64 = 10000;
-            // Use u128 intermediate to avoid overflow when emission_per_epoch is large
-            let target_allocation = (emission_per_epoch as u128 * target_allocation_bps as u128
-                / bps_denominator as u128) as u64;
-
-            // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
-            let initial_target_count = system_state.parameters().target_initial_targets_per_epoch;
-            let estimated_targets = initial_target_count.saturating_mul(2).max(1);
-            system_state.target_state_mut().reward_per_target =
-                target_allocation / estimated_targets;
-
-            let genesis_digest = TransactionDigest::default();
-            let models_per_target = system_state.parameters().target_models_per_target;
-            let embedding_dim = system_state.parameters().target_embedding_dim;
-            let reward_per_target = system_state.target_state().reward_per_target;
-
-            for i in 0..initial_target_count {
-                // Check emission pool has enough balance
-                if system_state.emission_pool().balance < reward_per_target {
-                    tracing::warn!(
-                        "Emission pool depleted at genesis, stopping target generation at {}",
-                        i
-                    );
-                    break;
-                }
-
-                let seed = make_target_seed(&genesis_digest, i);
-
-                let target = generate_target(
-                    seed,
-                    system_state.model_registry(),
-                    system_state.target_state(),
-                    models_per_target,
-                    embedding_dim,
-                    0, // epoch 0
-                );
-
-                // Record target generation for difficulty tracking
-                system_state.target_state_mut().record_target_generated();
-
-                match target {
-                    Ok(t) => {
-                        // Fund reward from emission pool
-                        system_state.emission_pool_mut().balance -= reward_per_target;
-
-                        // Create target as shared object
-                        let target_id = Self::deterministic_object_id(&mut id_counter);
-                        let target_object = Object::new_target_object(target_id, t, genesis_digest);
-                        objects.push(target_object);
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to generate genesis target {}: {:?}", i, e);
-                        break;
-                    }
-                }
-            }
-
-            tracing::info!(
-                "Generated {} seed targets at genesis with reward_per_target={}",
-                objects.iter().filter(|o| *o.type_() == ObjectType::Target).count(),
-                reward_per_target
-            );
-        } else {
-            tracing::warn!(
-                "No active models in genesis — skipping target generation. genesis_models input count: {}",
-                self.genesis_models.len(),
-            );
-        }
 
         // Create system state object
         let state_object = Object::new(
@@ -760,7 +600,57 @@ impl GenesisBuilder {
         );
         objects.push(state_object);
 
-        (system_state, objects)
+        // Create the global Clock object at the reserved CLOCK_OBJECT_ID.
+        // Mutated only by ConsensusCommitPrologueV1; user transactions
+        // declare it as an immutable shared input so the scheduler can run
+        // readers in parallel.
+        objects.push(Object::new_genesis_clock());
+
+        // Stage 14a: dual-write the genesis balance and delegation
+        // state as accumulator OBJECTS in addition to the CF maps
+        // returned below. Stage 14a only creates these objects; the
+        // runtime continues to read from the CF rows. Stages 14b–14d
+        // flip the runtime to source from the accumulator objects and
+        // eventually drop the CFs entirely. By creating the objects
+        // at genesis now, the migration boundary lands at the next
+        // protocol version flip rather than requiring a state-import
+        // pass on already-launched networks.
+        for (&(owner, coin_type), &balance) in &balances {
+            // Skip zero-balance rows — the BTreeMap entry exists but
+            // there's no point materializing an object for it. Stage
+            // 14b's dual-read path treats "absent object" the same as
+            // "zero balance".
+            if balance == 0 {
+                continue;
+            }
+            let acc = crate::accumulator::BalanceAccumulator::new(owner, coin_type, balance);
+            objects.push(Object::new_balance_accumulator(acc, TransactionDigest::default()));
+        }
+
+        for (&(pool_id, staker), &principal) in &delegations {
+            if principal == 0 {
+                continue;
+            }
+            // Genesis: stake is committed directly into `principal`
+            // (preactive 1:1 absorption), no pending bucket. The
+            // baseline `index_at_last_collect` is the pool's initial
+            // cumulative_index (= F1_INDEX_SCALE = 1.0); using 0
+            // would suppress compound on the first epoch's rewards
+            // (`auto_settle` treats a zero baseline as
+            // no-compound-yet to avoid divide-by-zero).
+            let acc = crate::accumulator::DelegationAccumulator::new(
+                pool_id,
+                staker,
+                principal,
+                /* index_at_last_collect */
+                crate::system_state::staking::F1_INDEX_SCALE,
+                /* pending_principal */ 0,
+                /* pending_added_at_epoch */ 0,
+            );
+            objects.push(Object::new_delegation_accumulator(acc, TransactionDigest::default()));
+        }
+
+        (system_state, objects, balances, delegations)
     }
 
     fn create_genesis_transaction(

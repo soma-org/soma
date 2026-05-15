@@ -24,8 +24,7 @@ use indexer_pg_db::DbArgs;
 use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::ObjectID;
-use types::target::TargetStatus;
-use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_filled_target, test_target};
+use types::test_checkpoint_data_builder::TestCheckpointBuilder;
 
 use indexer_alt::handlers::*;
 use soma_graphql::config::GraphQlConfig;
@@ -136,105 +135,6 @@ async fn test_e2e_transfer_coin_to_graphql_transaction() {
 }
 
 // ---------------------------------------------------------------------------
-// E2e: Target indexing → soma_targets → GraphQL target query
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_e2e_target_indexing_to_graphql() {
-    let ctx = setup().await;
-
-    let target = test_target(1, TargetStatus::Open, 10_000);
-    let checkpoint =
-        Arc::new(TestCheckpointBuilder::new(5).with_epoch(1).add_target(target).build());
-
-    // Process through soma_targets handler
-    let values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
-    assert_eq!(values.len(), 1);
-
-    // Extract the target_id from the handler output
-    let target_id_hex = format!("0x{}", hex::encode(&values[0].target_id));
-
-    // Query via GraphQL
-    let query =
-        format!(r#"{{ target(targetId: "{}") {{ status epoch rewardPool }} }}"#, target_id_hex);
-    let json = execute(&ctx.schema, &query).await;
-
-    let t = &json["data"]["target"];
-    assert_eq!(t["status"], "open");
-    assert_eq!(t["epoch"], "1");
-    assert_eq!(t["rewardPool"], "10000");
-}
-
-// ---------------------------------------------------------------------------
-// E2e: Multiple targets → paginated targets query with filter
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_e2e_targets_pagination_and_filter() {
-    let ctx = setup().await;
-
-    // Create checkpoint with multiple targets (open and filled)
-    let open_target = test_target(0, TargetStatus::Open, 5000);
-    let model_id = ObjectID::random();
-    let submitter = SomaAddress::random();
-    let filled_target = test_filled_target(0, 0, submitter, model_id, 8000, 1000);
-
-    let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(10).add_target(open_target).add_target(filled_target).build(),
-    );
-
-    let values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
-    assert_eq!(values.len(), 2);
-
-    // Query all targets
-    let json =
-        execute(&ctx.schema, r#"{ targets { edges { node { status rewardPool } } } }"#).await;
-    let edges = json["data"]["targets"]["edges"].as_array().unwrap();
-    assert_eq!(edges.len(), 2);
-
-    // Filter by status=open (handler stores lowercase)
-    let json = execute(
-        &ctx.schema,
-        r#"{ targets(filter: { status: "open" }) { edges { node { status } } } }"#,
-    )
-    .await;
-    let edges = json["data"]["targets"]["edges"].as_array().unwrap();
-    assert_eq!(edges.len(), 1);
-    assert_eq!(edges[0]["node"]["status"], "open");
-}
-
-// ---------------------------------------------------------------------------
-// E2e: ClaimRewards → soma_rewards → GraphQL rewards query
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_e2e_rewards_to_graphql() {
-    let ctx = setup().await;
-
-    let sender = SomaAddress::random();
-    let target_id = ObjectID::random();
-    let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(3)
-            .with_epoch(2)
-            .add_claim_rewards(sender, target_id, 500)
-            .build(),
-    );
-
-    let values = process_and_commit(&soma_rewards::SomaRewards, &checkpoint, &ctx.db).await;
-    assert_eq!(values.len(), 1);
-
-    // Query via GraphQL
-    let json = execute(&ctx.schema, r#"{ rewards(epoch: 2) { epoch txDigest } }"#).await;
-
-    let rewards = json["data"]["rewards"].as_array().unwrap();
-    assert_eq!(rewards.len(), 1);
-    assert_eq!(rewards[0]["epoch"], "2");
-}
-
-// ---------------------------------------------------------------------------
 // E2e: Address transactions flow
 // ---------------------------------------------------------------------------
 
@@ -319,12 +219,10 @@ async fn test_e2e_full_checkpoint_flow() {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
 
-    // Build a checkpoint with a transfer and a target
-    let target = test_target(0, TargetStatus::Open, 7500);
+    // Build a checkpoint with a transfer
     let checkpoint = Arc::new(
         TestCheckpointBuilder::new(0)
             .add_transfer_coin(sender, recipient, 3000)
-            .add_target(target)
             .build(),
     );
 
@@ -339,7 +237,6 @@ async fn test_e2e_full_checkpoint_flow() {
     process_and_commit(&tx_affected_addresses::TxAffectedAddresses, &checkpoint, &ctx.db).await;
     process_and_commit(&tx_affected_objects::TxAffectedObjects, &checkpoint, &ctx.db).await;
     process_and_commit(&tx_kinds::TxKinds, &checkpoint, &ctx.db).await;
-    let target_values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
 
     // Verify checkpoint queryable
     let json =
@@ -353,14 +250,6 @@ async fn test_e2e_full_checkpoint_flow() {
         format!(r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#, digest_b58);
     let json = execute(&ctx.schema, &query).await;
     assert!(!json["data"]["transaction"].is_null());
-
-    // Verify target queryable
-    assert!(!target_values.is_empty());
-    let target_id_hex = format!("0x{}", hex::encode(&target_values[0].target_id));
-    let query = format!(r#"{{ target(targetId: "{}") {{ status rewardPool }} }}"#, target_id_hex);
-    let json = execute(&ctx.schema, &query).await;
-    assert_eq!(json["data"]["target"]["status"], "open");
-    assert_eq!(json["data"]["target"]["rewardPool"], "7500");
 
     // Verify address transactions queryable
     let sender_hex = format!("0x{}", hex::encode(sender.to_inner()));

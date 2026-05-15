@@ -43,11 +43,10 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{
-    EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, TargetCommand, WalletCommand,
-};
+use crate::commands::{ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectsCommand, OfferingCommand, ProviderCommand, SomaValidatorCommand, WalletCommand};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
+use crate::usdc_amount::UsdcAmount;
 
 const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 
@@ -143,14 +142,63 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Send SOMA to a recipient
+    /// Transfer SOMA or USDC to one or more recipients
     #[clap(
-        name = "send",
+        name = "transfer",
         after_help = "\
 EXAMPLES:
-    soma send --to 0x1234...5678 --amount 1
-    soma send --to my-alias --amount 0.5 --coin 0xABCD..."
+    soma transfer 10 0x1234...5678              # send 10 SOMA
+    soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
+    soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
+    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
+    soma transfer 10 0xABC... --coins 0xC1,0xC2 # use specific input coins"
     )]
+    Transfer {
+        /// Amount to send (in SOMA by default, or USDC with --usdc)
+        amount: String,
+        /// Recipient address(es) or alias(es)
+        #[clap(required = true, num_args(1..))]
+        recipients: Vec<KeyIdentity>,
+        /// Send USDC instead of SOMA
+        #[clap(long)]
+        usdc: bool,
+        /// Per-recipient amounts (comma-separated). Overrides the positional amount.
+        #[clap(long, value_delimiter = ',')]
+        amounts: Option<Vec<String>>,
+        /// Input coin object IDs (comma-separated, auto-selected if not provided)
+        #[clap(long, value_delimiter = ',')]
+        coins: Option<Vec<ObjectID>>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Transfer an object to a recipient
+    #[clap(
+        name = "transfer-object",
+        after_help = "\
+EXAMPLES:
+    soma transfer-object --to 0x1234...5678 --object-id 0xABCD..."
+    )]
+    TransferObject {
+        /// Recipient address or alias
+        #[clap(long)]
+        to: KeyIdentity,
+        /// Object ID to transfer
+        #[clap(long)]
+        object_id: ObjectID,
+        /// Gas object (auto-selected if not provided)
+        #[clap(long)]
+        gas: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// [deprecated: use `transfer`] Send SOMA to a recipient
+    #[clap(name = "send", hide = true)]
     Send {
         /// Recipient address or alias
         #[clap(long)]
@@ -167,39 +215,8 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Transfer an object to a recipient
-    #[clap(
-        name = "transfer",
-        after_help = "\
-EXAMPLES:
-    soma transfer --to 0x1234...5678 --object-id 0xABCD...
-    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS..."
-    )]
-    Transfer {
-        /// Recipient address or alias
-        #[clap(long)]
-        to: KeyIdentity,
-        /// Object ID to transfer
-        #[clap(long)]
-        object_id: ObjectID,
-        /// Gas object (auto-selected if not provided)
-        #[clap(long)]
-        gas: Option<ObjectID>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Pay SOMA to multiple recipients
-    #[clap(
-        name = "pay",
-        after_help = "\
-EXAMPLES:
-    soma pay --recipients 0xABC... --amounts 1
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN..."
-    )]
+    /// [deprecated: use `transfer`] Pay SOMA to multiple recipients
+    #[clap(name = "pay", hide = true)]
     Pay {
         /// Recipient addresses
         #[clap(long, required = true, num_args(1..))]
@@ -216,28 +233,21 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Stake SOMA with a validator or model
+    /// Stake SOMA with a validator
     #[clap(
         name = "stake",
         after_help = "\
 EXAMPLES:
-    soma stake --validator 0xVAL... --amount 10
-    soma stake --model 0xMODEL... --amount 5
-    soma stake --validator 0xVAL... --coin 0xCOIN..."
+    soma stake --validator 0xVAL... --amount 10"
     )]
     Stake {
         /// Validator address to stake with
-        #[clap(long, group = "stake_target", required_unless_present = "model")]
-        validator: Option<SomaAddress>,
-        /// Model ID to stake with
-        #[clap(long, group = "stake_target", required_unless_present = "validator")]
-        model: Option<ObjectID>,
-        /// Amount to stake in SOMA (uses entire coin if not specified)
         #[clap(long)]
-        amount: Option<SomaAmount>,
-        /// Coin to use for staking (auto-selected if not provided)
+        validator: SomaAddress,
+        /// Amount to stake in SOMA. Debited directly from the sender's
+        /// SOMA balance accumulator (Stage 9d-C2: balance-mode).
         #[clap(long)]
-        coin: Option<ObjectID>,
+        amount: SomaAmount,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
@@ -249,44 +259,46 @@ EXAMPLES:
         name = "unstake",
         after_help = "\
 EXAMPLES:
-    soma unstake 0xSTAKED_SOMA_ID"
+    soma unstake --pool 0xPOOL_ID
+    soma unstake --pool 0xPOOL_ID --amount 5"
     )]
     Unstake {
-        /// StakedSoma object ID to withdraw
-        staked_soma_id: ObjectID,
+        /// StakingPool ObjectID. Use `soma stakes` to list yours.
+        #[clap(long)]
+        pool: ObjectID,
+        /// Amount to withdraw in SOMA. Omit to drain the entire row.
+        #[clap(long)]
+        amount: Option<SomaAmount>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
-    /// Request test tokens from a faucet server
+    /// List active stakes for an address (reads the post-9d delegations table)
     #[clap(
-        name = "faucet",
+        name = "stakes",
         after_help = "\
 EXAMPLES:
-    soma faucet
-    soma faucet --address 0x1234...5678
-    soma faucet --url http://127.0.0.1:9123"
+    soma stakes
+    soma stakes --staker 0xADDR..."
     )]
-    Faucet {
-        /// Address to receive tokens (defaults to active address)
+    Stakes {
+        /// Staker address (defaults to the active wallet address)
         #[clap(long)]
-        address: Option<soma_keys::key_identity::KeyIdentity>,
-        /// The URL of the faucet server
-        #[clap(long)]
-        url: Option<String>,
+        staker: Option<SomaAddress>,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Merge dust coins to reduce object count
     #[clap(
-        name = "merge-coins",
+        name = "merge",
+        visible_alias = "merge-coins",
         after_help = "\
 EXAMPLES:
-    soma merge-coins
-    soma merge-coins --json"
+    soma merge
+    soma merge --json"
     )]
     MergeCoins {
         #[clap(long, global = true, help = "Output as JSON")]
@@ -378,53 +390,77 @@ EXAMPLES:
     },
 
     // =========================================================================
-    // SUBMISSION COMMANDS
+    // OPERATOR COMMANDS
     // =========================================================================
-    /// Manage models (commit, reveal, update, deactivate, query)
+    /// Run the inference proxy or provider server
+    #[clap(
+        name = "inference",
+        after_help = "\
+EXAMPLES:
+    soma inference serve --config provider.toml
+    soma inference proxy --config client.toml"
+    )]
+    Inference {
+        #[clap(subcommand)]
+        cmd: InferenceCommand,
+    },
+
+    /// Manage on-chain payment channels (open, settle, top-up, close).
+    #[clap(
+        name = "channel",
+        after_help = "\
+EXAMPLES:
+    soma channel open --payee 0xabc... --deposit 1000000
+    soma channel show --channel-id 0xdef..."
+    )]
+    Channel {
+        #[clap(subcommand)]
+        cmd: ChannelCommand,
+    },
+
+    /// Manage on-chain provider registry (register, update, show).
+    #[clap(
+        name = "provider",
+        after_help = "\
+EXAMPLES:
+    soma provider register --endpoint https://my.provider:8080
+    soma provider show
+    soma provider update --endpoint https://new.endpoint:8080"
+    )]
+    Provider {
+        #[clap(subcommand)]
+        cmd: ProviderCommand,
+    },
+
+    /// Manage per-(provider, model) on-chain offerings.
+    #[clap(
+        name = "offering",
+        after_help = "\
+EXAMPLES:
+    soma offering register --model-id anthropic/claude-haiku-4.5 \\
+        --prompt-micros-per-1k 1000 --completion-micros-per-1k 5000
+    soma offering show --model-id anthropic/claude-haiku-4.5
+    soma offering deactivate --model-id anthropic/claude-haiku-4.5"
+    )]
+    Offering {
+        #[clap(subcommand)]
+        cmd: OfferingCommand,
+    },
+
+    /// Read the protocol-config `ModelRegistry`.
     #[clap(
         name = "model",
         after_help = "\
 EXAMPLES:
     soma model list
-    soma model info 0xMODEL_ID
-    soma model commit 0xMODEL_ID --weights-url-commitment 0xHEX... \\
-        --weights-commitment 0xHEX... --architecture-version 1 \\
-        --stake-amount 100 --staking-pool-id 0xPOOL_ID
-    soma model reveal 0xMODEL_ID --weights-url https://... \\
-        --weights-checksum 0xHEX... --weights-size 1024 \\
-        --decryption-key 0xHEX... --embedding 0.1,0.2,0.3
-    soma model deactivate 0xMODEL_ID
-    soma model download 0xMODEL_ID --output ./weights.bin"
+    soma model list --ids-only
+    soma model show --model-id anthropic/claude-sonnet-4.6"
     )]
     Model {
         #[clap(subcommand)]
         cmd: ModelCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
     },
 
-    /// Manage targets: query, submit data, claim rewards, download data
-    #[clap(
-        name = "target",
-        after_help = "\
-EXAMPLES:
-    soma target list
-    soma target list --status open
-    soma target info 0xTARGET_ID
-    soma target submit --target-id 0xTARGET... --data-commitment 0xHEX... ...
-    soma target claim 0xTARGET_ID
-    soma target download 0xTARGET_ID"
-    )]
-    Target {
-        #[clap(subcommand)]
-        cmd: TargetCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    // =========================================================================
-    // OPERATOR COMMANDS
-    // =========================================================================
     /// Manage validators (register, set gas price, commission)
     #[clap(
         name = "validator",
@@ -445,15 +481,13 @@ EXAMPLES:
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a long-running service (localnet, validator, faucet, scoring)
+    /// Start a long-running service (localnet, validator)
     #[clap(
         name = "start",
         after_help = "\
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
-    soma start validator --config validator.yaml
-    soma start faucet --port 9123
-    soma start scoring --port 9124"
+    soma start localnet --force-regenesis
+    soma start validator --config validator.yaml"
     )]
     Start {
         #[clap(subcommand)]
@@ -484,8 +518,6 @@ EXAMPLES:
         force: bool,
         #[clap(long = "epoch-duration-ms")]
         epoch_duration_ms: Option<u64>,
-        #[clap(long, help = "Creates an extra faucet configuration for soma persisted runs.")]
-        with_faucet: bool,
         /// Set number of validators in the network.
         #[clap(long)]
         committee_size: Option<usize>,
@@ -524,16 +556,14 @@ EXAMPLES:
 pub enum StartCommand {
     /// Start a local SOMA network for development and testing
     ///
-    /// Launches local validators, a fullnode, and optionally a faucet and scoring service.
+    /// Launches local validators and a fullnode.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
     /// for an ephemeral network that starts fresh each time.
     #[clap(
         name = "localnet",
         after_help = "\
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
-    soma start localnet --force-regenesis
-    soma start localnet --no-faucet --no-scoring"
+    soma start localnet --force-regenesis"
     )]
     Localnet {
         /// Config directory that will be used to store network config, node db, keystore.
@@ -553,10 +583,6 @@ EXAMPLES:
         #[clap(long)]
         epoch_duration_ms: Option<u64>,
 
-        /// Directory for data ingestion.
-        #[clap(long, value_name = "DATA_INGESTION_DIR")]
-        data_ingestion_dir: Option<PathBuf>,
-
         /// Start the network without a fullnode
         #[clap(long = "no-full-node")]
         no_full_node: bool,
@@ -568,28 +594,6 @@ EXAMPLES:
         /// Log level for CLI output (trace, debug, info, warn, error).
         #[clap(long, default_value = "info")]
         log_level: String,
-
-        /// Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable.
-        #[clap(
-            long,
-            default_missing_value = "0.0.0.0:9123",
-            num_args = 0..=1,
-            require_equals = true,
-            value_name = "FAUCET_HOST_PORT",
-        )]
-        with_faucet: Option<String>,
-
-        /// Disable the faucet server.
-        #[clap(long)]
-        no_faucet: bool,
-
-        /// Disable the scoring server.
-        #[clap(long)]
-        no_scoring: bool,
-
-        /// Use small model config for the scoring server (embedding_dim=16, num_layers=2).
-        #[clap(long)]
-        small_model: bool,
     },
 
     /// Start a validator node from a config file
@@ -603,69 +607,6 @@ EXAMPLES:
         /// Path to the validator config file (YAML)
         #[clap(long = "config", short = 'c')]
         config: PathBuf,
-    },
-
-    /// Start a standalone faucet gRPC server
-    #[clap(
-        name = "faucet",
-        after_help = "\
-EXAMPLES:
-    soma start faucet
-    soma start faucet --port 9999 --host 0.0.0.0
-    soma start faucet --amount 5000000000 --num-coins 2"
-    )]
-    Faucet {
-        /// Port to listen on
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_FAUCET_PORT)]
-        port: u16,
-        /// Host IP to bind to
-        #[clap(long, default_value = "0.0.0.0")]
-        host: String,
-        /// Amount of shannons to send per coin
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_AMOUNT)]
-        amount: u64,
-        /// Number of coins to send per request
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_NUM_COINS)]
-        num_coins: usize,
-        /// Path to the client config directory
-        #[clap(long)]
-        config_dir: Option<PathBuf>,
-    },
-
-    /// Start the scoring service for computing embeddings and distances
-    ///
-    /// Runs an HTTP server that accepts scoring requests via POST /score.
-    #[clap(
-        name = "scoring",
-        after_help = "\
-EXAMPLES:
-    soma start scoring
-    soma start scoring --host 127.0.0.1 --port 8080
-    soma start scoring --device cuda
-    soma start scoring --small-model
-    soma start scoring --data-dir /tmp/soma-data"
-    )]
-    Scoring {
-        /// Host to bind the scoring service to
-        #[clap(long, default_value = "0.0.0.0")]
-        host: String,
-
-        /// Port to listen on
-        #[clap(long, default_value_t = 9124)]
-        port: u16,
-
-        /// Directory for cached blob storage (data and model weights)
-        #[clap(long)]
-        data_dir: Option<PathBuf>,
-
-        /// Use a small model for testing (embedding_dim=16, num_layers=2)
-        #[clap(long)]
-        small_model: bool,
-
-        /// Compute device backend: cpu, wgpu, or cuda (default: wgpu).
-        /// CUDA requires the NVIDIA CUDA toolkit to be installed.
-        #[clap(long, default_value = "wgpu")]
-        device: String,
     },
 }
 
@@ -717,7 +658,7 @@ pub enum GenesisCommand {
     #[clap(name = "ceremony")]
     Ceremony(crate::genesis_ceremony::Ceremony),
 
-    /// Inspect a genesis.blob file for models, targets, and key parameters
+    /// Inspect a genesis.blob file for key parameters
     #[clap(name = "inspect")]
     Inspect {
         /// Path to genesis.blob file
@@ -733,9 +674,7 @@ impl SomaCommand {
                 StartCommand::Localnet { log_level, .. } => {
                     log_level.parse().unwrap_or(tracing::Level::INFO)
                 }
-                StartCommand::Scoring { .. } => tracing::Level::INFO,
                 StartCommand::Validator { .. } => tracing::Level::INFO,
-                StartCommand::Faucet { .. } => tracing::Level::INFO,
             },
             _ => tracing::Level::ERROR,
         }
@@ -760,12 +699,46 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Send { to, amount, coin, tx_args, json } => {
-                ensure!(amount.shannons() > 0, "Amount must be greater than 0");
+            SomaCommand::Transfer { amount, recipients, usdc, amounts, coins, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::send::execute(&mut context, to, amount.shannons(), coin, tx_args)
-                        .await?;
+
+                // Parse the positional amount based on token type
+                let base_amount: u64 = if usdc {
+                    amount
+                        .parse::<UsdcAmount>()
+                        .map_err(|e| anyhow!("{}", e))?
+                        .microdollars()
+                } else {
+                    amount
+                        .parse::<SomaAmount>()
+                        .map_err(|e| anyhow!("{}", e))?
+                        .shannons()
+                };
+
+                // Parse per-recipient amounts if provided
+                let per_recipient_amounts: Option<Vec<u64>> = amounts.map(|strs| {
+                    strs.into_iter()
+                        .map(|s| {
+                            if usdc {
+                                s.parse::<UsdcAmount>().map(|a| a.microdollars()).map_err(|e| anyhow!("{}", e))
+                            } else {
+                                s.parse::<SomaAmount>().map(|a| a.shannons()).map_err(|e| anyhow!("{}", e))
+                            }
+                        })
+                        .collect::<Result<Vec<u64>, _>>()
+                }).transpose()?;
+
+                // Stage 13b: balance-mode only — `coins` arg dropped.
+                let _ = coins;
+                let result = commands::transfer::execute(
+                    &mut context,
+                    base_amount,
+                    recipients,
+                    per_recipient_amounts,
+                    usdc,
+                    tx_args,
+                )
+                .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -773,10 +746,24 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Transfer { to, object_id, gas, tx_args, json } => {
+            SomaCommand::TransferObject { to, object_id, gas, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
-                    commands::transfer::execute(&mut context, to, object_id, gas, tx_args).await?;
+                    commands::transfer::execute_transfer_object(&mut context, to, object_id, gas, tx_args).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Send { to, amount, coin, tx_args, json } => {
+                // Stage 13b: balance-mode only. `coin` arg ignored.
+                ensure!(amount.shannons() > 0, "Amount must be greater than 0");
+                let _ = coin;
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::send::execute(&mut context, to, amount.shannons(), tx_args).await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -785,6 +772,7 @@ impl SomaCommand {
             }
 
             SomaCommand::Pay { recipients, amounts, coins, tx_args, json } => {
+                // Backward compat: delegate to unified transfer
                 ensure!(
                     recipients.len() == amounts.len(),
                     "Number of recipients ({}) must match number of amounts ({})",
@@ -796,11 +784,12 @@ impl SomaCommand {
                 }
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
+                // Stage 13b: balance-mode only — `coins` arg dropped.
+                let _ = coins;
                 let result = commands::pay::execute(
                     &mut context,
                     recipients,
                     amounts_shannons,
-                    coins,
                     tx_args,
                 )
                 .await?;
@@ -811,14 +800,12 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Stake { validator, model, amount, coin, tx_args, json } => {
+            SomaCommand::Stake { validator, amount, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::stake::execute_stake(
                     &mut context,
                     validator,
-                    model,
-                    amount.map(|a| a.shannons()),
-                    coin,
+                    amount.shannons(),
                     tx_args,
                 )
                 .await?;
@@ -829,10 +816,15 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Unstake { staked_soma_id, tx_args, json } => {
+            SomaCommand::Unstake { pool, amount, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::stake::execute_unstake(&mut context, staked_soma_id, tx_args).await?;
+                let result = commands::stake::execute_unstake(
+                    &mut context,
+                    pool,
+                    amount.map(|a| a.shannons()),
+                    tx_args,
+                )
+                .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -840,10 +832,13 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Faucet { address, url, json: _ } => {
+            SomaCommand::Stakes { staker, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                commands::faucet::execute_request(&mut context, address, url).await?;
-                Ok(())
+                let staker = match staker {
+                    Some(addr) => addr,
+                    None => context.active_address()?,
+                };
+                commands::stake::execute_list_stakes(&mut context, staker, json).await
             }
 
             SomaCommand::Status { json } => {
@@ -993,6 +988,16 @@ impl SomaCommand {
                 Ok(())
             }
 
+            SomaCommand::Inference { cmd } => cmd.execute().await,
+
+            SomaCommand::Channel { cmd } => cmd.execute().await,
+
+            SomaCommand::Provider { cmd } => cmd.execute().await,
+
+            SomaCommand::Offering { cmd } => cmd.execute().await,
+
+            SomaCommand::Model { cmd } => cmd.execute().await,
+
             // =================================================================
             // OPERATOR COMMANDS
             // =================================================================
@@ -1010,18 +1015,6 @@ impl SomaCommand {
                     app.build();
                     app.find_subcommand_mut("validator").unwrap().print_help()?;
                 }
-                Ok(())
-            }
-
-            SomaCommand::Model { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
-            SomaCommand::Target { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
                 Ok(())
             }
 
@@ -1055,101 +1048,23 @@ impl SomaCommand {
                         config_dir,
                         force_regenesis,
                         fullnode_rpc_port,
-                        data_ingestion_dir,
                         no_full_node,
                         epoch_duration_ms,
                         committee_size,
                         log_level: _,
-                        with_faucet,
-                        no_faucet,
-                        no_scoring,
-                        small_model,
                     } => {
-                        // Faucet: on by default unless --no-faucet
-                        let faucet = if no_faucet {
-                            None
-                        } else {
-                            Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
-                        };
-                        // Scoring: on by default unless --no-scoring
-                        let scoring = !no_scoring;
                         start(
                             config_dir.clone(),
                             force_regenesis,
                             epoch_duration_ms,
                             fullnode_rpc_port,
-                            data_ingestion_dir,
                             no_full_node,
                             committee_size,
-                            faucet,
-                            scoring,
-                            small_model,
                         )
                         .await?;
                     }
                     StartCommand::Validator { config } => {
                         commands::validator::start_validator_node(config).await?;
-                    }
-                    StartCommand::Faucet { port, host, amount, num_coins, config_dir } => {
-                        commands::faucet::execute_start(port, host, amount, num_coins, config_dir)
-                            .await?;
-                    }
-                    StartCommand::Scoring { host, port, data_dir, small_model, device } => {
-                        use types::config::node_config::DeviceConfig;
-
-                        let device = match device.as_str() {
-                            "cpu" => DeviceConfig::Cpu,
-                            "wgpu" => DeviceConfig::Wgpu,
-                            "cuda" => DeviceConfig::Cuda,
-                            other => {
-                                bail!("Unknown device: {other}. Valid options: cpu, wgpu, cuda")
-                            }
-                        };
-
-                        let data_dir = data_dir.unwrap_or_else(|| {
-                            soma_config_dir()
-                                .unwrap_or_else(|_| PathBuf::from("."))
-                                .join("scoring-data")
-                        });
-                        fs::create_dir_all(&data_dir)?;
-
-                        let model_config = if small_model {
-                            scoring::model_config_small()
-                        } else {
-                            runtime::ModelConfig::new()
-                        };
-
-                        let progress_factory =
-                            crate::commands::download_progress::scoring_progress_factory();
-                        let engine = std::sync::Arc::new(
-                            scoring::scoring::ScoringEngine::new(
-                                &data_dir,
-                                model_config,
-                                &device,
-                                progress_factory,
-                            )
-                            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-                        );
-
-                        print_banner("Scoring Service");
-
-                        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
-                        let device_str = device.to_string();
-                        let url = format!("http://{display_host}:{port}");
-                        let score_ep = format!("POST {url}/score");
-                        let data_display = data_dir.display().to_string();
-                        print_info_panel(&[
-                            ("URL", &url),
-                            ("Score endpoint", &score_ep),
-                            ("Device", &device_str),
-                            ("Data dir", &data_display),
-                        ]);
-                        eprintln!();
-                        eprintln!("  Press {} to stop.", "Ctrl+C".bold());
-
-                        scoring::server::start_scoring_server(&host, port, engine)
-                            .await
-                            .map_err(|e| anyhow!("Scoring server error: {e}"))?;
                     }
                 }
                 Ok(())
@@ -1162,7 +1077,6 @@ impl SomaCommand {
                 from_config,
                 write_config,
                 epoch_duration_ms,
-                with_faucet,
                 committee_size,
             } => {
                 match cmd {
@@ -1180,7 +1094,6 @@ impl SomaCommand {
                     working_dir,
                     force,
                     epoch_duration_ms,
-                    with_faucet,
                     committee_size,
                 )
                 .await
@@ -1215,12 +1128,8 @@ async fn start(
     force_regenesis: bool,
     epoch_duration_ms: Option<u64>,
     fullnode_rpc_port: u16,
-    mut data_ingestion_dir: Option<PathBuf>,
     no_full_node: bool,
     committee_size: Option<usize>,
-    with_faucet: Option<String>,
-    with_scoring: bool,
-    small_model: bool,
 ) -> Result<(), anyhow::Error> {
     if force_regenesis {
         ensure!(
@@ -1246,15 +1155,7 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let mut genesis_config = if with_faucet.is_some() {
-            GenesisConfig::for_local_testing().add_faucet_account()
-        } else {
-            GenesisConfig::for_local_testing()
-        };
-        if small_model {
-            // Small model uses embedding_dim=16; override protocol config default of 2048
-            genesis_config.parameters.target_embedding_dim_override = Some(16);
-        }
+        let mut genesis_config = GenesisConfig::for_local_testing();
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
@@ -1295,7 +1196,7 @@ async fn start(
                 let network_config = soma_config.join(SOMA_NETWORK_CONFIG);
 
                 if !network_config.exists() {
-                    genesis(None, None, None, false, epoch_duration_ms, false, committee_size)
+                    genesis(None, None, None, false, epoch_duration_ms, committee_size)
                         .await
                         .map_err(|_| {
                             anyhow!(
@@ -1333,10 +1234,6 @@ async fn start(
         soma_config_path
     };
 
-    if let Some(ref dir) = data_ingestion_dir {
-        swarm_builder = swarm_builder.with_data_ingestion_dir(dir.clone());
-    }
-
     let mut fullnode_rpc_address = types::config::node_config::default_json_rpc_address();
     fullnode_rpc_address.set_port(fullnode_rpc_port);
 
@@ -1359,44 +1256,6 @@ async fn start(
     // -- Build & launch -------------------------------------------------------
     const STATUS_WIDTH: usize = 50;
     print_banner("Local Network");
-
-    // -- Scoring service (must start before validators so they can connect) ----
-    let mut scoring_url: Option<String> = None;
-    if with_scoring {
-        use types::config::node_config::DeviceConfig;
-
-        let msg = "Starting scoring service...";
-        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
-
-        let model_config =
-            if small_model { scoring::model_config_small() } else { runtime::ModelConfig::new() };
-
-        let scoring_data_dir = config_dir.join("scoring-data");
-        fs::create_dir_all(&scoring_data_dir)?;
-        let device = DeviceConfig::Wgpu;
-
-        let progress_factory = crate::commands::download_progress::scoring_progress_factory();
-        let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(
-                &scoring_data_dir,
-                model_config,
-                &device,
-                progress_factory,
-            )
-            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-        );
-
-        tokio::spawn(async move {
-            if let Err(e) = scoring::server::start_scoring_server("0.0.0.0", 9124, engine).await {
-                tracing::error!("Scoring server error: {}", e);
-            }
-        });
-
-        let url = "http://127.0.0.1:9124".to_string();
-        swarm_builder = swarm_builder.with_scoring_url(url.clone());
-        scoring_url = Some(url);
-        eprintln!("{}", "done".green());
-    }
 
     let msg = "Generating genesis...";
     eprint!("  {msg:<width$}", width = STATUS_WIDTH);
@@ -1426,105 +1285,6 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
-    // -- Faucet ---------------------------------------------------------------
-    // Faucet startup logic derived from MystenLabs/sui (Apache-2.0)
-    // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/sui_commands.rs
-    let mut faucet_url: Option<String> = None;
-    if let Some(input) = with_faucet {
-        let msg = "Starting faucet...";
-        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
-        let (host, port) = parse_faucet_host_port(&input)?;
-
-        // Extract the last account key as the faucet key (added by add_faucet_account)
-        let faucet_key = if force_regenesis {
-            let keys = &swarm.config().account_keys;
-            if keys.is_empty() {
-                bail!("No account keys found in swarm config for faucet");
-            }
-            Some(keys.last().expect("account_keys is not empty").copy())
-        } else {
-            None
-        };
-
-        // Set up a wallet context for the faucet
-        let keystore_path = tempfile::tempdir()?.keep().join(SOMA_KEYSTORE_FILENAME);
-        let mut faucet_keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
-
-        if let Some(key) = faucet_key {
-            faucet_keystore.import(None, key).await?;
-        } else {
-            // For persisted runs, import all keys from the network config
-            for key in &swarm.config().account_keys {
-                faucet_keystore.import(None, key.copy()).await?;
-            }
-        }
-
-        let active_address = faucet_keystore.addresses().pop();
-
-        let mut client_config = SomaClientConfig::new(Keystore::from(faucet_keystore));
-        client_config.active_address = active_address;
-        client_config.add_env(SomaEnv {
-            alias: "localnet".to_string(),
-            rpc: fullnode_rpc_url.clone(),
-            basic_auth: None,
-            chain_id: None,
-        });
-        client_config.active_env = Some("localnet".to_string());
-
-        let faucet_config_path =
-            keystore_path.parent().expect("keystore path has a parent").join(SOMA_CLIENT_CONFIG);
-        client_config.save(&faucet_config_path)?;
-
-        let wallet_context = create_wallet_context(
-            60,
-            faucet_config_path.parent().expect("config path has a parent").to_path_buf(),
-        )?;
-
-        let faucet_config = faucet::faucet_config::FaucetConfig {
-            port,
-            host_ip: host.clone(),
-            ..Default::default()
-        };
-
-        let faucet_instance =
-            faucet::local_faucet::LocalFaucet::new(wallet_context, faucet_config.clone())
-                .await
-                .map_err(|e| anyhow!("Failed to initialize faucet: {e}"))?;
-
-        let app_state = std::sync::Arc::new(faucet::app_state::AppState {
-            faucet: std::sync::Arc::new(faucet_instance),
-            config: faucet_config,
-        });
-
-        tokio::spawn(async move {
-            if let Err(e) = faucet::server::start_faucet(app_state).await {
-                tracing::error!("Faucet server error: {}", e);
-            }
-        });
-
-        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
-        faucet_url = Some(format!("http://{display_host}:{port}/gas"));
-        eprintln!("{}", "done".green());
-    }
-
-    // -- Admin server (epoch advance) -----------------------------------------
-    let swarm = std::sync::Arc::new(swarm);
-    {
-        let admin_swarm = swarm.clone();
-        tokio::spawn(async move {
-            let svc = AdminServiceImpl::new(admin_swarm);
-            let addr: std::net::SocketAddr = "127.0.0.1:9125".parse().unwrap();
-            if let Err(e) = admin::tonic::transport::Server::builder()
-                .add_service(admin::admin_gen::admin_server::AdminServer::new(svc))
-                .serve(addr)
-                .await
-            {
-                tracing::error!("Admin server error: {}", e);
-            }
-        });
-    }
-    let admin_url = "http://127.0.0.1:9125".to_string();
-
     // -- Network ready banner -------------------------------------------------
     let epoch_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
     let state_dir = config_dir.display().to_string();
@@ -1533,14 +1293,9 @@ async fn start(
     eprintln!();
     eprintln!("  {}", "Network ready.".green().bold());
     eprintln!();
-    let faucet_display = faucet_url.as_deref().unwrap_or("disabled");
-    let scoring_display = scoring_url.as_deref().unwrap_or("disabled");
     let epoch_display = format!("{}s", epoch_ms / 1000);
     let rows: Vec<(&str, &str)> = vec![
         ("RPC URL", &fullnode_rpc_url),
-        ("Faucet", faucet_display),
-        ("Scoring", scoring_display),
-        ("Admin", &admin_url),
         ("Epoch", &epoch_display),
         ("Persistence", persistence),
     ];
@@ -1587,145 +1342,12 @@ async fn start(
     Ok(())
 }
 
-/// gRPC admin service for epoch advancement on localnet.
-struct AdminServiceImpl {
-    swarm: std::sync::Arc<Swarm>,
-}
-
-impl AdminServiceImpl {
-    fn new(swarm: std::sync::Arc<Swarm>) -> Self {
-        Self { swarm }
-    }
-}
-
-#[admin::tonic::async_trait]
-impl admin::admin_gen::admin_server::Admin for AdminServiceImpl {
-    async fn advance_epoch(
-        &self,
-        _request: admin::tonic::Request<admin::admin_types::AdvanceEpochRequest>,
-    ) -> Result<
-        admin::tonic::Response<admin::admin_types::AdvanceEpochResponse>,
-        admin::tonic::Status,
-    > {
-        info!("[admin] advance_epoch called");
-
-        let fullnode = self
-            .swarm
-            .fullnodes()
-            .next()
-            .ok_or_else(|| admin::tonic::Status::internal("No fullnode available"))?;
-
-        let fullnode_handle = fullnode
-            .get_node_handle()
-            .ok_or_else(|| admin::tonic::Status::internal("Fullnode handle unavailable"))?;
-
-        let cur_committee = fullnode_handle.with(|node| node.state().clone_committee_for_testing());
-        let target_epoch = cur_committee.epoch + 1;
-        info!("[admin] current epoch={}, target={}", cur_committee.epoch, target_epoch);
-
-        // Wait for all validators to reach the current fullnode epoch first.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-        loop {
-            let mut all_ready = true;
-            for node in self.swarm.validator_nodes() {
-                if let Some(handle) = node.get_node_handle() {
-                    let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
-                    if v_epoch < cur_committee.epoch {
-                        all_ready = false;
-                        break;
-                    }
-                }
-            }
-            if all_ready {
-                break;
-            }
-            if tokio::time::Instant::now() > deadline {
-                return Err(admin::tonic::Status::deadline_exceeded(
-                    "Validators did not reach current epoch",
-                ));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-        info!("[admin] all validators ready");
-
-        // Close epoch on all validator nodes sequentially.
-        // Important: do NOT use timeout here — dropping the close_epoch future
-        // mid-lock-acquisition aborts it entirely, and the epoch never advances.
-        info!("[admin] calling close_epoch_for_testing...");
-        for node in self.swarm.validator_nodes() {
-            if let Some(handle) = node.get_node_handle() {
-                if let Err(e) =
-                    handle.with_async(|n| async move { n.close_epoch_for_testing().await }).await
-                {
-                    tracing::warn!("[admin] close_epoch_for_testing failed: {e}");
-                }
-            }
-        }
-        info!("[admin] all close_epoch calls done, polling for epoch {target_epoch}...");
-
-        // Wait for ALL nodes to fully reconfigure.
-        loop {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-
-            let mut all_ready = true;
-
-            // Check fullnode: epoch_store AND authority aggregator
-            if let Some(handle) = fullnode.get_node_handle() {
-                let ready = handle.with(|node| {
-                    let epoch = node.state().epoch_store_for_testing().epoch();
-                    if epoch < target_epoch {
-                        return false;
-                    }
-                    if let Some(agg) = node.clone_authority_aggregator() {
-                        agg.committee.epoch() >= target_epoch
-                    } else {
-                        true
-                    }
-                });
-                if !ready {
-                    all_ready = false;
-                }
-            }
-
-            // Check all validators: epoch_store only
-            if all_ready {
-                for node in self.swarm.validator_nodes() {
-                    if let Some(handle) = node.get_node_handle() {
-                        let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
-                        if v_epoch < target_epoch {
-                            all_ready = false;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if all_ready {
-                // Grace period for consensus startup
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-                info!("[admin] epoch advanced to {target_epoch}");
-                return Ok(admin::tonic::Response::new(admin::admin_types::AdvanceEpochResponse {
-                    epoch: target_epoch,
-                }));
-            }
-
-            if tokio::time::Instant::now() > deadline {
-                info!("[admin] TIMEOUT waiting for epoch {target_epoch}");
-                return Err(admin::tonic::Status::deadline_exceeded(
-                    "Epoch did not advance within 120s",
-                ));
-            }
-        }
-    }
-}
-
 async fn genesis(
     from_config: Option<PathBuf>,
     write_config: Option<PathBuf>,
     working_dir: Option<PathBuf>,
     force: bool,
     epoch_duration_ms: Option<u64>,
-    with_faucet: bool,
     committee_size: Option<usize>,
 ) -> Result<(), anyhow::Error> {
     let soma_config_dir = &match working_dir {
@@ -1795,11 +1417,6 @@ async fn genesis(
             }
         }
     };
-
-    if with_faucet {
-        info!("Adding faucet account to genesis config...");
-        genesis_conf = genesis_conf.add_faucet_account();
-    }
 
     if let Some(path) = write_config {
         let persisted = genesis_conf.persisted(&path);
@@ -2013,22 +1630,3 @@ fn update_wallet_config_rpc(
     Ok(wallet_context)
 }
 
-/// Parse a faucet host:port string like "0.0.0.0:9123" or just a port number.
-fn parse_faucet_host_port(input: &str) -> Result<(String, u16), anyhow::Error> {
-    if let Ok(port) = input.parse::<u16>() {
-        return Ok(("0.0.0.0".to_string(), port));
-    }
-
-    if let Ok(addr) = input.parse::<SocketAddr>() {
-        return Ok((addr.ip().to_string(), addr.port()));
-    }
-
-    // Try host:port format
-    if let Some((host, port_str)) = input.rsplit_once(':') {
-        let port: u16 =
-            port_str.parse().map_err(|_| anyhow!("Invalid port in faucet address: {input}"))?;
-        return Ok((host.to_string(), port));
-    }
-
-    bail!("Invalid faucet address format: {input}. Expected host:port or just a port number.")
-}

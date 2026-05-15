@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package soma.bridge;
+
+// Signature exchange service between bridge nodes.
+// Each validator's bridge node runs this gRPC server to collect
+// and share ECDSA signatures for bridge actions.
+service BridgeNode {
+    // Submit a signature for a bridge action (deposit, withdrawal, etc.)
+    rpc SubmitSignature(SignatureRequest) returns (SignatureResponse);
+
+    // Retrieve collected signatures for a specific action
+    rpc GetSignatures(GetSignaturesRequest) returns (GetSignaturesResponse);
+}
+
+message SignatureRequest {
+    // keccak256 hash of the bridge action message
+    bytes action_digest = 1;
+    // 65-byte recoverable ECDSA signature
+    bytes signature = 2;
+    // Canonical message bytes that were signed. The server re-hashes this to
+    // verify it matches `action_digest`, then ecrecovers the signature.
+    // The recovered pubkey identifies the signer (looked up in the committee
+    // map keyed by pubkey, mirroring Sui's `members: VecMap<vector<u8>, ...>`).
+    bytes message_bytes = 3;
+}
+
+message SignatureResponse {
+    bool accepted = 1;
+    // Number of signatures collected so far for this action
+    uint32 total_signatures = 2;
+}
+
+message GetSignaturesRequest {
+    bytes action_digest = 1;
+}
+
+message GetSignaturesResponse {
+    repeated CollectedSignature signatures = 1;
+    // Total voting power of collected signatures
+    uint64 total_stake = 2;
+}
+
+message CollectedSignature {
+    // 33-byte compressed secp256k1 pubkey of the signer.
+    bytes signer_pubkey = 1;
+    bytes signature = 2;
+}

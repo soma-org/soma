@@ -21,6 +21,7 @@ use crate::pipeline::concurrent::Handler;
 use crate::pipeline::concurrent::PrunerConfig;
 use crate::pipeline::logging::LoggerWatermark;
 use crate::pipeline::logging::WatermarkLogger;
+use crate::store::ConcurrentConnection;
 use crate::store::Connection;
 use crate::store::Store;
 
@@ -150,9 +151,9 @@ pub(super) fn pruner<H: Handler + Send + Sync + 'static>(
             };
 
             // (2) Wait until this information can be acted upon.
-            if !watermark.wait_for.is_zero() {
-                debug!(pipeline = H::NAME, wait_for = ?watermark.wait_for, "Waiting to prune");
-                tokio::time::sleep(watermark.wait_for).await;
+            if let Some(wait_for) = watermark.wait_for() {
+                debug!(pipeline = H::NAME, wait_for = ?wait_for, "Waiting to prune");
+                tokio::time::sleep(wait_for).await;
             }
 
             // Tracks the current highest `pruner_hi` not yet written to db.
@@ -160,16 +161,12 @@ pub(super) fn pruner<H: Handler + Send + Sync + 'static>(
             // Tracks the `pruner_hi` that has been written to the db.
             let mut highest_watermarked = watermark.pruner_hi;
 
-            // (3) Collect all the new chunks that are ready to be pruned using the
-            // prunable_range() API, then break it into chunks of max_chunk_size.
-            if let Some(range) = watermark.prunable_range() {
-                let mut from = range.start;
-                let to = range.end;
-                while from < to {
-                    let chunk_end = (from + config.max_chunk_size).min(to);
-                    pending_prune_ranges.schedule(from, chunk_end);
-                    from = chunk_end;
-                }
+            // (3) Collect all the new chunks that are ready to be pruned. Upstream's PrunerWatermark
+            // exposes `next_chunk(size)` which mutates `pruner_hi` in place and returns the next
+            // `(from, to_exclusive)` pair, or None when caught up. Drain it into our scheduler.
+            let mut watermark = watermark;
+            while let Some((from, to_exclusive)) = watermark.next_chunk(config.max_chunk_size) {
+                pending_prune_ranges.schedule(from, to_exclusive);
             }
 
             debug!(pipeline = H::NAME, "Number of chunks to prune: {}", pending_prune_ranges.len());

@@ -170,6 +170,14 @@ pub enum ObjectOut {
 
     /// Any written object, including all of mutated, created, unwrapped today.
     ObjectWrite { digest: Digest, owner: Owner },
+
+    /// Stage 14c: per-tx accumulator delta record. Mirrors Sui SIP-58.
+    /// The ID on the parent `ChangedObject` is the canonical
+    /// accumulator address; `operation` says deposit (Merge) or
+    /// withdraw (Split); `amount` carries the magnitude. Indexers
+    /// consume these via `effects.accumulator_events()` for per-tx
+    /// balance attribution without re-execution.
+    AccumulatorWriteV1 { operation: String, amount: u64 },
 }
 
 /// Defines what happened to an ObjectId during execution

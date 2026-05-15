@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Send SOMA to a recipient
+[deprecated: use `transfer`] Send SOMA to a recipient
 
 Usage: soma send [OPTIONS] --to <TO> --amount <AMOUNT>
 
@@ -16,7 +16,3 @@ Options:
       --serialize-signed-transaction    Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
       --json                            Output as JSON
   -h, --help                            Print help
-
-EXAMPLES:
-    soma send --to 0x1234...5678 --amount 1
-    soma send --to my-alias --amount 0.5 --coin 0xABCD...

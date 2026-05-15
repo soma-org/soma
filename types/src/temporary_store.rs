@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
+use crate::balance::BalanceEvent;
 use crate::base::{FullObjectID, SomaAddress};
 use crate::committee::EpochId;
 use crate::digests::{ObjectDigest, TransactionDigest};
@@ -256,6 +257,76 @@ pub struct TemporaryStore {
     /// Which chain we are running on. Used by executors that need chain-specific
     /// protocol config (e.g. ChangeEpochExecutor).
     pub chain: protocol_config::Chain,
+
+    /// Balance accumulator events emitted by executors during this
+    /// transaction. Each `Deposit`/`Withdraw` is an *intent* — it does
+    /// not touch the `accumulator_balances` column family directly.
+    /// The settlement system transaction (Stage 3) drains these from
+    /// every tx in a consensus commit, aggregates per `(owner, coin_type)`,
+    /// and applies the net delta atomically.
+    ///
+    /// Order is preserved (insertion order). Stage 1a's `aggregate_events`
+    /// is order-independent for the *summed delta*, so settlement can
+    /// reorder freely; we keep insertion order here purely for debugging
+    /// and for the audit trail in transaction effects.
+    balance_events: Vec<BalanceEvent>,
+
+    /// Stage 9d-C1: F1-shaped delegation events emitted by executors
+    /// during this transaction. Applied to the `delegations` column
+    /// family by `write_one_transaction_outputs` atomically with the
+    /// rest of the commit's outputs.
+    delegation_events: Vec<DelegationEvent>,
+
+    /// Stage 9d-C2: signer's delegation rows pre-fetched before
+    /// execution so the staking executor can compute F1
+    /// fold-to-balance without reaching into the perpetual store. The
+    /// caller (authority.rs) reads `iter_delegations_for_staker(signer)`
+    /// for AddStake/WithdrawStake and passes the result here. Empty
+    /// for txs that don't need delegation reads.
+    pub prefetched_delegations: BTreeMap<ObjectID, crate::system_state::staking::Delegation>,
+
+    /// Stage 14c.2: per-tx accumulator delta records. Aggregated by
+    /// canonical accumulator ID — multiple emissions to the same
+    /// accumulator within a single tx (e.g. gas + transfer Withdraw
+    /// against the same sender's USDC) are netted into a single
+    /// `(operation, magnitude)` record at emission time, so each
+    /// accumulator ID appears at most once per tx in the resulting
+    /// `effects.changed_objects`.
+    ///
+    /// At `into_effects` time, these are folded into `changed_objects`
+    /// alongside regular object writes — they ride
+    /// `EffectsObjectChange { input: NotExist, output:
+    /// AccumulatorWriteV1(...), id_op: None }`.
+    accumulator_writes:
+        BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1>,
+}
+
+/// Event recorded during execution that describes the post-settle
+/// state of a `(pool, staker)` delegation row in the `delegations`
+/// column family.
+///
+/// In the auto-compound F1 model the executor:
+///   1. Reads the prefetched delegation row.
+///   2. Calls `auto_settle` in memory to compound any accrued
+///      reward into `principal` and promote matured pending stake.
+///   3. Mutates the in-memory row according to the transaction
+///      (`AddStake`, `WithdrawStake`, commission credit, …).
+///   4. Emits this event carrying the full post-mutation row.
+///
+/// The dual-write step (`authority_store::apply_delegation_events`)
+/// then writes `new_state` directly. Multiple events for the same
+/// `(pool_id, staker)` within a single transaction collapse "last
+/// write wins" — sequential AddStake/WithdrawStake within one tx is
+/// not exercised today, so we keep the simpler semantics until it is.
+///
+/// `new_state == None` means "drop the row" (full drain). Both the
+/// CF row and the corresponding `DelegationAccumulator` accumulator
+/// object are tombstoned in that case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct DelegationEvent {
+    pub pool_id: ObjectID,
+    pub staker: SomaAddress,
+    pub new_state: Option<crate::system_state::staking::Delegation>,
 }
 
 impl TemporaryStore {
@@ -302,7 +373,119 @@ impl TemporaryStore {
             fee_parameters,
             execution_version,
             chain,
+            balance_events: Vec::new(),
+            delegation_events: Vec::new(),
+            prefetched_delegations: BTreeMap::new(),
+            accumulator_writes: BTreeMap::new(),
         }
+    }
+
+    /// Record a balance accumulator event from this transaction.
+    /// Called by executors that move fungibles via the address-balance
+    /// model (Stage 6+: gas, transfers, channels, staking). Idempotency
+    /// and ordering guarantees: events are deduplicated downstream by
+    /// `aggregate_events`, so callers may emit independent events freely.
+    pub fn emit_balance_event(&mut self, event: BalanceEvent) {
+        self.balance_events.push(event);
+    }
+
+    /// Read-only view of balance events emitted so far. Useful for tests
+    /// and for executors that need to introspect their own emissions.
+    pub fn balance_events(&self) -> &[BalanceEvent] {
+        &self.balance_events
+    }
+
+    /// Record the post-settle, post-mutation `(pool, staker)`
+    /// delegation row. Pass `None` to delete the row (full drain).
+    pub fn emit_delegation_event(
+        &mut self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        new_state: Option<crate::system_state::staking::Delegation>,
+    ) {
+        self.delegation_events.push(DelegationEvent {
+            pool_id,
+            staker,
+            new_state,
+        });
+    }
+
+    /// Read-only view of delegation events emitted so far.
+    pub fn delegation_events(&self) -> &[DelegationEvent] {
+        &self.delegation_events
+    }
+
+    /// Stage 14c.2: emit a per-tx accumulator delta record (Sui
+    /// SIP-58 style). The executor calls this when the tx semantically
+    /// deposits to or withdraws from an accumulator (typically via
+    /// `BalanceAccumulator::derive_id(owner, coin_type)` for balance
+    /// accumulators). Multiple emissions to the same accumulator ID
+    /// within a single tx are netted into a single record at emission
+    /// time — the net delta is what ends up on
+    /// `effects.changed_objects`.
+    ///
+    /// Stage 14c.7 architecture: user-tx executors emit ONLY via
+    /// `emit_accumulator_event` (no more `emit_balance_event` calls
+    /// from balance-touching executors). The two stores are driven
+    /// by:
+    ///   * **CF** — per-tx drain in
+    ///     `authority_store::write_one_transaction_outputs` converts
+    ///     each `effects.accumulator_events()` entry to a
+    ///     `BalanceEvent` and applies it via `apply_settlement_events`.
+    ///   * **Object world** — `SettlementScheduler` aggregates the
+    ///     same `accumulator_events` per-cp and dispatches a
+    ///     settlement system tx that mutates the corresponding
+    ///     `BalanceAccumulator` objects (state-hash coverage).
+    /// The two paths process equivalent inputs at different
+    /// aggregation cardinalities and produce numerically identical
+    /// state.
+    pub fn emit_accumulator_event(
+        &mut self,
+        address: crate::effects::object_change::AccumulatorAddress,
+        operation: crate::effects::object_change::AccumulatorOperation,
+        magnitude: u64,
+    ) {
+        use crate::effects::object_change::{
+            AccumulatorOperation, AccumulatorValue, AccumulatorWriteV1,
+        };
+
+        let acc_id = address.object_id();
+
+        // Aggregate against any existing record for this accumulator
+        // in this tx. Net the deltas via i128 (the same domain
+        // `aggregate_events` uses), then collapse back to (operation,
+        // magnitude). A net of zero leaves the entry behind as a
+        // no-op rather than removing it — downstream consumers
+        // tolerate zero-magnitude records.
+        let new_delta = match operation {
+            AccumulatorOperation::Merge => magnitude as i128,
+            AccumulatorOperation::Split => -(magnitude as i128),
+        };
+        let net = match self.accumulator_writes.get(&acc_id) {
+            Some(prior) => prior.signed_delta() + new_delta,
+            None => new_delta,
+        };
+
+        let (op, mag) = if net >= 0 {
+            (AccumulatorOperation::Merge, net as u64)
+        } else {
+            // unsigned_abs() avoids overflow at i128::MIN.
+            (AccumulatorOperation::Split, net.unsigned_abs() as u64)
+        };
+
+        self.accumulator_writes.insert(
+            acc_id,
+            AccumulatorWriteV1 { address, operation: op, value: AccumulatorValue::U64(mag) },
+        );
+    }
+
+    /// Read-only view of accumulator writes emitted so far. Test
+    /// helpers and executor invariant checks consult this directly;
+    /// production consumers read `effects.accumulator_events()`.
+    pub fn accumulator_writes(
+        &self,
+    ) -> &BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1> {
+        &self.accumulator_writes
     }
 
     pub fn update_object_version_and_prev_tx(&mut self) {
@@ -345,6 +528,8 @@ impl TemporaryStore {
     }
 
     pub fn get_object_changes(&self) -> BTreeMap<ObjectID, EffectsObjectChange> {
+        use crate::effects::object_change::{IDOperation, ObjectIn, ObjectOut};
+
         let results = &self.execution_results;
         let all_ids = results
             .created_object_ids
@@ -353,7 +538,7 @@ impl TemporaryStore {
             .chain(&results.modified_objects)
             .chain(results.written_objects.keys())
             .collect::<BTreeSet<_>>();
-        all_ids
+        let mut changes: BTreeMap<ObjectID, EffectsObjectChange> = all_ids
             .into_iter()
             .map(|id| {
                 (
@@ -367,7 +552,34 @@ impl TemporaryStore {
                     ),
                 )
             })
-            .collect()
+            .collect();
+
+        // Stage 14c.2: fold accumulator writes into the same
+        // `changed_objects` map so they ride the standard effects
+        // pipeline. The accumulator's canonical ObjectID never
+        // collides with a regular object ID (deterministic
+        // derivation under a domain-separation tag), so insertion
+        // here cannot overwrite a pre-existing entry — an executor
+        // that mutates the accumulator object directly AND emits an
+        // AccumulatorWriteV1 for it would be a programming error.
+        for (acc_id, write) in &self.accumulator_writes {
+            debug_assert!(
+                !changes.contains_key(acc_id),
+                "Stage 14c.2: accumulator write at {acc_id:?} collides with a regular \
+                 object change in the same tx — executors must emit AccumulatorWriteV1 \
+                 OR mutate the accumulator object, not both."
+            );
+            changes.insert(
+                *acc_id,
+                EffectsObjectChange {
+                    input_state: ObjectIn::NotExist,
+                    output_state: ObjectOut::AccumulatorWriteV1(*write),
+                    id_operation: IDOperation::None,
+                },
+            );
+        }
+
+        changes
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -407,6 +619,14 @@ impl TemporaryStore {
         let object_changes = self.get_object_changes();
         let lamport_version = self.lamport_timestamp;
 
+        // Drain accumulator events out of `self` BEFORE handing the
+        // remaining state to `into_inner`. Effects becomes the single
+        // source of truth — the perpetual store reads them off the
+        // effects struct, indexers attribute by tx digest off the same
+        // struct, and InnerTemporaryStore stops carrying its own copy.
+        let balance_events = std::mem::take(&mut self.balance_events);
+        let delegation_events = std::mem::take(&mut self.delegation_events);
+
         // Create the inner temporary store to return
         let inner = self.into_inner();
 
@@ -420,6 +640,8 @@ impl TemporaryStore {
             transaction_dependencies.into_iter().collect(),
             fee,
             gas_object_id,
+            balance_events,
+            delegation_events,
         );
 
         (inner, effects)
@@ -462,6 +684,19 @@ impl TemporaryStore {
             .get(id)
             .cloned()
             .or_else(|| self.input_objects.get(id).cloned())
+    }
+
+    /// Read the current consensus-agreed wall-clock timestamp from the
+    /// Clock object. The transaction must have declared
+    /// [`crate::transaction::SharedInputObject::CLOCK_OBJ_READ`] (or
+    /// `CLOCK_OBJ_MUT` for the prologue) in `shared_input_objects` so the
+    /// scheduler loaded Clock into the input set. Returns `None` if Clock
+    /// was not declared as an input.
+    pub fn read_clock_timestamp_ms(&self) -> Option<crate::base::TimestampMs> {
+        self.read_object(&crate::CLOCK_OBJECT_ID)
+            .as_ref()
+            .and_then(Object::as_clock)
+            .map(|c| c.timestamp_ms)
     }
 
     pub fn mutate_input_object(&mut self, object: Object) {
@@ -523,6 +758,16 @@ impl TemporaryStore {
                         // failure), whereas adding the immutable object to the roots will prevent
                         // us from catching this.
                         None
+                    }
+                    Owner::Accumulator { .. } => {
+                        // Stage 14a: accumulator objects are authenticated by the
+                        // privileged executor that mutates them (Settlement,
+                        // staking, ChangeEpoch). They appear as inputs only to
+                        // those system transactions, never to user transactions,
+                        // so the sender-ownership check above does not apply.
+                        // Treat them like Shared inputs for the purpose of
+                        // authenticated mutation in the temporary store.
+                        Some(id)
                     }
                 }
             })
@@ -689,7 +934,13 @@ impl InnerTemporaryStore {
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
     ) -> Self {
-        Self { input_objects, written, mutable_inputs, lamport_version, deleted_shared_objects }
+        Self {
+            input_objects,
+            written,
+            mutable_inputs,
+            lamport_version,
+            deleted_shared_objects,
+        }
     }
 
     pub fn get_output_keys(&self, effects: &TransactionEffects) -> Vec<InputKey> {
@@ -734,5 +985,91 @@ impl InnerTemporaryStore {
         }
 
         output_keys
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Stage 2 plumbing tests: balance events flow through
+    //! TemporaryStore → InnerTemporaryStore correctly. End-to-end
+    //! verification (events → settlement tx → balance table delta) is
+    //! Stage 3.
+
+    use super::*;
+    use crate::object::CoinType;
+    use crate::system_state::FeeParameters;
+    use crate::transaction::InputObjects;
+
+    fn empty_store() -> TemporaryStore {
+        TemporaryStore::new(
+            InputObjects::new(Vec::new()),
+            Vec::new(),
+            TransactionDigest::default(),
+            0,
+            FeeParameters { unit_fee: 0 },
+            0,
+            protocol_config::Chain::Unknown,
+        )
+    }
+
+    #[test]
+    fn balance_events_default_empty() {
+        let store = empty_store();
+        assert!(store.balance_events().is_empty());
+    }
+
+    #[test]
+    fn emit_balance_event_records_in_order() {
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        let bob = SomaAddress::random();
+        let e1 = BalanceEvent::withdraw(alice, CoinType::Usdc, 100);
+        let e2 = BalanceEvent::deposit(bob, CoinType::Usdc, 100);
+        let e3 = BalanceEvent::withdraw(alice, CoinType::Soma, 7);
+
+        store.emit_balance_event(e1);
+        store.emit_balance_event(e2);
+        store.emit_balance_event(e3);
+
+        // Insertion order is preserved — settlement may reorder freely
+        // (sums are commutative) but we keep insertion order for the
+        // audit trail.
+        assert_eq!(store.balance_events(), &[e1, e2, e3]);
+    }
+
+    #[test]
+    fn balance_events_propagate_to_effects() {
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        let event = BalanceEvent::deposit(alice, CoinType::Usdc, 42);
+        store.emit_balance_event(event);
+
+        let (_inner, effects) = store.into_effects(
+            Vec::new(),
+            &TransactionDigest::default(),
+            BTreeSet::new(),
+            crate::effects::ExecutionStatus::Success,
+            0,
+            crate::tx_fee::TransactionFee::default(),
+            None,
+        );
+        assert_eq!(effects.balance_events(), &[event]);
+    }
+
+    #[test]
+    fn effects_balance_events_default_empty() {
+        // Sanity: a store that emitted no events produces a TransactionEffects
+        // with no events. Settlement must treat this as a no-op.
+        let store = empty_store();
+        let (_inner, effects) = store.into_effects(
+            Vec::new(),
+            &TransactionDigest::default(),
+            BTreeSet::new(),
+            crate::effects::ExecutionStatus::Success,
+            0,
+            crate::tx_fee::TransactionFee::default(),
+            None,
+        );
+        assert!(effects.balance_events().is_empty());
     }
 }

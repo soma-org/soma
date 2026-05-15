@@ -57,7 +57,6 @@ mod validator_pop_tests {
                 network_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
                 p2p_address: "/ip4/127.0.0.1/tcp/8081".parse().unwrap(),
                 primary_address: "/ip4/127.0.0.1/tcp/8082".parse().unwrap(),
-                proxy_address: "/ip4/127.0.0.1/tcp/8083/http".parse().unwrap(),
                 commission_rate: 500,
             },
         };
@@ -90,7 +89,6 @@ mod validator_pop_tests {
                 network_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
                 p2p_address: "/ip4/127.0.0.1/tcp/8081".parse().unwrap(),
                 primary_address: "/ip4/127.0.0.1/tcp/8082".parse().unwrap(),
-                proxy_address: "/ip4/127.0.0.1/tcp/8083/http".parse().unwrap(),
                 commission_rate: 500,
             },
         };
@@ -125,7 +123,6 @@ mod validator_pop_tests {
                 network_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
                 p2p_address: "/ip4/127.0.0.1/tcp/8081".parse().unwrap(),
                 primary_address: "/ip4/127.0.0.1/tcp/8082".parse().unwrap(),
-                proxy_address: "/ip4/127.0.0.1/tcp/8083/http".parse().unwrap(),
                 commission_rate: 500,
             },
         };
@@ -156,7 +153,6 @@ mod validator_pop_tests {
         Vec<u8>,     // net_address (BCS serialized)
         Vec<u8>,     // p2p_address
         Vec<u8>,     // primary_address
-        Vec<u8>,     // proxy_address
     ) {
         let (signer, _): (SomaAddress, fastcrypto::ed25519::Ed25519KeyPair) =
             get_key_pair_from_rng(rng);
@@ -176,7 +172,6 @@ mod validator_pop_tests {
             bcs_addr("/ip4/127.0.0.1/tcp/9000"),
             bcs_addr("/ip4/127.0.0.1/tcp/9001"),
             bcs_addr("/ip4/127.0.0.1/tcp/9002"),
-            bcs_addr("/ip4/127.0.0.1/tcp/9003/http"),
         )
     }
 
@@ -186,7 +181,7 @@ mod validator_pop_tests {
             create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([20; 32]);
-        let (signer, pubkey, net_pub, worker_pub, pop, net, p2p, primary, proxy) =
+        let (signer, pubkey, net_pub, worker_pub, pop, net, p2p, primary) =
             make_add_validator_args(&mut rng);
 
         let result = system_state.request_add_validator(
@@ -198,7 +193,6 @@ mod validator_pop_tests {
             net,
             p2p,
             primary,
-            proxy,
             ObjectID::random(),
         );
 
@@ -211,7 +205,7 @@ mod validator_pop_tests {
             create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([21; 32]);
-        let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary, proxy) =
+        let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary) =
             make_add_validator_args(&mut rng);
 
         // Generate a PoP for a DIFFERENT address
@@ -229,7 +223,6 @@ mod validator_pop_tests {
             net,
             p2p,
             primary,
-            proxy,
             ObjectID::random(),
         );
 
@@ -251,7 +244,7 @@ mod validator_pop_tests {
             create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([22; 32]);
-        let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary, proxy) =
+        let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary) =
             make_add_validator_args(&mut rng);
 
         let result = system_state.request_add_validator(
@@ -263,7 +256,6 @@ mod validator_pop_tests {
             net,
             p2p,
             primary,
-            proxy,
             ObjectID::random(),
         );
 
@@ -426,7 +418,6 @@ mod validator_pop_tests {
             bcs_addr("/ip4/127.0.0.1/tcp/23000"),
             bcs_addr("/ip4/127.0.0.1/tcp/23001"),
             bcs_addr("/ip4/127.0.0.1/tcp/23002"),
-            bcs_addr("/ip4/127.0.0.1/tcp/23003/http"),
             ObjectID::random(),
         );
 

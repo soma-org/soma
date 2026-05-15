@@ -17,7 +17,6 @@ pub struct Validator {
     pub pending_stake: i64,
     pub name: Option<String>,
     pub network_address: Option<String>,
-    pub proxy_address: Option<String>,
 }
 
 #[Object]
@@ -70,10 +69,5 @@ impl Validator {
     /// Network address (multiaddr).
     async fn network_address(&self) -> Option<&str> {
         self.network_address.as_deref()
-    }
-
-    /// Proxy address for client downloads.
-    async fn proxy_address(&self) -> Option<&str> {
-        self.proxy_address.as_deref()
     }
 }

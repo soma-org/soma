@@ -10,7 +10,9 @@ use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::balance::BalanceEvent;
 use crate::base::{ExecutionDigests, SomaAddress};
+use crate::effects::object_change::AccumulatorWriteV1;
 use crate::committee::{Committee, EpochId};
 use crate::consensus::block::BlockRef;
 use crate::crypto::{
@@ -25,10 +27,8 @@ use crate::object::{
     OBJECT_START_VERSION, ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest,
 };
 use crate::storage::WriteKind;
-use crate::temporary_store::SharedInput;
-use crate::tensor::SomaTensor;
+use crate::temporary_store::{DelegationEvent, SharedInput};
 use crate::tx_fee::TransactionFee;
-
 pub mod object_change;
 
 /// Versioned wrapper for TransactionEffects.
@@ -95,6 +95,37 @@ pub struct TransactionEffectsV1 {
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
     pub unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
+
+    /// # State families covered by TransactionEffects
+    ///
+    /// Soma tracks three independent state families. Every executor that
+    /// mutates any of them MUST surface that mutation through one of
+    /// these fields so that:
+    ///   - downstream indexers can attribute changes to a tx digest
+    ///     without re-executing,
+    ///   - lagging fullnodes can apply effects without re-execution, and
+    ///   - the per-epoch `GlobalStateHash` covers every change.
+    ///
+    /// 1. **Object store**          → `changed_objects`
+    /// 2. **Account-balance accumulator** (`accumulator_balances` CF)
+    ///                              → `balance_events`
+    /// 3. **F1 delegation rows**    (`delegations` CF)
+    ///                              → `delegation_events`
+    ///
+    /// The unified iterator [`TransactionEffectsAPI::all_state_changes`]
+    /// is the single chokepoint indexers/RPC should walk; adding a new
+    /// state family means extending both this struct and that walker.
+    ///
+    /// Per-tx balance accumulator events emitted by executors during this
+    /// transaction. Source of truth — the `TemporaryStore.balance_events`
+    /// is drained into here at effects-construction time, and the
+    /// authority store applies them straight off the effects struct.
+    pub balance_events: Vec<BalanceEvent>,
+
+    /// Per-tx F1 delegation events emitted by the staking executor and
+    /// epoch reward distribution. Same source-of-truth contract as
+    /// `balance_events`.
+    pub delegation_events: Vec<DelegationEvent>,
 }
 
 impl TransactionEffectsAPI for TransactionEffectsV1 {
@@ -319,6 +350,14 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
                 let output_version_digest = match &change.output_state {
                     ObjectOut::NotExist => None,
                     ObjectOut::ObjectWrite((d, _)) => Some((self.version, *d)),
+                    // Stage 14c: AccumulatorWriteV1 is a per-tx delta
+                    // record, not a full object write. The accumulator
+                    // object's actual mutation rides Settlement's
+                    // effects.changed_objects (with `ObjectWrite`).
+                    // From the perspective of `object_changes` (which
+                    // surfaces user-tx-level object refs), the delta
+                    // record has no version/digest of its own.
+                    ObjectOut::AccumulatorWriteV1(_) => None,
                 };
 
                 ObjectChange {
@@ -332,6 +371,24 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
 
                     id_operation: change.id_operation,
                 }
+            })
+            .collect()
+    }
+
+    fn balance_events(&self) -> &[BalanceEvent] {
+        &self.balance_events
+    }
+
+    fn delegation_events(&self) -> &[DelegationEvent] {
+        &self.delegation_events
+    }
+
+    fn accumulator_events(&self) -> Vec<(ObjectID, AccumulatorWriteV1)> {
+        self.changed_objects
+            .iter()
+            .filter_map(|(id, change)| match &change.output_state {
+                ObjectOut::AccumulatorWriteV1(write) => Some((*id, *write)),
+                ObjectOut::ObjectWrite(_) | ObjectOut::NotExist => None,
             })
             .collect()
     }
@@ -349,6 +406,8 @@ impl TransactionEffectsV1 {
         dependencies: Vec<TransactionDigest>,
         transaction_fee: TransactionFee,
         gas_object: Option<ObjectID>,
+        balance_events: Vec<BalanceEvent>,
+        delegation_events: Vec<DelegationEvent>,
     ) -> Self {
         let unchanged_shared_objects = shared_objects
             .into_iter()
@@ -389,6 +448,8 @@ impl TransactionEffectsV1 {
             unchanged_shared_objects,
             dependencies,
             transaction_fee,
+            balance_events,
+            delegation_events,
         };
         #[cfg(debug_assertions)]
         result.check_invariant();
@@ -454,6 +515,26 @@ impl TransactionEffectsV1 {
                         assert!(!new_owner.is_shared(), "Cannot share an existing object");
                     }
                 }
+                // Stage 14c: per-tx accumulator delta records.
+                //
+                // `AccumulatorWriteV1` is a per-tx delta — the
+                // accumulator object's actual state mutation rides
+                // Settlement's effects (with a normal `ObjectWrite`).
+                // The user-tx side records:
+                //   - input_state = ObjectIn::NotExist (no actual
+                //     read of the accumulator object, just an
+                //     emitted delta), and
+                //   - id_operation = IDOperation::None (delta records
+                //     don't create or delete object IDs themselves).
+                // Multiple txs in a commit can emit deltas to the
+                // same accumulator address without write-conflict;
+                // settlement aggregates them serially.
+                (ObjectIn::NotExist, ObjectOut::AccumulatorWriteV1(_), IDOperation::None) => {
+                    // valid per-tx delta record. No further invariant
+                    // to check here — the magnitude/operation are
+                    // bounded by reservations and conservation laws
+                    // enforced at the executor + settlement layer.
+                }
                 _ => {
                     panic!("Impossible object change: {:?}, {:?}", id, change);
                 }
@@ -479,6 +560,8 @@ impl TransactionEffects {
         dependencies: Vec<TransactionDigest>,
         transaction_fee: TransactionFee,
         gas_object: Option<ObjectID>,
+        balance_events: Vec<BalanceEvent>,
+        delegation_events: Vec<DelegationEvent>,
     ) -> Self {
         TransactionEffects::V1(TransactionEffectsV1::new(
             status,
@@ -490,6 +573,8 @@ impl TransactionEffects {
             dependencies,
             transaction_fee,
             gas_object,
+            balance_events,
+            delegation_events,
         ))
     }
 
@@ -534,6 +619,8 @@ impl Default for TransactionEffectsV1 {
             unchanged_shared_objects: vec![],
             transaction_fee: TransactionFee::default(),
             gas_object_index: None,
+            balance_events: vec![],
+            delegation_events: vec![],
         }
     }
 }
@@ -608,6 +695,65 @@ pub trait TransactionEffectsAPI {
     fn gas_object(&self) -> (ObjectRef, Owner);
 
     fn object_changes(&self) -> Vec<ObjectChange>;
+
+    /// Per-tx account-balance accumulator events emitted by executors.
+    /// Mirrors Sui's `accumulator_events()`. Indexers and the persistent
+    /// store both source from this — never re-execute to recover them.
+    fn balance_events(&self) -> &[BalanceEvent];
+
+    /// Per-tx F1 delegation events emitted by staking and epoch reward
+    /// distribution. Same source-of-truth contract as `balance_events`.
+    fn delegation_events(&self) -> &[DelegationEvent];
+
+    /// Stage 14c: per-tx accumulator-delta records.
+    ///
+    /// Filters `changed_objects` for entries whose `output_state` is
+    /// `ObjectOut::AccumulatorWriteV1`. These are the SIP-58-style
+    /// records emitted by balance-touching executors. Indexers,
+    /// RPC, and the settlement system tx all read from here rather
+    /// than reconstructing deltas any other way.
+    ///
+    /// During the 14c migration, executors gradually move from
+    /// emitting `BalanceEvent`s to emitting `AccumulatorWriteV1`
+    /// entries. While both coexist, indexers should consume both
+    /// (per-tx attribution comes from whichever an executor produced).
+    fn accumulator_events(&self) -> Vec<(ObjectID, AccumulatorWriteV1)>;
+
+    /// Single chokepoint that visits every state change recorded in
+    /// these effects. Preferred over directly walking individual fields:
+    /// adding a new state family means extending this iterator and the
+    /// `TransactionEffectsV1` struct, so no integration point can
+    /// silently drift behind.
+    fn all_state_changes(&self) -> AllStateChanges {
+        AllStateChanges {
+            object_changes: self.object_changes(),
+            balance_events: self.balance_events().to_vec(),
+            delegation_events: self.delegation_events().to_vec(),
+            accumulator_events: self.accumulator_events(),
+        }
+    }
+}
+
+/// Result of [`TransactionEffectsAPI::all_state_changes`]. Holds every
+/// state-mutating record this tx produced across all three families
+/// (object store, balance accumulator, F1 delegations) so consumers
+/// have a single iterator to walk.
+#[derive(Debug, Clone)]
+pub struct AllStateChanges {
+    pub object_changes: Vec<ObjectChange>,
+    pub balance_events: Vec<BalanceEvent>,
+    pub delegation_events: Vec<DelegationEvent>,
+    pub accumulator_events: Vec<(ObjectID, AccumulatorWriteV1)>,
+}
+
+impl AllStateChanges {
+    /// True when this transaction touched none of the four state families.
+    pub fn is_empty(&self) -> bool {
+        self.object_changes.is_empty()
+            && self.balance_events.is_empty()
+            && self.delegation_events.is_empty()
+            && self.accumulator_events.is_empty()
+    }
 }
 
 pub type TransactionEffectsEnvelope<S> = Envelope<TransactionEffects, S>;
@@ -698,6 +844,9 @@ pub enum ExecutionFailureStatus {
     /// Transaction ran out of gas before completion
     #[error("Insufficient Gas.")]
     InsufficientGas,
+    /// Gas coin is not USDC. All fees on Soma are paid in USDC.
+    #[error("Gas coin must be USDC for object {object_id}")]
+    InvalidGasCoinType { object_id: ObjectID },
     #[error(
         "Invalid owner for object {object_id}. Expected: {expected_owner}, Actual: \
          {actual_owner:?}"
@@ -828,9 +977,6 @@ pub enum ExecutionFailureStatus {
     #[error("Embedding dimension mismatch: expected {expected}, got {actual}.")]
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
 
-    #[error("Distance score {score} exceeds threshold {threshold}.")]
-    DistanceExceedsThreshold { score: SomaTensor, threshold: SomaTensor },
-
     #[error("Insufficient bond: required {required}, provided {provided}.")]
     InsufficientBond { required: u64, provided: u64 },
 
@@ -886,6 +1032,260 @@ pub enum ExecutionFailureStatus {
 
     #[error("Certificate is cancelled due to congestion on shared object")]
     ExecutionCancelledDueToSharedObjectCongestion, //{ congested_objects: CongestedObjects },
+
+    //
+    // Marketplace errors
+    //
+    #[error("Ask not found.")]
+    AskNotFound,
+
+    #[error("Ask is not open.")]
+    AskNotOpen,
+
+    #[error("Ask has expired.")]
+    AskExpired,
+
+    #[error("Ask is already filled (accepted_bid_count == num_bids_wanted).")]
+    AskAlreadyFilled,
+
+    #[error("Cannot cancel ask after bids have been accepted.")]
+    AskHasAcceptedBids,
+
+    #[error("Bid not found.")]
+    BidNotFound,
+
+    #[error("Bid is not pending.")]
+    BidNotPending,
+
+    #[error("Bid price exceeds ask max_price_per_bid.")]
+    BidPriceTooHigh,
+
+    #[error("Seller cannot bid on own ask.")]
+    SellerCannotBidOnOwnAsk,
+
+    #[error("Settlement not found.")]
+    SettlementNotFound,
+
+    #[error("Settlement already rated negative.")]
+    SettlementAlreadyRatedNegative,
+
+    #[error("Rating deadline has passed.")]
+    RatingDeadlinePassed,
+
+    #[error("Vault not found.")]
+    VaultNotFound,
+
+    #[error("Insufficient vault balance.")]
+    InsufficientVaultBalance,
+
+    #[error("Wrong coin type: expected USDC for marketplace payment.")]
+    WrongCoinTypeForPayment,
+
+    //
+    // Bridge errors
+    //
+    #[error("Bridge is paused.")]
+    BridgePaused,
+
+    #[error("Bridge deposit nonce already processed.")]
+    BridgeNonceAlreadyProcessed,
+
+    #[error("Bridge signature verification failed: insufficient stake.")]
+    BridgeInsufficientSignatureStake,
+
+    /// A system-message tx (emergency op, blocklist update, etc.) carried
+    /// a sequence number that doesn't match the current expected value
+    /// for its message type. Mirrors Sui's `bridge::EMessageNotFromSequence`
+    /// abort in `execute_system_message` — replay defense for governance
+    /// quorum certs.
+    #[error(
+        "Bridge system-message seq num mismatch: expected {expected}, got {actual}"
+    )]
+    BridgeSystemMessageSeqMismatch { expected: u64, actual: u64 },
+
+    /// Pause requested when the bridge is already paused. Sui parity:
+    /// `bridge::EBridgeAlreadyPaused`. Forces every quorum-signed pause to
+    /// correspond to a real state transition, so an attacker can't burn
+    /// EmergencyOp seq nums with no-op pauses.
+    #[error("Bridge is already paused.")]
+    BridgeAlreadyPaused,
+
+    /// Unpause requested when the bridge is not paused. Sui parity:
+    /// `bridge::EBridgeNotPaused`.
+    #[error("Bridge is not paused.")]
+    BridgeNotPaused,
+
+    /// A bridge tx carried a zero amount where a positive value is required
+    /// (deposit / withdraw). Sui parity: `abi.rs::ZeroValueBridgeTransfer`
+    /// + `bridge.move::ETokenValueIsZero`.
+    #[error("Bridge transfer amount must be non-zero.")]
+    BridgeAmountZero,
+
+    /// `BridgeState.total_usdc_supply` underflowed on a burn. This is a
+    /// state-machine corruption indicator: the accumulator pre-pass
+    /// verifies the sender holds the funds, so reaching the burn path
+    /// with a supply counter below `args.amount` means the field
+    /// drifted from reality. Halt rather than saturate.
+    #[error("Bridge USDC supply counter underflow on burn — state inconsistency.")]
+    BridgeSupplyUnderflow,
+
+    /// A `BridgeUpdateCommitteeBlocklist` carried more than the per-tx cap
+    /// of `MAX_BLOCKLIST_ENTRIES_PER_TX` addresses. Sui parity: gRPC
+    /// `validate_list_size(255)` defense in depth.
+    #[error("Bridge blocklist payload too large: {got} entries (max {max})")]
+    BridgeBlocklistPayloadTooLarge { got: u64, max: u64 },
+
+    /// A `BridgeRegisterBridgeKey` carried an `http_url` that exceeded the
+    /// per-registration cap. Bounds SystemState bloat from validators.
+    #[error("Bridge http_url too long: {got} bytes (max {max})")]
+    BridgeUrlTooLong { got: u64, max: u64 },
+
+    //
+    // Payment-channel errors
+    //
+    /// Settle was called by someone other than the channel's payee.
+    #[error("Channel op requires payee {expected}; called by {actual}")]
+    ChannelCallerNotPayee { expected: SomaAddress, actual: SomaAddress },
+
+    /// RequestClose/WithdrawAfterTimeout/TopUp was called by someone
+    /// other than the channel's payer.
+    #[error("Channel op requires payer {expected}; called by {actual}")]
+    ChannelCallerNotPayer { expected: SomaAddress, actual: SomaAddress },
+
+    /// Voucher.cumulative_amount must strictly exceed channel.settled_amount.
+    #[error(
+        "Voucher cumulative_amount {cumulative} not greater than settled_amount {settled}"
+    )]
+    ChannelVoucherNotMonotonic { cumulative: u64, settled: u64 },
+
+    /// Voucher.cumulative_amount exceeds the channel's total escrowed funds
+    /// (channel.deposit + channel.settled_amount).
+    #[error("Voucher cumulative_amount {cumulative} exceeds available {available}")]
+    ChannelOverspend { cumulative: u64, available: u64 },
+
+    /// WithdrawAfterTimeout called before grace_period_ms elapsed since
+    /// RequestClose.
+    #[error(
+        "Channel grace period not elapsed: now {now_ms}ms, earliest withdrawable \
+         {earliest_ms}ms"
+    )]
+    ChannelGraceNotElapsed { now_ms: u64, earliest_ms: u64 },
+
+    /// RequestClose called but a close is already pending — the original
+    /// timer is preserved.
+    #[error("Channel close already pending")]
+    ChannelCloseAlreadyPending,
+
+    /// WithdrawAfterTimeout called without a prior RequestClose.
+    #[error("Channel WithdrawAfterTimeout requires a prior RequestClose")]
+    ChannelNoCloseRequest,
+
+    /// Voucher signature did not verify against the channel's
+    /// authorized_signer.
+    #[error("Channel voucher signature verification failed: {reason}")]
+    ChannelInvalidVoucherSignature { reason: String },
+
+    /// OpenChannel/TopUp deposit/amount must be > 0.
+    #[error("Channel deposit/top-up amount must be non-zero")]
+    ChannelAmountZero,
+
+    /// OpenChannel rejected: payee == payer (self-channel) or
+    /// authorized_signer == ZERO.
+    #[error("Channel input invalid: {reason}")]
+    ChannelInvalidInput { reason: String },
+
+    /// TopUp.coin_type does not match channel.token. Reservation
+    /// pre-pass would have keyed on the wrong accumulator.
+    #[error("TopUp coin_type does not match channel token")]
+    ChannelCoinTypeMismatch,
+
+    /// The object loaded for a channel op was not a Channel object.
+    /// Distinct from ObjectNotFound (the object exists, but of the
+    /// wrong type — typically because the channel was already deleted
+    /// and the id reused).
+    #[error("Object {object_id} is not a Channel")]
+    NotAChannel { object_id: ObjectID },
+
+    /// Clock object was not declared as a shared input by a channel
+    /// op that needs it (RequestClose, WithdrawAfterTimeout). Wallet
+    /// builders auto-declare it; this surfaces only for hand-built txs.
+    #[error("Channel op requires Clock (object 0x6) as a read-only shared input")]
+    ChannelClockMissing,
+
+    //
+    // Provider errors
+    //
+    /// `RegisterProvider` rejected because a Provider object already
+    /// exists for the signer. Use `UpdateProvider` instead.
+    #[error("Provider already registered for this address")]
+    ProviderAlreadyExists,
+
+    /// `UpdateProvider` could not load the Provider object — caller
+    /// must register first.
+    #[error("Provider not registered for this address")]
+    ProviderNotFound,
+
+    /// `UpdateProvider` signer did not match `provider.address`.
+    #[error("Provider update caller is not the registered address")]
+    ProviderCallerMismatch,
+
+    /// Provider endpoint was empty or exceeded the maximum length.
+    /// The cap exists to bound on-chain object size.
+    #[error("Provider endpoint invalid: {reason}")]
+    ProviderInvalidEndpoint { reason: String },
+
+    /// Clock missing for a Provider op (RegisterProvider /
+    /// UpdateProvider). Same shape as `ChannelClockMissing`.
+    #[error("Provider op requires Clock (object 0x6) as a read-only shared input")]
+    ProviderClockMissing,
+
+    /// `OpenChannel` rejected because the (payer, payee) pair already
+    /// holds the maximum allowed open channels. Bounds adversarial
+    /// state-bloat — see `ProviderInbox::MAX_CHANNELS_PER_PAIR`.
+    #[error("Too many open channels for this (payer, payee) pair: {current}/{max}")]
+    ChannelTooManyOpenForPair { current: u32, max: u32 },
+
+    /// The ProviderInbox declared as input doesn't match the channel
+    /// being withdrawn — caller passed the wrong `payee`. The
+    /// `WithdrawAfterTimeoutArgs.payee` must equal `channel.payee`.
+    #[error("ProviderInbox payee mismatch: declared {declared}, channel {actual}")]
+    ChannelInboxPayeeMismatch { declared: SomaAddress, actual: SomaAddress },
+
+    /// Loaded object at `ProviderInbox::derive_id(payee)` was not a
+    /// ProviderInbox — typically a domain-tag collision or a manually
+    /// crafted bad input.
+    #[error("Object {object_id} is not a ProviderInbox")]
+    NotAProviderInbox { object_id: ObjectID },
+
+    //
+    // Offering errors
+    //
+    /// `RegisterOffering` rejected because an Offering object already
+    /// exists for (signer, model_id). Use `UpdateOffering`.
+    #[error("Offering already registered for this (provider, model_id)")]
+    OfferingAlreadyExists,
+
+    /// `UpdateOffering` / `DeactivateOffering` could not load the
+    /// Offering object — caller must register first.
+    #[error("Offering not registered for this (provider, model_id)")]
+    OfferingNotFound,
+
+    /// Caller is not the provider who registered the offering, or
+    /// `args.offering_id` does not match `Offering::derive_id(signer, model_id)`.
+    #[error("Offering update caller is not the registering provider")]
+    OfferingCallerMismatch,
+
+    /// `model_id` is not present (or not active) in the protocol-config
+    /// `ModelRegistry` at the executor's protocol version. Providers
+    /// can only register offerings against models the protocol blesses.
+    #[error("Offering rejected: model_id {model_id} not in protocol ModelRegistry")]
+    OfferingUnknownModel { model_id: String },
+
+    /// `OpenChannel` referenced a `model_id` that doesn't have an
+    /// active offering registered by `args.payee`. The offering object
+    /// must exist + be active before any channel can open against it.
+    #[error("OpenChannel: no active offering by {payee} for model {model_id}")]
+    ChannelOfferingMissing { payee: SomaAddress, model_id: String },
 
     //
     // Post-execution errors

@@ -2,33 +2,137 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeMap;
+//! Auto-compound staking pool with a multiplicative
+//! cumulative-index (exchange rate) reward model.
+//!
+//! Mirrors Sui's `staking_pool.move` semantics with two
+//! simplifications:
+//!
+//! 1. **Single-row delegation.** One [`Delegation`] per `(pool_id,
+//!    staker)`, not one object per stake action.
+//! 2. **Cumulative-index reward math.** Instead of explicit pool
+//!    tokens with an epoch-keyed exchange-rate table, we track a
+//!    single multiplicative `cumulative_index`. The index is exactly
+//!    the exchange rate `(active_stake / total_implicit_pool_tokens)`
+//!    scaled by [`F1_INDEX_SCALE`]. A staker's compound at any time
+//!    is `principal × current_index / index_at_last_collect`.
+//!    O(1) read/write on every operation.
+//!
+//! ## Why multiplicative, not additive?
+//!
+//! An additive cumulative-index (Cosmos SDK x/distribution F1) is
+//! correct only when stakers explicitly claim each epoch — the math
+//! treats `principal` as constant across the claim window. For
+//! auto-compound — where `principal` itself is supposed to grow each
+//! epoch — additive math under-rewards stakers who stay settled-stale
+//! across multiple boundaries. The multiplicative form
+//! `principal × current_index / index_at_last_collect` captures the
+//! compound effect correctly with a lazy O(1) settle.
+//!
+//! Equivalence to Sui's pool tokens: if alice owns implicit pool
+//! tokens `P_t`, then `P_t × exchange_rate = principal`. Over time
+//! the rate grows, and her balance grows proportionally — same
+//! economics as `principal × current_index / index_at_last_collect`.
+//!
+//! ## Design properties
+//!
+//! - **Auto-compound.** Rewards become stake on deposit; existing
+//!   stakers' [`Delegation::principal`] grows on next [`auto_settle`]
+//!   call. No separate reward bank — the reward shannons live in
+//!   [`StakingPool::active_stake`] until withdrawn.
+//! - **Mid-epoch addition doesn't earn current epoch.** New stake
+//!   goes to the pending bucket on both pool and delegation. It
+//!   promotes into [`active_stake`][`StakingPool::active_stake`] at
+//!   the next epoch boundary.
+//! - **Mid-epoch withdrawal forfeits current-epoch share.** The
+//!   withdrawn principal decrements
+//!   [`active_stake`][`StakingPool::active_stake`] immediately; the
+//!   smaller divisor at the next deposit redistributes the forfeited
+//!   share to remaining stakers — equivalent to Sui's pool-token /
+//!   exchange-rate redistribution.
+//! - **Voting power frozen mid-epoch.** Set only at epoch boundary
+//!   based on post-boundary
+//!   [`active_stake`][`StakingPool::active_stake`].
+//!
+//! ## Invariants
+//!
+//! `pool.active_stake == sum_settled(delegation.principal) +
+//! unclaimed_compound` across all delegations on the pool, where
+//! `unclaimed_compound` catches up as stakers call [`auto_settle`].
+//! After every staker has settled at the same `current_epoch`,
+//! `sum(delegation.principal) == active_stake` modulo integer-
+//! division rounding (bounded by ~1 shannon per delegation).
 
 use serde::{Deserialize, Serialize};
 
 use crate::object::ObjectID;
 
+/// Scaling factor for the multiplicative cumulative index. The index
+/// represents the pool's exchange rate (1.0 = no compound yet) as a
+/// fixed-point number; 1e18 keeps rounding error well below 1 shannon
+/// for realistic stake sizes and matches Cosmos SDK's `Dec` scale.
+pub const F1_INDEX_SCALE: u128 = 1_000_000_000_000_000_000;
+
+/// Per-validator staking pool. Tracks active + pending stake and the
+/// F1 cumulative reward index. Per-staker bookkeeping lives on
+/// [`Delegation`] rows keyed by `(pool_id, staker)`.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct StakingPool {
     pub id: ObjectID,
-    /// Epoch when this pool became active (None = preactive)
+
+    /// Epoch when this pool became active. `None` while preactive
+    /// (validator candidate not yet in the active set).
     pub activation_epoch: Option<u64>,
-    /// Epoch when deactivated (None = active)
+
+    /// Epoch when deactivated. `None` while active.
     pub deactivation_epoch: Option<u64>,
-    /// Total SOMA balance in this pool
-    pub soma_balance: u64,
-    /// Rewards balance
-    pub rewards_pool: u64,
-    /// Total pool tokens issued
-    pub pool_token_balance: u64,
-    /// Exchange rates by epoch
-    pub exchange_rates: BTreeMap<u64, PoolTokenExchangeRate>,
-    /// Pending stake awaiting processing
-    pub pending_stake: u64,
-    /// Pending withdrawals
-    pub pending_total_soma_withdraw: u64,
-    /// Pending pool token withdrawals
-    pub pending_pool_token_withdraw: u64,
+
+    /// Total stake earning rewards in the current epoch. This is the
+    /// F1 fold divisor.
+    ///
+    /// Updated:
+    /// - At epoch boundary: grows by deposited rewards (auto-compound)
+    ///   and promoted [`pending_active_stake`].
+    /// - On `WithdrawStake` mid-epoch: decrements immediately
+    ///   (forfeiting current-epoch share to remaining stakers via the
+    ///   smaller divisor).
+    ///
+    /// Includes pre-claim auto-compounded rewards. Tracks the pool's
+    /// claim on user balances; equal to
+    /// `sum(delegation.principal) + unclaimed_compound`.
+    pub active_stake: u64,
+
+    /// Stake added during the current epoch. Does NOT count toward
+    /// [`active_stake`] (the fold divisor) or earn current-epoch
+    /// rewards. Promoted into [`active_stake`] at the next epoch
+    /// boundary.
+    pub pending_active_stake: u64,
+
+    /// Current multiplicative cumulative index, equivalent to the
+    /// pool's exchange rate scaled by [`F1_INDEX_SCALE`]. Starts at
+    /// `F1_INDEX_SCALE` (= 1.0). Advances at every reward deposit in
+    /// [`Self::deposit_staker_rewards`].
+    ///
+    /// Compound for a delegation row is computed as
+    /// `principal × cumulative_index / index_at_last_collect` — i.e.
+    /// the staker's principal grows by the same factor as the pool's
+    /// exchange rate.
+    pub cumulative_index: u128,
+
+    /// Snapshot of [`cumulative_index`] right after each epoch's fold.
+    /// `index_history[i]` = `cumulative_index` at the start of epoch
+    /// `(activation_epoch.unwrap_or(0) + i + 1)`, i.e. after the fold
+    /// for the previous epoch.
+    ///
+    /// Used by [`auto_settle`] to look up the baseline index for
+    /// delegation rows whose pending stake matured before being
+    /// claimed. O(1) random access by relative epoch index.
+    pub index_history: Vec<u128>,
+
+    /// Validator's commission rate in basis points (1 bp = 0.01%) for
+    /// the current epoch. Effective commission for the next epoch
+    /// lives on [`Validator::next_epoch_commission_rate`].
+    pub commission_rate: u64,
 }
 
 impl StakingPool {
@@ -37,326 +141,294 @@ impl StakingPool {
             id,
             activation_epoch: None,
             deactivation_epoch: None,
-            soma_balance: 0,
-            rewards_pool: 0,
-            pool_token_balance: 0,
-            exchange_rates: BTreeMap::new(),
-            pending_stake: 0,
-            pending_pool_token_withdraw: 0,
-            pending_total_soma_withdraw: 0,
+            active_stake: 0,
+            pending_active_stake: 0,
+            // Index starts at 1.0 (scaled). Every staker's
+            // index_at_last_collect at the moment they stake equals
+            // the pool's then-current cumulative_index, so the
+            // ratio current/at_last_collect is 1.0 (= no compound)
+            // until the next reward deposit.
+            cumulative_index: F1_INDEX_SCALE,
+            index_history: vec![F1_INDEX_SCALE],
+            commission_rate: 0,
         }
     }
 
-    /// Request to add stake to the staking pool
-    pub fn request_add_stake(&mut self, stake: u64, stake_activation_epoch: u64) -> StakedSomaV1 {
-        assert!(stake > 0, "Stake amount must be greater than zero");
-        assert!(!self.is_inactive(), "Cannot stake with inactive pool");
-
-        // Create StakedSomaV1
-        let staked_soma = StakedSomaV1::new(self.id, stake_activation_epoch, stake);
-
-        // Update pending stake
-        self.pending_stake += stake;
-
-        staked_soma
-    }
-
-    /// Request to withdraw stake from the staking pool
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1, current_epoch: u64) -> u64 {
-        // Validate the staking pool ID matches
-        assert!(staked_soma.pool_id == self.id, "StakedSoma belongs to a different pool");
-
-        // If stake is not yet active (activation is in the future), just return principal
-        if staked_soma.stake_activation_epoch > current_epoch {
-            self.pending_stake -= staked_soma.principal;
-            return staked_soma.principal;
-        }
-
-        // For active stake, we need to calculate rewards
-        let (pool_token_amount, principal_amount) = self.withdraw_from_principal(&staked_soma);
-
-        // Calculate rewards using the exchange rate at current epoch
-        let rewards_amount =
-            self.withdraw_rewards(principal_amount, pool_token_amount, current_epoch);
-
-        let total_withdraw_amount = principal_amount + rewards_amount;
-
-        // Update pending withdrawals
-        self.pending_total_soma_withdraw += total_withdraw_amount;
-        self.pending_pool_token_withdraw += pool_token_amount;
-
-        // If pool is inactive, process withdraw immediately
-        if self.is_inactive() {
-            self.process_pending_stake_withdraw();
-        }
-
-        total_withdraw_amount
-    }
-
-    /// Check if the staking pool is inactive
     pub fn is_inactive(&self) -> bool {
         self.deactivation_epoch.is_some()
     }
 
-    /// Check if the staking pool is preactive (not yet activated)
     pub fn is_preactive(&self) -> bool {
         self.activation_epoch.is_none()
     }
 
-    /// Calculate pool tokens and principal amount when withdrawing
-    pub fn withdraw_from_principal(&self, staked_soma: &StakedSomaV1) -> (u64, u64) {
-        // Get exchange rate at staking epoch
-        let exchange_rate =
-            self.pool_token_exchange_rate_at_epoch(staked_soma.stake_activation_epoch);
-
-        // Calculate pool tokens equivalent to principal
-        let pool_token_amount = self.get_token_amount(&exchange_rate, staked_soma.principal);
-
-        (pool_token_amount, staked_soma.principal)
+    /// Add stake immediately to [`active_stake`]. Used by
+    /// preactive pool AddStakes (no pending semantics) and by
+    /// validator self-stake at genesis. Mid-epoch active-pool stakes
+    /// should use the pending bucket via [`add_pending_stake`].
+    pub fn add_active_stake(&mut self, amount: u64) {
+        self.active_stake = self.active_stake.saturating_add(amount);
     }
 
-    /// Calculate and withdraw rewards
-    pub fn withdraw_rewards(
-        &mut self,
-        principal_amount: u64,
-        pool_token_amount: u64,
-        epoch: u64,
-    ) -> u64 {
-        // Get current exchange rate
-        let exchange_rate = self.pool_token_exchange_rate_at_epoch(epoch);
-
-        // Calculate total SOMA value of the pool tokens at current exchange rate
-        let total_withdraw_value = self.get_soma_amount(&exchange_rate, pool_token_amount);
-
-        // Rewards are the difference between total value and principal
-        // If total value is less than principal (which shouldn't happen in normal operation),
-        // return 0 rewards to avoid underflow
-        let reward_amount = total_withdraw_value.saturating_sub(principal_amount);
-
-        // Cap rewards at available reward pool balance
-        let reward_amount = std::cmp::min(reward_amount, self.rewards_pool);
-
-        // Deduct from rewards pool
-        self.rewards_pool -= reward_amount;
-
-        reward_amount
+    /// Decrement [`active_stake`] for `WithdrawStake` from the active
+    /// portion. The mid-epoch decrement matches Sui's
+    /// `pending_pool_token_withdraw` behavior — the smaller divisor at
+    /// the next fold redistributes the forfeited share to remaining
+    /// stakers.
+    ///
+    /// Saturating: an underflow indicates corruption upstream. The
+    /// executor validates `amount <= delegation.principal` before
+    /// calling.
+    pub fn remove_active_stake(&mut self, amount: u64) {
+        self.active_stake = self.active_stake.saturating_sub(amount);
     }
 
-    /// Process pending stake withdrawals
-    pub fn process_pending_stake_withdraw(&mut self) {
-        // Update balances based on pending withdrawals
-        self.soma_balance -= self.pending_total_soma_withdraw;
-        self.pool_token_balance -= self.pending_pool_token_withdraw;
-
-        // Reset pending withdrawal amounts
-        self.pending_total_soma_withdraw = 0;
-        self.pending_pool_token_withdraw = 0;
+    /// Bump the pending-active bucket. Called by mid-epoch `AddStake`
+    /// on an active pool. Promoted into [`active_stake`] at the next
+    /// epoch boundary in [`Self::process_pending_active_stake`].
+    pub fn add_pending_stake(&mut self, amount: u64) {
+        self.pending_active_stake = self.pending_active_stake.saturating_add(amount);
     }
 
-    /// Process pending stakes at epoch boundaries
-    pub fn process_pending_stake(&mut self) {
-        // Calculate the latest exchange rate based on current balances
-        let latest_exchange_rate = PoolTokenExchangeRate {
-            soma_amount: self.soma_balance,
-            pool_token_amount: self.pool_token_balance,
+    /// Decrement the pending-active bucket. Called when withdrawal
+    /// drains the staker's pending portion (a same-epoch deposit
+    /// reversal — that stake never earned anything).
+    pub fn remove_pending_stake(&mut self, amount: u64) {
+        self.pending_active_stake = self.pending_active_stake.saturating_sub(amount);
+    }
+
+    // ---------------------------------------------------------------
+    // F1 helpers
+    // ---------------------------------------------------------------
+
+    /// `cumulative_index` at the start of `epoch`, where `epoch` is
+    /// the absolute epoch number. Out-of-range queries clamp to the
+    /// nearest available snapshot.
+    ///
+    /// `index_history` is indexed relative to `activation_epoch`:
+    /// `index_history[0]` is the index at the moment of activation
+    /// (always [`F1_INDEX_SCALE`]), `index_history[k]` is the index
+    /// at the start of `activation_epoch + k` (i.e. just after the
+    /// previous epoch's reward fold). For preactive pools, only
+    /// `index_history[0] == F1_INDEX_SCALE` is meaningful.
+    pub fn index_at_epoch_start(&self, epoch: u64) -> u128 {
+        let activation = match self.activation_epoch {
+            Some(a) => a,
+            None => return F1_INDEX_SCALE,
         };
-
-        // Add pending stake to soma balance
-        self.soma_balance += self.pending_stake;
-
-        // Calculate and update pool token balance
-        // If pool is empty (both balances are 0), then pool tokens = soma tokens (1:1 ratio)
-        if self.soma_balance == self.pending_stake && self.pool_token_balance == 0 {
-            self.pool_token_balance = self.pending_stake;
+        if epoch <= activation {
+            return self.index_history.first().copied().unwrap_or(F1_INDEX_SCALE);
+        }
+        let offset = (epoch - activation) as usize;
+        if let Some(&v) = self.index_history.get(offset) {
+            v
         } else {
-            // Otherwise calculate based on exchange rate
-            self.pool_token_balance =
-                self.get_token_amount(&latest_exchange_rate, self.soma_balance);
+            // Past end of history — clamp to latest snapshot.
+            self.index_history.last().copied().unwrap_or(F1_INDEX_SCALE)
         }
-
-        // Reset pending stake
-        self.pending_stake = 0;
     }
 
-    /// Get the exchange rate for a specific epoch
-    pub fn pool_token_exchange_rate_at_epoch(&self, epoch: u64) -> PoolTokenExchangeRate {
-        // If pool is preactive, return initial exchange rate (which is essentially 1:1)
-        if self.is_preactive() {
-            return PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 };
-        }
-
-        // Determine activation epoch (we know it's Some since pool is not preactive)
-        let activation_epoch = self.activation_epoch.unwrap();
-
-        // If requested epoch is before activation, return initial rate
-        if epoch < activation_epoch {
-            return PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 };
-        }
-
-        // Cap epoch at deactivation epoch if the pool is inactive
-        let epoch = if let Some(deactivation_epoch) = self.deactivation_epoch {
-            std::cmp::min(epoch, deactivation_epoch)
-        } else {
-            epoch
-        };
-
-        // Find the latest epoch that's earlier than or equal to the given epoch with an entry in the table
-        // Traverse backwards from the requested epoch to the activation epoch
-        let mut current_epoch = epoch;
-        while current_epoch >= activation_epoch {
-            if let Some(rate) = self.exchange_rates.get(&current_epoch) {
-                return rate.clone();
-            }
-            if current_epoch == 0 {
-                break;
-            }
-            current_epoch -= 1;
-        }
-
-        // If no rate was found, return initial rate (this should be unreachable in normal operation)
-        PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 }
-    }
-
-    /// Convert pool tokens to SOMA amount
-    pub fn get_soma_amount(&self, exchange_rate: &PoolTokenExchangeRate, token_amount: u64) -> u64 {
-        // Handle edge cases when amounts are 0
-        if exchange_rate.soma_amount == 0 || exchange_rate.pool_token_amount == 0 {
-            return token_amount;
-        }
-
-        // Calculate with u128 to avoid overflow
-        let res = (exchange_rate.soma_amount as u128) * (token_amount as u128)
-            / (exchange_rate.pool_token_amount as u128);
-
-        res as u64
-    }
-
-    /// Convert SOMA amount to pool tokens
-    pub fn get_token_amount(&self, exchange_rate: &PoolTokenExchangeRate, soma_amount: u64) -> u64 {
-        // Handle edge cases when amounts are 0
-        if exchange_rate.soma_amount == 0 || exchange_rate.pool_token_amount == 0 {
-            return soma_amount;
-        }
-
-        // Calculate with u128 to avoid overflow
-        let res = (exchange_rate.pool_token_amount as u128) * (soma_amount as u128)
-            / (exchange_rate.soma_amount as u128);
-
-        res as u64
-    }
-
-    /// Deposit rewards into the staking pool
-    pub fn deposit_rewards(&mut self, reward_amount: u64) {
-        // Update SOMA balance with new rewards
-        self.soma_balance += reward_amount;
-
-        // Add to rewards pool
-        self.rewards_pool += reward_amount;
-    }
-
-    /// Update exchange rates at epoch boundaries
-    pub fn update_exchange_rate(&mut self, epoch: u64) {
-        // Add current exchange rate to the table
-        self.exchange_rates.insert(
-            epoch,
-            PoolTokenExchangeRate {
-                soma_amount: self.soma_balance,
-                pool_token_amount: self.pool_token_balance,
-            },
-        );
-    }
-
-    /// Process pending stakes and withdrawals at epoch boundary
-    pub fn process_pending_stakes_and_withdraws(&mut self, epoch: u64) {
-        // Process withdrawals first
-        self.process_pending_stake_withdraw();
-
-        // Then process new stakes
-        self.process_pending_stake();
-
-        // Finally, update exchange rate for the new epoch
-        self.update_exchange_rate(epoch);
-    }
-}
-
-#[cfg(test)]
-impl StakingPool {
-    /// Calculate the rewards for a staked principal at the current epoch
+    /// Compute the unclaimed compound reward for a delegator with
+    /// given `principal` whose baseline was `index_at_last_collect`.
+    /// `auto_settle` adds this to the principal (compound).
     ///
-    /// This function simulates the functionality of `calculate_rewards` in Move for testing
-    /// purposes, allowing us to calculate rewards for self-stake amounts
-    ///
-    /// # Arguments
-    /// * `principal` - The original staked amount
-    /// * `stake_activation_epoch` - The epoch when the stake became active
-    /// * `current_epoch` - The current epoch
-    ///
-    /// # Returns
-    /// The total amount (principal + rewards) that would be withdrawn at the current epoch
-    pub fn calculate_rewards(
-        &self,
-        principal: u64,
-        stake_activation_epoch: u64,
-        current_epoch: u64,
-    ) -> u64 {
-        if current_epoch < stake_activation_epoch {
-            return principal; // Stake not active yet, no rewards
-        }
-
-        // Get exchange rate at staking epoch
-        let exchange_rate_at_staking =
-            self.pool_token_exchange_rate_at_epoch(stake_activation_epoch);
-
-        // Calculate pool tokens equivalent to principal
-        let pool_token_amount = if exchange_rate_at_staking.soma_amount == 0
-            || exchange_rate_at_staking.pool_token_amount == 0
+    /// Multiplicative form: `compounded_value = principal *
+    /// current_index / index_at_last_collect`, returned amount is
+    /// `compounded_value - principal`. Treats a zero-baseline as a
+    /// no-compound (defensive — every Delegation row is created with
+    /// `index_at_last_collect == F1_INDEX_SCALE` at minimum).
+    pub fn pending_compound(&self, principal: u64, index_at_last_collect: u128) -> u64 {
+        if principal == 0
+            || index_at_last_collect == 0
+            || self.cumulative_index <= index_at_last_collect
         {
-            principal
-        } else {
-            (principal as u128 * exchange_rate_at_staking.pool_token_amount as u128
-                / exchange_rate_at_staking.soma_amount as u128) as u64
-        };
+            return 0;
+        }
+        let compounded = (principal as u128)
+            .saturating_mul(self.cumulative_index)
+            / index_at_last_collect;
+        compounded.saturating_sub(principal as u128) as u64
+    }
 
-        // Get current exchange rate
-        let current_exchange_rate = self.pool_token_exchange_rate_at_epoch(current_epoch);
+    // ---------------------------------------------------------------
+    // Epoch boundary operations
+    // ---------------------------------------------------------------
 
-        // Calculate current SOMA value of the pool tokens
-        let total_soma_amount = if current_exchange_rate.soma_amount == 0
-            || current_exchange_rate.pool_token_amount == 0
-        {
-            pool_token_amount
-        } else {
-            (pool_token_amount as u128 * current_exchange_rate.soma_amount as u128
-                / current_exchange_rate.pool_token_amount as u128) as u64
-        };
+    /// Deposit a post-commission reward into the pool. Called at
+    /// every epoch boundary by
+    /// [`Validator::deposit_staker_rewards`].
+    ///
+    /// Mirrors Sui's `deposit_rewards`: the reward grows
+    /// [`active_stake`] (so future rewards' divisor includes it),
+    /// and the multiplicative `cumulative_index` scales by the same
+    /// ratio `(active_stake + amount) / active_stake` — existing
+    /// stakers' compound share grows by exactly that ratio.
+    ///
+    /// Computed as
+    /// `cumulative_index += cumulative_index × amount / active_stake`,
+    /// algebraically equivalent to
+    /// `cumulative_index *= (active_stake + amount) / active_stake`
+    /// but staying within u128 range for realistic stake/index sizes.
+    ///
+    /// If [`active_stake`] is zero (preactive or fully-withdrawn
+    /// pool), the reward still grows [`active_stake`] but the
+    /// cumulative index does not advance — there's no current stake
+    /// to compound for. The first new staker effectively absorbs the
+    /// prior reward, matching Sui's preactive 1:1 absorption behavior.
+    pub fn deposit_staker_rewards(&mut self, amount: u64) {
+        if amount == 0 {
+            return;
+        }
+        if self.active_stake > 0 {
+            let increment = self
+                .cumulative_index
+                .saturating_mul(amount as u128)
+                / (self.active_stake as u128);
+            self.cumulative_index = self.cumulative_index.saturating_add(increment);
+        }
+        self.active_stake = self.active_stake.saturating_add(amount);
+    }
 
-        // Return the total amount (principal + rewards)
-        // If total_soma_amount < principal (which shouldn't happen in normal operation),
-        // return original principal to avoid underflow
-        std::cmp::max(total_soma_amount, principal)
+    /// Promote pending stake into active. Called at epoch boundary
+    /// AFTER [`deposit_staker_rewards`] — so the just-folded reward
+    /// goes to existing stakers only, not to mid-epoch joiners.
+    pub fn process_pending_active_stake(&mut self) {
+        self.active_stake = self.active_stake.saturating_add(self.pending_active_stake);
+        self.pending_active_stake = 0;
+    }
+
+    /// Snapshot the current `cumulative_index` to history. Called at
+    /// the end of every epoch boundary processing — establishes the
+    /// baseline for delegation rows whose pending matured this epoch.
+    pub fn snapshot_index_history(&mut self) {
+        self.index_history.push(self.cumulative_index);
+    }
+
+    /// Full epoch boundary processing for this pool. Order matters:
+    /// 1. Deposit rewards (advances `cumulative_index`, grows
+    ///    `active_stake` by reward — pre-promotion divisor)
+    /// 2. Promote pending → active (for next epoch)
+    /// 3. Snapshot the new `cumulative_index` (so rows with pending
+    ///    promoted in this boundary use this snapshot as baseline)
+    pub fn advance_epoch(&mut self, validator_reward: u64) {
+        self.deposit_staker_rewards(validator_reward);
+        self.process_pending_active_stake();
+        self.snapshot_index_history();
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct PoolTokenExchangeRate {
-    /// Amount of SOMA tokens
-    pub soma_amount: u64,
-    /// Amount of pool tokens
-    pub pool_token_amount: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct StakedSomaV1 {
-    /// Staking pool ID
-    pub pool_id: ObjectID,
-    /// Epoch when stake becomes active
-    pub stake_activation_epoch: u64,
-    /// Principal amount staked
+/// Per-(pool_id, staker) delegation row. Auto-compound model:
+/// [`principal`] grows on every [`auto_settle`] call as the staker's
+/// share of fold rewards becomes part of their stake.
+///
+/// Cash is realized only via `WithdrawStake`, which decrements
+/// `principal` and credits the staker's SOMA balance.
+///
+/// `Default` returns an empty row with `index_at_last_collect == 0`
+/// — the auto-settle path treats a zero baseline as "nothing to
+/// compound". A first-touch executor must overwrite
+/// `index_at_last_collect` with the pool's current
+/// `cumulative_index` before adding any active principal so that
+/// future settles read the correct ratio.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub struct Delegation {
+    /// Active principal — the staker's stake currently earning. Grows
+    /// on `auto_settle` (compound). Decreases on `WithdrawStake`.
     pub principal: u64,
+
+    /// Snapshot of [`StakingPool::cumulative_index`] at the staker's
+    /// last `auto_settle` call. The accrued share since then is
+    /// `principal × (pool.cumulative_index - index_at_last_collect)
+    /// / F1_INDEX_SCALE`.
+    pub index_at_last_collect: u128,
+
+    /// Stake added by this staker during the current epoch. Does NOT
+    /// earn current-epoch rewards. Promoted into [`principal`] at the
+    /// staker's next interaction *after* the next epoch boundary
+    /// (lazy, via [`auto_settle`]).
+    pub pending_principal: u64,
+
+    /// The epoch in which [`pending_principal`] was last bumped.
+    /// Sentinel value 0 indicates no pending (always paired with
+    /// `pending_principal == 0`).
+    ///
+    /// On the staker's next interaction, if
+    /// `pool.activation_epoch + index_history.len() > pending_added_at_epoch + 1`,
+    /// the pending has matured and is promoted. Its accrued share is
+    /// computed from `pool.index_at_epoch_start(pending_added_at_epoch + 1)`
+    /// (the index right when it became active).
+    pub pending_added_at_epoch: u64,
 }
 
-impl StakedSomaV1 {
-    pub fn new(pool_id: ObjectID, stake_activation_epoch: u64, principal: u64) -> Self {
-        StakedSomaV1 { pool_id, stake_activation_epoch, principal }
+impl Delegation {
+    pub fn new(principal: u64, index_at_last_collect: u128) -> Self {
+        Self {
+            principal,
+            index_at_last_collect,
+            pending_principal: 0,
+            pending_added_at_epoch: 0,
+        }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.principal == 0 && self.pending_principal == 0
+    }
+
+    /// Total stake position (active + pending). Useful for UX and
+    /// withdrawal validation.
+    pub fn total(&self) -> u64 {
+        self.principal.saturating_add(self.pending_principal)
+    }
+}
+
+/// Auto-settle: compound any accrued reward into
+/// `delegation.principal`, promote any matured `pending_principal`
+/// into `principal` along with its accrued share. After this call,
+/// `delegation.index_at_last_collect == pool.cumulative_index` and
+/// `pending_principal == 0` if matured.
+///
+/// Idempotent: calling on a freshly-settled row is a no-op.
+///
+/// Called at the start of every executor that touches a delegation
+/// row (AddStake, WithdrawStake) before the row is mutated by the
+/// operation itself.
+///
+/// Note: this function does NOT mutate `pool.active_stake` — the
+/// auto-compounded rewards are *already* part of `active_stake`
+/// (they were added by `deposit_staker_rewards` at boundary). This
+/// function just lets the staker's row catch up to that bookkeeping.
+pub fn auto_settle(delegation: &mut Delegation, pool: &StakingPool, current_epoch: u64) {
+    let current_index = pool.cumulative_index;
+
+    // (a) Compound active-principal accrual.
+    if delegation.principal > 0
+        && delegation.index_at_last_collect > 0
+        && current_index > delegation.index_at_last_collect
+    {
+        let compounded = (delegation.principal as u128)
+            .saturating_mul(current_index)
+            / delegation.index_at_last_collect;
+        delegation.principal = compounded as u64;
+    }
+
+    // (b) Promote pending if matured.
+    if delegation.pending_principal > 0 && current_epoch > delegation.pending_added_at_epoch {
+        // Baseline for the promoted principal is the index at the
+        // start of `pending_added_at_epoch + 1` — right after that
+        // epoch's reward fold, i.e. the moment pending became active.
+        let baseline = pool.index_at_epoch_start(delegation.pending_added_at_epoch + 1);
+        let promoted = if baseline > 0 && current_index > baseline {
+            ((delegation.pending_principal as u128)
+                .saturating_mul(current_index)
+                / baseline) as u64
+        } else {
+            delegation.pending_principal
+        };
+
+        delegation.principal = delegation.principal.saturating_add(promoted);
+        delegation.pending_principal = 0;
+        delegation.pending_added_at_epoch = 0;
+    }
+
+    delegation.index_at_last_collect = current_index;
 }

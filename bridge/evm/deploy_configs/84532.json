@@ -1,0 +1,9 @@
+{
+  "committeeMembers": [],
+  "committeeStake": [],
+  "ethChainId": 13,
+  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "limiterTotalLimit": "1000000000000",
+  "supportedSomaChains": [2],
+  "somaCommitteeDigest": ""
+}

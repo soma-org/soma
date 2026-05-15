@@ -62,11 +62,24 @@ async fn test_change_epoch_system_transaction_executes() {
 }
 
 #[tokio::test]
-async fn test_consensus_commit_prologue_system_transaction_executes() {
-    // FINDING: ConsensusCommitPrologueV1 is system-only conceptually, but the authority
-    // pipeline does NOT reject it at the execution level. In production, these are
-    // only created by the consensus handler.
+async fn test_user_submitted_consensus_commit_prologue_rejected() {
+    // Sui-parity defense: a CCP submitted by a user (i.e. signed by a
+    // non-system address) must NOT mutate the Clock. The
+    // `ConsensusCommitExecutor` enforces `signer == SomaAddress::ZERO`,
+    // mirroring sui::clock's `assert!(ctx.sender() == @0x0)`. Real
+    // CCPs are constructed by the consensus handler via
+    // `TransactionData::new_system_transaction` which uses ZERO; a
+    // user-signed Transaction can never produce that sender, so this
+    // path is closed at execution.
+    //
+    // Prior to the sender check this test asserted the CCP succeeded
+    // (and the original "FINDING" comment noted that user submission
+    // wasn't blocked at the execution level). The check now blocks it.
+    // End-to-end success of legitimate (system-built) CCPs is covered
+    // by the msim e2e tests in `e2e-tests/tests/clock_tests.rs`.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    assert_ne!(sender, SomaAddress::ZERO, "test invariant: user sender != system");
+
     let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
     let gas_ref = gas.compute_object_reference();
 
@@ -87,10 +100,26 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
     );
     let tx = to_sender_signed_transaction(data, &key);
 
-    // ConsensusCommitPrologueV1 doesn't need shared objects in current impl
-    let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
-    // Currently succeeds — system transaction rejection is at the network/consensus layer
-    assert!(result.is_ok(), "ConsensusCommitPrologueV1 should reach execution: {:?}", result.err());
+    let (_cert, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
+        .await
+        .expect("cert is built; rejection happens at the executor level");
+
+    assert!(
+        !effects.status().is_ok(),
+        "user-signed CCP must fail at execution; got status={:?}",
+        effects.status(),
+    );
+
+    // And the Clock must NOT have advanced.
+    let clock = authority_state
+        .get_object(&types::CLOCK_OBJECT_ID)
+        .await
+        .expect("Clock must still exist");
+    assert_eq!(
+        clock.clock_timestamp_ms(),
+        0,
+        "Clock must NOT advance from a rejected user-signed CCP",
+    );
 }
 
 // =============================================================================
@@ -98,29 +127,37 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_empty_gas_payment_rejected() {
-    // Transaction with no gas payment should fail
+async fn test_empty_gas_payment_without_usdc_balance_fails_insufficient_gas() {
+    // Stage 13b: balance-mode txs (empty gas_payment) draw fees from
+    // the sender's USDC accumulator. A sender with no USDC balance
+    // hits InsufficientGas at execution time. The pre-Stage-13b
+    // "empty gas always rejected" semantic is gone — empty gas is
+    // the normal balance-mode shape.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-
     let authority_state = TestAuthorityBuilder::new().build().await;
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN),
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
-        vec![], // empty gas payment
+        vec![], // empty gas payment (balance-mode)
     );
     let tx = to_sender_signed_transaction(data, &key);
 
     let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
-    assert!(
-        result.is_err(),
-        "Empty gas payment should be rejected: {:?}",
-        result.ok().map(|(_, e)| format!("{:?}", e.status()))
-    );
+    match result {
+        Ok((_, effects)) => {
+            assert!(
+                !effects.status().is_ok(),
+                "balance-mode tx with no USDC must fail at execution",
+            );
+        }
+        Err(_) => {
+            // Also acceptable — earlier validation may reject before execution.
+        }
+    }
 }
 
 #[tokio::test]
@@ -132,11 +169,7 @@ async fn test_nonexistent_gas_object_rejected() {
 
     let fake_gas_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: fake_gas_ref,
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![fake_gas_ref], // non-existent gas
     );
@@ -157,11 +190,7 @@ async fn test_transaction_data_bcs_roundtrip() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(1000),
-            coin: coin_ref,
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![coin_ref],
     );
@@ -180,11 +209,7 @@ async fn test_transaction_digest_determinism() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(1000),
-            coin: coin_ref,
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![coin_ref],
     );
@@ -220,11 +245,7 @@ async fn test_duplicate_gas_coin_rejected() {
     authority_state.insert_genesis_object(coin2).await;
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: coin2_ref,
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![gas_ref, gas_ref], // duplicate gas coin
     );

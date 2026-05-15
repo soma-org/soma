@@ -2,86 +2,104 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use sdk::wallet_context::WalletContext;
 use types::base::SomaAddress;
-use types::model::ModelId;
 use types::object::ObjectID;
 use types::transaction::TransactionKind;
 
 use crate::client_commands::TxProcessingArgs;
-use crate::response::{ClientCommandResponse, TransactionResponse};
+use crate::response::ClientCommandResponse;
 
-/// Execute the stake command (stake SOMA with a validator or model)
+/// Execute the stake command (stake SOMA with a validator)
 pub async fn execute_stake(
     context: &mut WalletContext,
-    validator: Option<SomaAddress>,
-    model: Option<ModelId>,
-    amount: Option<u64>,
-    coin: Option<ObjectID>,
+    validator: SomaAddress,
+    amount: u64,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.active_address()?;
-    let client = context.get_client().await?;
 
-    // Get coin reference and gas payment in a single fetch.
-    let (coin_ref, gas_payment) = match coin {
-        Some(coin_id) => {
-            let obj = client
-                .get_object(coin_id)
-                .await
-                .map_err(|e| anyhow!("Failed to get coin: {}", e.message()))?;
-            let r = obj.compute_object_reference();
-            (r, vec![r])
-        }
-        None => {
-            let (r, balance) = context
-                .get_richest_coin_with_balance(sender)
-                .await?
-                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
-            if let Some(amt) = amount {
-                if balance < amt {
-                    return Err(anyhow!(
-                        "Richest coin has balance {} but stake requires {}. \
-                         Run `soma merge-coins` to consolidate your coins.",
-                        balance,
-                        amt,
-                    ));
-                }
-            }
-            (r, vec![r])
-        }
-    };
+    if amount == 0 {
+        return Err(anyhow!("Stake amount must be greater than zero"));
+    }
 
-    // Build transaction kind
-    let kind = if let Some(validator_address) = validator {
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount }
-    } else if let Some(model_id) = model {
-        TransactionKind::AddStakeToModel { model_id, coin_ref, amount }
-    } else {
-        unreachable!()
-    };
+    // Stage 9d-C2: AddStake is balance-mode — the executor debits
+    // `amount` SOMA from the sender's accumulator, no coin reference
+    // required. Gas is balance-mode too (vec![]).
+    let kind = TransactionKind::AddStake { validator, amount };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
 
-/// Execute the unstake command (withdraw staked SOMA)
+/// Execute the unstake command (Stage 9d-C3: balance-mode).
+/// Pays pending F1 rewards + the requested principal amount to the
+/// sender's SOMA balance. `amount = None` drains the entire row.
 pub async fn execute_unstake(
     context: &mut WalletContext,
-    staked_soma_id: ObjectID,
+    pool_id: ObjectID,
+    amount: Option<u64>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.active_address()?;
+
+    let kind = TransactionKind::WithdrawStake { pool_id, amount };
+
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
+}
+
+/// Stage 9d: list a staker's active delegations using the new
+/// `ListDelegations` RPC endpoint. Replaces the equivalent
+/// owned-StakedSomaV1-object scan path; eventually the only path once
+/// Stage 9d full-removal lands.
+pub async fn execute_list_stakes(
+    context: &mut WalletContext,
+    staker: SomaAddress,
+    json: bool,
+) -> Result<()> {
     let client = context.get_client().await?;
 
-    // Get staked soma reference
-    let staked_obj = client
-        .get_object(staked_soma_id)
+    let request = rpc::proto::soma::ListDelegationsRequest::default()
+        .with_staker(staker.to_string());
+    let response = client
+        .list_delegations(request)
         .await
-        .map_err(|e| anyhow!("Failed to get staked SOMA object: {}", e.message()))?;
-    let staked_ref = staked_obj.compute_object_reference();
+        .map_err(|e| anyhow!("ListDelegations RPC failed: {}", e.message()))?;
 
-    let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };
-
-    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
+    if json {
+        let rows: Vec<_> = response
+            .delegations
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "pool_id": d.pool_id,
+                    "principal": d.principal,
+                    "last_collected_period": d.last_collected_period,
+                })
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "staker": staker.to_string(),
+            "total_principal": response.total_principal.unwrap_or(0),
+            "delegations": rows,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else if response.delegations.is_empty() {
+        println!("No active stakes for {}", staker);
+    } else {
+        println!("Stakes for {}:", staker);
+        println!("  {:<66}  {}", "POOL", "PRINCIPAL");
+        for d in &response.delegations {
+            println!(
+                "  {:<66}  {}",
+                d.pool_id.as_deref().unwrap_or(""),
+                d.principal.unwrap_or(0),
+            );
+        }
+        println!(
+            "Total principal: {} shannons",
+            response.total_principal.unwrap_or(0)
+        );
+    }
+    Ok(())
 }

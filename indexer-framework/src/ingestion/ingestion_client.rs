@@ -2,8 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -19,8 +23,10 @@ use object_store::gcp::GoogleCloudStorageBuilder;
 use object_store::http::HttpBuilder;
 use object_store::local::LocalFileSystem;
 use soma_futures::future::with_slow_future_monitor;
+use tokio::sync::Notify;
 use tracing::debug;
 use tracing::error;
+use tracing::info;
 use tracing::warn;
 use url::Url;
 
@@ -63,6 +69,18 @@ pub struct IngestionClientArgs {
     #[arg(long, group = "source")]
     pub local_ingestion_path: Option<PathBuf>,
 
+    /// Fetch checkpoints directly from a fullnode's gRPC `LedgerService` (unary
+    /// `get_checkpoint`). Provide the gRPC base URL, e.g. `http://fullnode:9000`.
+    #[arg(long, group = "source")]
+    pub rpc_api_url: Option<Url>,
+
+    /// Stream checkpoints live from a fullnode's gRPC `SubscriptionService`
+    /// (`subscribe_checkpoints`), with unary `get_checkpoint` on the same URL used to backfill
+    /// the gap between the resume point and the live tip. Provide the gRPC base URL, e.g.
+    /// `http://fullnode:9000`.
+    #[arg(long, group = "source")]
+    pub streaming_url: Option<Url>,
+
     /// How long to wait for a checkpoint file to be downloaded (milliseconds). Set to 0 to disable
     /// the timeout.
     #[arg(long, default_value_t = Self::default().checkpoint_timeout_ms)]
@@ -81,6 +99,8 @@ impl Default for IngestionClientArgs {
             remote_store_s3: None,
             remote_store_gcs: None,
             local_ingestion_path: None,
+            rpc_api_url: None,
+            streaming_url: None,
             checkpoint_timeout_ms: 120_000,
             checkpoint_connection_timeout_ms: 120_000,
         }
@@ -163,6 +183,266 @@ impl IngestionClientTrait for StoreIngestionClient {
     }
 }
 
+/// A gRPC-backed ingestion client that fetches checkpoints directly from a fullnode's
+/// `LedgerService` via the unary `get_checkpoint` RPC.
+///
+/// This is the soma equivalent of Sui's `rpc_client.rs` ingestion source. It does not stream;
+/// each call opens (or reuses) a channel and issues one `get_checkpoint`. Streaming via
+/// `SubscriptionService::subscribe_checkpoints` is a separate, larger piece of work that also
+/// requires the broadcaster's fallback ladder.
+#[derive(Clone)]
+struct RpcIngestionClient {
+    /// A lazily-connected channel — established on first use and transparently reconnected by
+    /// tonic. Cloning a `Channel` is cheap (internally reference-counted), so each `fetch`
+    /// clones rather than dialing afresh.
+    channel: tonic::transport::Channel,
+}
+
+impl RpcIngestionClient {
+    fn new(url: &Url) -> IngestionResult<Self> {
+        let channel = tonic::transport::Endpoint::from_shared(url.to_string())
+            .map_err(|e| IngestionError::FetchError(0, e.into()))?
+            .connect_lazy();
+        Ok(Self { channel })
+    }
+}
+
+#[async_trait]
+impl IngestionClientTrait for RpcIngestionClient {
+    async fn fetch(&self, checkpoint: u64) -> FetchResult {
+        use rpc::proto::soma::get_checkpoint_request::CheckpointId;
+        use rpc::proto::soma::ledger_service_client::LedgerServiceClient;
+        use rpc::proto::soma::GetCheckpointRequest;
+
+        let mut client = LedgerServiceClient::new(self.channel.clone())
+            .max_decoding_message_size(256 * 1024 * 1024);
+
+        // Request every top-level field so the response carries a full checkpoint. The server's
+        // default mask is just `sequence_number,digest`, which would not be ingestable.
+        // GetCheckpointRequest is #[non_exhaustive] — build it field-by-field.
+        let mut request = GetCheckpointRequest::default();
+        request.read_mask = Some(prost_types::FieldMask {
+            paths: [
+                "sequence_number",
+                "digest",
+                "summary",
+                "signature",
+                "contents",
+                "transactions",
+                "objects",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        });
+        request.checkpoint_id = Some(CheckpointId::SequenceNumber(checkpoint));
+
+        let response = client.get_checkpoint(request).await.map_err(|status| {
+            match status.code() {
+                tonic::Code::NotFound => FetchError::NotFound,
+                _ => FetchError::Transient {
+                    reason: "grpc",
+                    error: anyhow::anyhow!(status),
+                },
+            }
+        })?;
+
+        let proto_checkpoint = response.into_inner().checkpoint.ok_or_else(|| {
+            FetchError::Permanent {
+                reason: "missing_checkpoint",
+                error: anyhow::anyhow!("get_checkpoint response had no checkpoint"),
+            }
+        })?;
+
+        // Proto→Checkpoint conversion is multi-ms of CPU; offload to the blocking pool so it
+        // doesn't stall the reactor. A conversion failure is permanent — the bytes are what
+        // they are (mirrors the decode-as-permanent fix on the object-store path).
+        let checkpoint = tokio::task::spawn_blocking(move || Checkpoint::try_from(&proto_checkpoint))
+            .await
+            .map_err(|e| FetchError::Transient {
+                reason: "decode_task",
+                error: anyhow::anyhow!("proto conversion task panicked: {e}"),
+            })?
+            .map_err(|e| FetchError::Permanent {
+                reason: "proto_conversion",
+                error: e.into(),
+            })?;
+
+        Ok(FetchData::Checkpoint(checkpoint))
+    }
+}
+
+/// Maximum number of streamed checkpoints held in memory ahead of the broadcaster. When the
+/// broadcaster falls further behind than this, the oldest buffered checkpoints are evicted and
+/// served from the unary RPC backfill path instead.
+const STREAM_BUFFER_CAP: usize = 128;
+
+/// How long a `fetch` for a not-yet-streamed checkpoint waits on the stream before re-checking.
+const STREAM_WAIT_TICK: Duration = Duration::from_secs(5);
+
+/// Number of `STREAM_WAIT_TICK` cycles a `fetch` waits for the stream before falling back to a
+/// unary RPC fetch. Guards against a silently stalled subscription wedging ingestion.
+const STREAM_WAIT_TICKS_BEFORE_FALLBACK: u32 = 3;
+
+/// Shared state between the background subscription task and `fetch` callers.
+struct StreamBuffer {
+    /// Streamed checkpoints keyed by sequence number, capped at `STREAM_BUFFER_CAP` (evict
+    /// oldest on insert).
+    checkpoints: Mutex<BTreeMap<u64, Arc<Checkpoint>>>,
+    /// Highest cursor observed on the stream; 0 until the first checkpoint arrives.
+    tip: AtomicU64,
+    /// Notifies `fetch` waiters whenever a checkpoint lands in `checkpoints`.
+    notify: Notify,
+}
+
+/// A gRPC streaming ingestion client. A background task subscribes to the fullnode's
+/// `SubscriptionService::subscribe_checkpoints` and feeds a bounded buffer; `fetch` serves
+/// live checkpoints from that buffer and falls back to unary `get_checkpoint` for any
+/// checkpoint behind the streamed window (backfill).
+///
+/// This is the soma equivalent of Sui's `streaming_client.rs` + the broadcaster's
+/// streaming/RPC fallback ladder, collapsed into a single `IngestionClientTrait` impl so it
+/// drops into the existing broadcaster without reshaping it.
+struct StreamingIngestionClient {
+    /// Unary fallback, used for checkpoints below the streamed window.
+    rpc: RpcIngestionClient,
+    buffer: Arc<StreamBuffer>,
+}
+
+impl StreamingIngestionClient {
+    fn new(url: &Url) -> IngestionResult<Self> {
+        let rpc = RpcIngestionClient::new(url)?;
+        let buffer = Arc::new(StreamBuffer {
+            checkpoints: Mutex::new(BTreeMap::new()),
+            tip: AtomicU64::new(0),
+            notify: Notify::new(),
+        });
+
+        let endpoint = tonic::transport::Endpoint::from_shared(url.to_string())
+            .map_err(|e| IngestionError::FetchError(0, e.into()))?;
+        tokio::spawn(Self::subscription_loop(endpoint, buffer.clone()));
+
+        Ok(Self { rpc, buffer })
+    }
+
+    /// Background task: keep a `subscribe_checkpoints` stream open, reconnecting forever on
+    /// error, and feed every checkpoint it yields into the shared buffer.
+    async fn subscription_loop(endpoint: tonic::transport::Endpoint, buffer: Arc<StreamBuffer>) {
+        use rpc::proto::soma::subscription_service_client::SubscriptionServiceClient;
+        use rpc::proto::soma::SubscribeCheckpointsRequest;
+
+        loop {
+            let channel = match endpoint.connect().await {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("checkpoint subscription connect failed, retrying: {e}");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+            let mut client = SubscriptionServiceClient::new(channel)
+                // Checkpoints can be large; lift the 4MB default decode cap.
+                .max_decoding_message_size(256 * 1024 * 1024);
+
+            let mut request = SubscribeCheckpointsRequest::default();
+            request.read_mask = Some(prost_types::FieldMask {
+                paths: [
+                    "sequence_number",
+                    "digest",
+                    "summary",
+                    "signature",
+                    "contents",
+                    "transactions",
+                    "objects",
+                ]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            });
+
+            let mut stream = match client.subscribe_checkpoints(request).await {
+                Ok(response) => response.into_inner(),
+                Err(status) => {
+                    warn!("subscribe_checkpoints failed, retrying: {status}");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+
+            info!("checkpoint subscription established");
+            loop {
+                match stream.message().await {
+                    Ok(Some(response)) => {
+                        let Some(cursor) = response.cursor else { continue };
+                        let Some(proto_checkpoint) = response.checkpoint else { continue };
+                        match Checkpoint::try_from(&proto_checkpoint) {
+                            Ok(checkpoint) => {
+                                let mut buf = buffer.checkpoints.lock().unwrap();
+                                if buf.len() >= STREAM_BUFFER_CAP {
+                                    buf.pop_first();
+                                }
+                                buf.insert(cursor, Arc::new(checkpoint));
+                                drop(buf);
+                                buffer.tip.fetch_max(cursor, Ordering::SeqCst);
+                                buffer.notify.notify_waiters();
+                            }
+                            Err(e) => {
+                                // A malformed streamed checkpoint is permanent — log and skip;
+                                // the unary backfill path will re-fetch it if still needed.
+                                error!(cursor, "failed to decode streamed checkpoint: {e}");
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        warn!("checkpoint subscription stream ended, reconnecting");
+                        break;
+                    }
+                    Err(status) => {
+                        warn!("checkpoint subscription stream error, reconnecting: {status}");
+                        break;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+}
+
+#[async_trait]
+impl IngestionClientTrait for StreamingIngestionClient {
+    async fn fetch(&self, checkpoint: u64) -> FetchResult {
+        let mut ticks: u32 = 0;
+        loop {
+            // Register for notification before checking the buffer, so a checkpoint landing
+            // between the check and the await is not missed.
+            let notified = self.buffer.notify.notified();
+
+            if let Some(cp) = self.buffer.checkpoints.lock().unwrap().remove(&checkpoint) {
+                return Ok(FetchData::Checkpoint((*cp).clone()));
+            }
+
+            let tip = self.buffer.tip.load(Ordering::SeqCst);
+
+            // Below the streamed window (or stream not yet producing): backfill via unary RPC.
+            if tip == 0 || checkpoint < tip {
+                return self.rpc.fetch(checkpoint).await;
+            }
+
+            // At or ahead of the tip — the stream will deliver it. Wait, but don't wait
+            // forever: if the subscription has silently stalled, fall back to unary RPC.
+            tokio::select! {
+                _ = notified => {}
+                _ = tokio::time::sleep(STREAM_WAIT_TICK) => {
+                    ticks += 1;
+                    if ticks >= STREAM_WAIT_TICKS_BEFORE_FALLBACK {
+                        return self.rpc.fetch(checkpoint).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct IngestionClient {
     client: Arc<dyn IngestionClientTrait>,
@@ -202,10 +482,16 @@ impl IngestionClient {
         } else if let Some(path) = args.local_ingestion_path.as_ref() {
             let store = LocalFileSystem::new_with_prefix(path).map(Arc::new)?;
             IngestionClient::with_store(store, metrics.clone())?
+        } else if let Some(url) = args.rpc_api_url.as_ref() {
+            let client = Arc::new(RpcIngestionClient::new(url)?);
+            IngestionClient::new_impl(client, metrics.clone())
+        } else if let Some(url) = args.streaming_url.as_ref() {
+            let client = Arc::new(StreamingIngestionClient::new(url)?);
+            IngestionClient::new_impl(client, metrics.clone())
         } else {
             panic!(
-                "One of remote_store_url, remote_store_s3, remote_store_gcs, or \
-                local_ingestion_path must be provided"
+                "One of remote_store_url, remote_store_s3, remote_store_gcs, \
+                local_ingestion_path, rpc_api_url, or streaming_url must be provided"
             );
         };
 
@@ -301,12 +587,28 @@ impl IngestionClient {
                     FetchData::Raw(bytes) => {
                         self.metrics.total_ingested_bytes.inc_by(bytes.len() as u64);
 
+                        // Decode failures (zstd, prost, proto→Checkpoint conversion) are
+                        // permanent: the bytes in the bucket are what they are, and no number
+                        // of retries will make them decodable. Treating them as transient
+                        // burns CPU forever on a single bad blob and freezes the watermark
+                        // (the v0.1.21 incident). Sui upstream has the same bug
+                        // (sui-indexer-alt-framework/src/ingestion/ingestion_client.rs);
+                        // PR the fix there once we have stability data.
                         decode::checkpoint(&bytes).map_err(|e| {
-                            self.metrics.inc_retry(
+                            let reason = e.reason();
+                            error!(
                                 checkpoint,
-                                e.reason(),
-                                IngestionError::DeserializationError(checkpoint, e.into()),
-                            )
+                                reason,
+                                "Permanent decode error: {e}"
+                            );
+                            self.metrics
+                                .total_ingested_permanent_errors
+                                .with_label_values(&[reason])
+                                .inc();
+                            BE::permanent(IngestionError::DeserializationError(
+                                checkpoint,
+                                e.into(),
+                            ))
                         })?
                     }
                     FetchData::Checkpoint(data) => data,
@@ -336,5 +638,70 @@ impl IngestionClient {
         self.metrics.total_ingested_objects.inc_by(data.object_set.len() as u64);
 
         Ok(Arc::new(data))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::tests::test_ingestion_metrics;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    /// A test client that always returns the same raw bytes and counts how often it is called.
+    struct StubBytesClient {
+        bytes: Bytes,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl IngestionClientTrait for StubBytesClient {
+        async fn fetch(&self, _checkpoint: u64) -> FetchResult {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(FetchData::Raw(self.bytes.clone()))
+        }
+    }
+
+    /// Decode failures (zstd, prost, proto→Checkpoint) must terminate the fetch — not retry
+    /// forever. Regression for the v0.1.21 incident: a truncated blob in the bucket caused the
+    /// indexer to burn CPU on infinite retries and freeze the watermark until operators
+    /// bounced it.
+    #[tokio::test(start_paused = true)]
+    async fn decode_failures_terminate_fetch() {
+        // Invalid zstd magic bytes — `decode::checkpoint` calls `decode_checkpoint` which
+        // attempts zstd decompression first, so this fails at the Decompression stage.
+        let client = Arc::new(StubBytesClient {
+            bytes: Bytes::from_static(b"not-zstd-not-prost-just-garbage"),
+            calls: AtomicUsize::new(0),
+        });
+
+        let metrics = test_ingestion_metrics();
+        let ingestion_client =
+            IngestionClient::new_impl(client.clone(), metrics.clone());
+
+        // If decode were transient (the bug), the exponential backoff would retry up to
+        // MAX_TRANSIENT_RETRY_INTERVAL forever. Cap the test with a deadline that is more
+        // than enough for a permanent error to short-circuit, but small enough that the
+        // bug-regressed code would visibly hang against it.
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            ingestion_client.fetch(42),
+        )
+        .await
+        .expect("fetch should terminate quickly on decode failure, not retry forever");
+
+        let err = result.expect_err("expected decode failure");
+        assert!(
+            matches!(err, IngestionError::DeserializationError(42, _)),
+            "expected DeserializationError(42, _), got: {err:?}",
+        );
+
+        // Permanent classification means the client is called exactly once — no retries.
+        assert_eq!(
+            client.calls.load(Ordering::SeqCst),
+            1,
+            "decode failures must not trigger retries",
+        );
     }
 }

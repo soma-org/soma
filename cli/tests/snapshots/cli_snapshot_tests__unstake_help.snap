@@ -1,15 +1,15 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 186
 expression: stdout
 ---
 Withdraw staked SOMA
 
-Usage: soma unstake [OPTIONS] <STAKED_SOMA_ID>
-
-Arguments:
-  <STAKED_SOMA_ID>  StakedSoma object ID to withdraw
+Usage: soma unstake [OPTIONS] --pool <POOL>
 
 Options:
+      --pool <POOL>                     StakingPool ObjectID. Use `soma stakes` to list yours
+      --amount <AMOUNT>                 Amount to withdraw in SOMA. Omit to drain the entire row
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
       --simulate                        Perform a dry run (simulation) of the transaction, without executing it
       --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
@@ -18,4 +18,5 @@ Options:
   -h, --help                            Print help
 
 EXAMPLES:
-    soma unstake 0xSTAKED_SOMA_ID
+    soma unstake --pool 0xPOOL_ID
+    soma unstake --pool 0xPOOL_ID --amount 5

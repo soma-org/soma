@@ -211,6 +211,11 @@ impl From<crate::types::ChangedObject> for ChangedObject {
                 message.output_owner = Some(owner.into());
                 OutputObjectState::ObjectWrite
             }
+            crate::types::ObjectOut::AccumulatorWriteV1 { operation, amount } => {
+                message.accumulator_operation = Some(operation);
+                message.accumulator_amount = Some(amount);
+                OutputObjectState::AccumulatorWriteV1
+            }
 
             _ => OutputObjectState::Unknown,
         };
@@ -285,6 +290,16 @@ impl TryFrom<&ChangedObject> for crate::types::ChangedObject {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("owner"))?
                     .try_into()?,
+            },
+            OutputObjectState::AccumulatorWriteV1 => crate::types::ObjectOut::AccumulatorWriteV1 {
+                operation: value
+                    .accumulator_operation
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("accumulator_operation"))?
+                    .clone(),
+                amount: value
+                    .accumulator_amount
+                    .ok_or_else(|| TryFromProtoError::missing("accumulator_amount"))?,
             },
         };
 
@@ -421,12 +436,7 @@ impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
 
 impl From<crate::types::TransactionFee> for TransactionFee {
     fn from(value: crate::types::TransactionFee) -> Self {
-        Self {
-            base_fee: Some(value.base_fee),
-            operation_fee: Some(value.operation_fee),
-            value_fee: Some(value.value_fee),
-            total_fee: Some(value.total_fee),
-        }
+        Self { total_fee: Some(value.total_fee) }
     }
 }
 
@@ -435,11 +445,6 @@ impl TryFrom<&TransactionFee> for crate::types::TransactionFee {
 
     fn try_from(value: &TransactionFee) -> Result<Self, Self::Error> {
         Ok(Self {
-            base_fee: value.base_fee.ok_or_else(|| TryFromProtoError::missing("base_fee"))?,
-            operation_fee: value
-                .operation_fee
-                .ok_or_else(|| TryFromProtoError::missing("operation_fee"))?,
-            value_fee: value.value_fee.ok_or_else(|| TryFromProtoError::missing("value_fee"))?,
             total_fee: value.total_fee.ok_or_else(|| TryFromProtoError::missing("total_fee"))?,
         })
     }
