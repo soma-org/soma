@@ -145,6 +145,146 @@ fn backpressured_checkpoint_stream(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingestion::ingestion_client::FetchData;
+    use crate::ingestion::ingestion_client::FetchError;
+    use crate::ingestion::ingestion_client::FetchResult;
+    use crate::ingestion::ingestion_client::IngestionClientTrait;
+    use crate::ingestion::test_utils::test_checkpoint;
+    use crate::metrics::tests::test_ingestion_metrics;
+    use async_trait::async_trait;
+    use std::collections::HashSet;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
+
+    /// A client that serves real test checkpoints, and (optionally) reports the highest
+    /// checkpoint it has been asked for — used to assert the broadcaster's back-pressure
+    /// window holds.
+    struct TestClient {
+        /// Checkpoints at or above this number are reported `NotFound` (simulates the tip).
+        end: u64,
+        highest_requested: AtomicU64,
+    }
+
+    impl TestClient {
+        fn new(end: u64) -> Self {
+            Self { end, highest_requested: AtomicU64::new(0) }
+        }
+    }
+
+    #[async_trait]
+    impl IngestionClientTrait for TestClient {
+        async fn fetch(&self, checkpoint: u64) -> FetchResult {
+            self.highest_requested.fetch_max(checkpoint, Ordering::SeqCst);
+            if checkpoint >= self.end {
+                return Err(FetchError::NotFound);
+            }
+            Ok(FetchData::Checkpoint(test_checkpoint(checkpoint)))
+        }
+    }
+
+    fn client(end: u64) -> (IngestionClient, Arc<TestClient>) {
+        let inner = Arc::new(TestClient::new(end));
+        let client = IngestionClient::new_impl(inner.clone(), test_ingestion_metrics());
+        (client, inner)
+    }
+
+    /// A bounded range is broadcast in full: the subscriber receives exactly the checkpoints
+    /// in `[start, end)`.
+    #[tokio::test]
+    async fn broadcasts_full_bounded_range() {
+        let (client, _) = client(100);
+        let (tx, mut rx) = mpsc::channel(64);
+        let (_commit_tx, commit_rx) = mpsc::unbounded_channel();
+
+        let mut service = broadcaster(
+            0..5,
+            None,
+            IngestionConfig::default(),
+            client,
+            commit_rx,
+            vec![tx],
+            test_ingestion_metrics(),
+        );
+
+        let mut received = HashSet::new();
+        while let Some(cp) = rx.recv().await {
+            received.insert(cp.summary.sequence_number);
+        }
+        service.join().await.unwrap();
+
+        assert_eq!(received, HashSet::from([0, 1, 2, 3, 4]));
+    }
+
+    /// Every subscriber receives every checkpoint in the range.
+    #[tokio::test]
+    async fn every_subscriber_gets_every_checkpoint() {
+        let (client, _) = client(100);
+        let (tx1, mut rx1) = mpsc::channel(64);
+        let (tx2, mut rx2) = mpsc::channel(64);
+        let (_commit_tx, commit_rx) = mpsc::unbounded_channel();
+
+        let mut service = broadcaster(
+            0..4,
+            None,
+            IngestionConfig::default(),
+            client,
+            commit_rx,
+            vec![tx1, tx2],
+            test_ingestion_metrics(),
+        );
+
+        let mut a = HashSet::new();
+        while let Some(cp) = rx1.recv().await {
+            a.insert(cp.summary.sequence_number);
+        }
+        let mut b = HashSet::new();
+        while let Some(cp) = rx2.recv().await {
+            b.insert(cp.summary.sequence_number);
+        }
+        service.join().await.unwrap();
+
+        assert_eq!(a, HashSet::from([0, 1, 2, 3]));
+        assert_eq!(b, HashSet::from([0, 1, 2, 3]));
+    }
+
+    /// With a sequential pipeline registered, ingestion is back-pressured: the broadcaster
+    /// must not run more than `checkpoint_buffer_size` ahead of the subscriber's committed
+    /// watermark. Here the subscriber never reports progress, so ingestion is pinned to the
+    /// initial window and never reaches the far end of the range.
+    #[tokio::test(start_paused = true)]
+    async fn back_pressure_caps_ingestion_window() {
+        let (client, inner) = client(10_000);
+        let (tx, _rx) = mpsc::channel(8);
+        let (_commit_tx, commit_rx) = mpsc::unbounded_channel();
+
+        let config = IngestionConfig { checkpoint_buffer_size: 10, ..IngestionConfig::default() };
+
+        // next_sequential_checkpoint = Some(0) turns on the ingest_hi back-pressure gate.
+        let _service = broadcaster(
+            0..10_000,
+            Some(0),
+            config,
+            client,
+            commit_rx,
+            vec![tx],
+            test_ingestion_metrics(),
+        );
+
+        // Let the broadcaster run; with no subscriber progress it should stall against the
+        // back-pressure window well short of the 10_000-checkpoint range end.
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        let highest = inner.highest_requested.load(Ordering::SeqCst);
+        assert!(
+            highest < 1_000,
+            "back-pressure should pin ingestion near the buffer window, got {highest}",
+        );
+    }
+}
+
 /// Fetch and broadcasts checkpoints from a range [start..end) to subscribers.
 fn ingest_and_broadcast_range(
     start: u64,

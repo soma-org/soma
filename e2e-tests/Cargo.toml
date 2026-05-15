@@ -22,6 +22,8 @@ fastcrypto.workspace = true
 soma-keys.workspace = true
 sdk.workspace = true
 tempfile.workspace = true
+indexer-framework.workspace = true
+prometheus.workspace = true
 
 [lints]
 workspace = true

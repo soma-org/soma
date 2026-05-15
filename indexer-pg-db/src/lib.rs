@@ -53,6 +53,13 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    pipeline_chain_ids (pipeline) {
+        pipeline -> Text,
+        chain_id -> Bytea,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
@@ -220,14 +227,21 @@ impl store::Connection for Connection<'_> {
     async fn init_watermark(
         &mut self,
         pipeline_task: &str,
-        default_next_checkpoint: u64,
-    ) -> anyhow::Result<Option<u64>> {
+        checkpoint_hi_inclusive_hint: Option<u64>,
+    ) -> anyhow::Result<Option<store::InitWatermark>> {
+        // The hint behaves like soma's previous `default_next_checkpoint = hint + 1`. Treat None
+        // and Some(0) the same — both mean "start from genesis" — and don't create a row with
+        // checkpoint_hi_inclusive = -1.
+        let default_next_checkpoint = checkpoint_hi_inclusive_hint.map_or(0, |c| c + 1);
         let Some(checkpoint_hi_inclusive) = default_next_checkpoint.checked_sub(1) else {
-            // Do not create a watermark record with checkpoint_hi_inclusive = -1.
+            // Delegate to the existing watermark — return its checkpoint if any.
             return Ok(self
                 .committer_watermark(pipeline_task)
                 .await?
-                .map(|w| w.checkpoint_hi_inclusive));
+                .map(|w| store::InitWatermark {
+                    checkpoint_hi_inclusive: Some(w.checkpoint_hi_inclusive),
+                    reader_lo: None,
+                }));
         };
 
         let stored = StoredWatermark {
@@ -245,16 +259,43 @@ impl store::Connection for Connection<'_> {
         let checkpoint_hi: i64 = diesel::insert_into(watermarks::table)
             .values(&stored)
             .on_conflict(watermarks::pipeline)
-            // Use `do_update` instead of `do_nothing` so that `returning` works.
             .do_update()
-            // Set the pipeline to itself (nothing changes) to satisfy the requirement
-            // that at least one column is updated.
             .set(watermarks::pipeline.eq(excluded(watermarks::pipeline)))
             .returning(watermarks::checkpoint_hi_inclusive)
             .get_result(self.deref_mut())
             .await?;
 
-        Ok(Some(checkpoint_hi as u64))
+        Ok(Some(store::InitWatermark {
+            checkpoint_hi_inclusive: Some(checkpoint_hi as u64),
+            reader_lo: Some(default_next_checkpoint),
+        }))
+    }
+
+    async fn accepts_chain_id(
+        &mut self,
+        pipeline_task: &str,
+        chain_id: [u8; 32],
+    ) -> anyhow::Result<bool> {
+        // First writer for this pipeline records the chain id; later calls compare. A
+        // create-if-absent insert plus a read makes this safe under concurrent first-starts:
+        // exactly one INSERT wins, everyone then reads the same stored value.
+        diesel::insert_into(pipeline_chain_ids::table)
+            .values((
+                pipeline_chain_ids::pipeline.eq(pipeline_task),
+                pipeline_chain_ids::chain_id.eq(chain_id.as_slice()),
+            ))
+            .on_conflict(pipeline_chain_ids::pipeline)
+            .do_nothing()
+            .execute(self.deref_mut())
+            .await?;
+
+        let stored: Vec<u8> = pipeline_chain_ids::table
+            .select(pipeline_chain_ids::chain_id)
+            .filter(pipeline_chain_ids::pipeline.eq(pipeline_task))
+            .first(self.deref_mut())
+            .await?;
+
+        Ok(stored.as_slice() == chain_id.as_slice())
     }
 
     async fn committer_watermark(
@@ -274,59 +315,10 @@ impl store::Connection for Connection<'_> {
             .optional()?;
 
         Ok(watermark.map(|(epoch, cp, tx, ts)| store::CommitterWatermark {
-            epoch: epoch as u64,
+            epoch_hi_inclusive: epoch as u64,
             checkpoint_hi_inclusive: cp as u64,
             tx_hi: tx as u64,
             timestamp_ms_hi_inclusive: ts as u64,
-        }))
-    }
-
-    async fn reader_watermark(
-        &mut self,
-        pipeline: &'static str,
-    ) -> anyhow::Result<Option<store::ReaderWatermark>> {
-        let watermark: Option<(i64, i64)> = watermarks::table
-            .select((watermarks::checkpoint_hi_inclusive, watermarks::reader_lo))
-            .filter(watermarks::pipeline.eq(pipeline))
-            .first(self.deref_mut())
-            .await
-            .optional()?;
-
-        Ok(watermark.map(|(cp, lo)| store::ReaderWatermark {
-            checkpoint_hi_inclusive: cp as u64,
-            reader_lo: lo as u64,
-        }))
-    }
-
-    async fn pruner_watermark(
-        &mut self,
-        pipeline: &'static str,
-        delay: Duration,
-    ) -> anyhow::Result<Option<store::PrunerWatermark>> {
-        // Compute the remaining wait time server-side:
-        //
-        //   wait_for = delay + (pruner_timestamp - NOW())
-        //
-        // If negative the pruner may proceed immediately.
-        let wait_for_ms_expr = diesel::dsl::sql::<BigInt>(&format!(
-            "CAST({} + 1000 * EXTRACT(EPOCH FROM pruner_timestamp - NOW()) AS BIGINT)",
-            delay.as_millis() as i64,
-        ));
-
-        let watermark: Option<(i64, i64, i64)> = watermarks::table
-            .select((wait_for_ms_expr, watermarks::pruner_hi, watermarks::reader_lo))
-            .filter(watermarks::pipeline.eq(pipeline))
-            .first(self.deref_mut())
-            .await
-            .optional()?;
-
-        Ok(watermark.map(|(wait_for_ms, hi, lo)| {
-            let wait_for = if wait_for_ms > 0 {
-                Duration::from_millis(wait_for_ms as u64)
-            } else {
-                Duration::ZERO
-            };
-            store::PrunerWatermark { wait_for, reader_lo: lo as u64, pruner_hi: hi as u64 }
         }))
     }
 
@@ -337,7 +329,7 @@ impl store::Connection for Connection<'_> {
     ) -> anyhow::Result<bool> {
         let stored = StoredWatermark {
             pipeline: pipeline_task.to_string(),
-            epoch_hi_inclusive: watermark.epoch as i64,
+            epoch_hi_inclusive: watermark.epoch_hi_inclusive as i64,
             checkpoint_hi_inclusive: watermark.checkpoint_hi_inclusive as i64,
             tx_hi: watermark.tx_hi as i64,
             timestamp_ms_hi_inclusive: watermark.timestamp_ms_hi_inclusive as i64,
@@ -363,6 +355,51 @@ impl store::Connection for Connection<'_> {
         .await?;
 
         Ok(rows_affected > 0)
+    }
+}
+
+#[async_trait]
+impl store::ConcurrentConnection for Connection<'_> {
+    async fn reader_watermark(
+        &mut self,
+        pipeline: &str,
+    ) -> anyhow::Result<Option<store::ReaderWatermark>> {
+        let watermark: Option<(i64, i64)> = watermarks::table
+            .select((watermarks::checkpoint_hi_inclusive, watermarks::reader_lo))
+            .filter(watermarks::pipeline.eq(pipeline))
+            .first(self.deref_mut())
+            .await
+            .optional()?;
+
+        Ok(watermark.map(|(cp, lo)| store::ReaderWatermark {
+            checkpoint_hi_inclusive: cp as u64,
+            reader_lo: lo as u64,
+        }))
+    }
+
+    async fn pruner_watermark(
+        &mut self,
+        pipeline: &'static str,
+        delay: Duration,
+    ) -> anyhow::Result<Option<store::PrunerWatermark>> {
+        // wait_for_ms = delay_ms + (pruner_timestamp - NOW())_ms — negative means already ready.
+        let wait_for_ms_expr = diesel::dsl::sql::<BigInt>(&format!(
+            "CAST({} + 1000 * EXTRACT(EPOCH FROM pruner_timestamp - NOW()) AS BIGINT)",
+            delay.as_millis() as i64,
+        ));
+
+        let watermark: Option<(i64, i64, i64)> = watermarks::table
+            .select((wait_for_ms_expr, watermarks::pruner_hi, watermarks::reader_lo))
+            .filter(watermarks::pipeline.eq(pipeline))
+            .first(self.deref_mut())
+            .await
+            .optional()?;
+
+        Ok(watermark.map(|(wait_for_ms, hi, lo)| store::PrunerWatermark {
+            wait_for_ms,
+            reader_lo: lo as u64,
+            pruner_hi: hi as u64,
+        }))
     }
 
     async fn set_reader_watermark(
@@ -397,6 +434,9 @@ impl store::Connection for Connection<'_> {
 }
 
 #[async_trait]
+impl store::SequentialConnection for Connection<'_> {}
+
+#[async_trait]
 impl store::Store for Db {
     type Connection<'c> = Connection<'c>;
 
@@ -406,15 +446,21 @@ impl store::Store for Db {
 }
 
 #[async_trait]
-impl store::TransactionalStore for Db {
-    async fn transaction<'a, T, F>(&self, f: F) -> anyhow::Result<T>
+impl store::ConcurrentStore for Db {
+    type ConcurrentConnection<'c> = Connection<'c>;
+}
+
+#[async_trait]
+impl store::SequentialStore for Db {
+    type SequentialConnection<'c> = Connection<'c>;
+
+    async fn transaction<'a, R, F>(&self, f: F) -> anyhow::Result<R>
     where
-        T: Send + 'a,
+        R: Send + 'a,
+        F: Send + 'a,
         F: for<'r> FnOnce(
-                &'r mut Self::Connection<'_>,
-            ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<T>>
-            + Send
-            + 'a,
+            &'r mut Self::Connection<'_>,
+        ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<R>>,
     {
         let mut conn = self.connect().await?;
         conn.transaction(f).await

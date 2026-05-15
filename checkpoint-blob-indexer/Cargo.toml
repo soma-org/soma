@@ -1,0 +1,45 @@
+[package]
+name = "checkpoint-blob-indexer"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "checkpoint_blob_indexer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "checkpoint-blob-indexer"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+clap.workspace = true
+humantime = "2"
+# telemetry-subscribers replaced by tracing-subscriber for the blob-indexer's --help support;
+# the indexer process is otherwise driven from outside.
+indexer-alt-object-store.workspace = true
+indexer-framework.workspace = true
+indexer-store-traits.workspace = true
+object_store.workspace = true
+prometheus.workspace = true
+prost = "0.13.5"
+reqwest.workspace = true
+rpc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+soma-default-config.workspace = true
+soma-indexer-alt-metrics.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio.workspace = true
+toml = "0.8"
+tracing.workspace = true
+types.workspace = true
+url.workspace = true
+zstd.workspace = true
+
+[lints]
+workspace = true

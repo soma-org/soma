@@ -13,6 +13,7 @@ use tracing::warn;
 use crate::metrics::IndexerMetrics;
 use crate::pipeline::concurrent::Handler;
 use crate::pipeline::concurrent::PrunerConfig;
+use crate::store::ConcurrentConnection;
 use crate::store::Connection;
 use crate::store::Store;
 

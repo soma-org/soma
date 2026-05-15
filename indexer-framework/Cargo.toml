@@ -25,9 +25,11 @@ soma-futures.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tonic = { version = "0.13", default-features = false, features = ["transport", "codegen", "prost"] }
 tracing.workspace = true
 types.workspace = true
 url.workspace = true
+prost-types = "0.13.5"
 
 [features]
 default = []

@@ -390,7 +390,7 @@ impl BigTableIndexer {
 impl From<indexer_store_traits::CommitterWatermark> for Watermark {
     fn from(w: indexer_store_traits::CommitterWatermark) -> Self {
         Self {
-            epoch_hi_inclusive: w.epoch,
+            epoch_hi_inclusive: w.epoch_hi_inclusive,
             checkpoint_hi_inclusive: w.checkpoint_hi_inclusive,
             tx_hi: w.tx_hi,
             timestamp_ms_hi_inclusive: w.timestamp_ms_hi_inclusive,
@@ -401,7 +401,7 @@ impl From<indexer_store_traits::CommitterWatermark> for Watermark {
 impl From<Watermark> for indexer_store_traits::CommitterWatermark {
     fn from(w: Watermark) -> Self {
         Self {
-            epoch: w.epoch_hi_inclusive,
+            epoch_hi_inclusive: w.epoch_hi_inclusive,
             checkpoint_hi_inclusive: w.checkpoint_hi_inclusive,
             tx_hi: w.tx_hi,
             timestamp_ms_hi_inclusive: w.timestamp_ms_hi_inclusive,
