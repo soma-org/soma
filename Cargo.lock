@@ -4386,7 +4386,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dashmap",
  "scoped-futures",
+ "tokio",
 ]
 
 [[package]]
