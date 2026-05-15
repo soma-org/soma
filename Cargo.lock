@@ -2065,6 +2065,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "checkpoint-blob-indexer"
+version = "0.1.21"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "clap",
+ "humantime",
+ "indexer-alt-object-store",
+ "indexer-framework",
+ "indexer-store-traits",
+ "object_store",
+ "prometheus",
+ "prost 0.13.5",
+ "reqwest 0.12.28",
+ "rpc",
+ "serde",
+ "serde_json",
+ "soma-default-config",
+ "soma-indexer-alt-metrics",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "types",
+ "url",
+ "zstd",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7678,6 +7708,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soma-default-config"
+version = "0.1.21"
+dependencies = [
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "soma-field-count"
 version = "0.1.21"
 dependencies = [
@@ -7759,6 +7797,19 @@ dependencies = [
  "tokio-rustls",
  "tokio-util 0.7.18",
  "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
+name = "soma-indexer-alt-metrics"
+version = "0.1.21"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "prometheus",
+ "soma-futures",
+ "tokio",
  "tracing",
 ]
 

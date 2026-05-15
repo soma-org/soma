@@ -30,6 +30,9 @@ members = [
   "indexer-alt",
   "indexer-alt-object-store",
   "indexer-kvstore",
+  "soma-default-config",
+  "soma-indexer-alt-metrics",
+  "checkpoint-blob-indexer",
   "soma-graphql",
   "indexer-e2e-tests",
   "soma-tool",
@@ -117,6 +120,9 @@ indexer-alt-schema = { path = "indexer-alt-schema" }
 indexer-alt = { path = "indexer-alt" }
 indexer-alt-object-store = { path = "indexer-alt-object-store" }
 indexer-kvstore = { path = "indexer-kvstore" }
+soma-default-config = { path = "soma-default-config" }
+soma-indexer-alt-metrics = { path = "soma-indexer-alt-metrics" }
+checkpoint-blob-indexer = { path = "checkpoint-blob-indexer" }
 soma-graphql = { path = "soma-graphql" }
 bridge-node = { path = "bridge-node" }
 inference = { path = "inference" }

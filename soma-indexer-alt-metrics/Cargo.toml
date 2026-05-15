@@ -1,0 +1,17 @@
+[package]
+name = "soma-indexer-alt-metrics"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+prometheus.workspace = true
+soma-futures.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
