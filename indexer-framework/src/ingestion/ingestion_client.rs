@@ -63,6 +63,11 @@ pub struct IngestionClientArgs {
     #[arg(long, group = "source")]
     pub local_ingestion_path: Option<PathBuf>,
 
+    /// Fetch checkpoints directly from a fullnode's gRPC `LedgerService` (unary
+    /// `get_checkpoint`). Provide the gRPC base URL, e.g. `http://fullnode:9000`.
+    #[arg(long, group = "source")]
+    pub rpc_api_url: Option<Url>,
+
     /// How long to wait for a checkpoint file to be downloaded (milliseconds). Set to 0 to disable
     /// the timeout.
     #[arg(long, default_value_t = Self::default().checkpoint_timeout_ms)]
@@ -81,6 +86,7 @@ impl Default for IngestionClientArgs {
             remote_store_s3: None,
             remote_store_gcs: None,
             local_ingestion_path: None,
+            rpc_api_url: None,
             checkpoint_timeout_ms: 120_000,
             checkpoint_connection_timeout_ms: 120_000,
         }
@@ -163,6 +169,94 @@ impl IngestionClientTrait for StoreIngestionClient {
     }
 }
 
+/// A gRPC-backed ingestion client that fetches checkpoints directly from a fullnode's
+/// `LedgerService` via the unary `get_checkpoint` RPC.
+///
+/// This is the soma equivalent of Sui's `rpc_client.rs` ingestion source. It does not stream;
+/// each call opens (or reuses) a channel and issues one `get_checkpoint`. Streaming via
+/// `SubscriptionService::subscribe_checkpoints` is a separate, larger piece of work that also
+/// requires the broadcaster's fallback ladder.
+struct RpcIngestionClient {
+    endpoint: tonic::transport::Endpoint,
+}
+
+impl RpcIngestionClient {
+    fn new(url: &Url) -> IngestionResult<Self> {
+        let endpoint = tonic::transport::Endpoint::from_shared(url.to_string())
+            .map_err(|e| IngestionError::FetchError(0, e.into()))?;
+        Ok(Self { endpoint })
+    }
+}
+
+#[async_trait]
+impl IngestionClientTrait for RpcIngestionClient {
+    async fn fetch(&self, checkpoint: u64) -> FetchResult {
+        use rpc::proto::soma::get_checkpoint_request::CheckpointId;
+        use rpc::proto::soma::ledger_service_client::LedgerServiceClient;
+        use rpc::proto::soma::GetCheckpointRequest;
+
+        let channel = self
+            .endpoint
+            .connect()
+            .await
+            .map_err(|e| FetchError::Transient { reason: "grpc_connect", error: e.into() })?;
+        let mut client = LedgerServiceClient::new(channel);
+
+        // Request every top-level field so the response carries a full checkpoint. The server's
+        // default mask is just `sequence_number,digest`, which would not be ingestable.
+        // GetCheckpointRequest is #[non_exhaustive] — build it field-by-field.
+        let mut request = GetCheckpointRequest::default();
+        request.read_mask = Some(prost_types::FieldMask {
+            paths: [
+                "sequence_number",
+                "digest",
+                "summary",
+                "signature",
+                "contents",
+                "transactions",
+                "objects",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        });
+        request.checkpoint_id = Some(CheckpointId::SequenceNumber(checkpoint));
+
+        let response = client.get_checkpoint(request).await.map_err(|status| {
+            match status.code() {
+                tonic::Code::NotFound => FetchError::NotFound,
+                _ => FetchError::Transient {
+                    reason: "grpc",
+                    error: anyhow::anyhow!(status),
+                },
+            }
+        })?;
+
+        let proto_checkpoint = response.into_inner().checkpoint.ok_or_else(|| {
+            FetchError::Permanent {
+                reason: "missing_checkpoint",
+                error: anyhow::anyhow!("get_checkpoint response had no checkpoint"),
+            }
+        })?;
+
+        // Proto→Checkpoint conversion is multi-ms of CPU; offload to the blocking pool so it
+        // doesn't stall the reactor. A conversion failure is permanent — the bytes are what
+        // they are (mirrors the decode-as-permanent fix on the object-store path).
+        let checkpoint = tokio::task::spawn_blocking(move || Checkpoint::try_from(&proto_checkpoint))
+            .await
+            .map_err(|e| FetchError::Transient {
+                reason: "decode_task",
+                error: anyhow::anyhow!("proto conversion task panicked: {e}"),
+            })?
+            .map_err(|e| FetchError::Permanent {
+                reason: "proto_conversion",
+                error: e.into(),
+            })?;
+
+        Ok(FetchData::Checkpoint(checkpoint))
+    }
+}
+
 #[derive(Clone)]
 pub struct IngestionClient {
     client: Arc<dyn IngestionClientTrait>,
@@ -202,10 +296,13 @@ impl IngestionClient {
         } else if let Some(path) = args.local_ingestion_path.as_ref() {
             let store = LocalFileSystem::new_with_prefix(path).map(Arc::new)?;
             IngestionClient::with_store(store, metrics.clone())?
+        } else if let Some(url) = args.rpc_api_url.as_ref() {
+            let client = Arc::new(RpcIngestionClient::new(url)?);
+            IngestionClient::new_impl(client, metrics.clone())
         } else {
             panic!(
-                "One of remote_store_url, remote_store_s3, remote_store_gcs, or \
-                local_ingestion_path must be provided"
+                "One of remote_store_url, remote_store_s3, remote_store_gcs, \
+                local_ingestion_path, or rpc_api_url must be provided"
             );
         };
 
