@@ -518,11 +518,6 @@ pub struct CheckpointExecutorConfig {
     /// If unspecified, this will default to `10`.
     #[serde(default = "default_local_execution_timeout_sec")]
     pub local_execution_timeout_sec: u64,
-
-    /// Optional directory used for data ingestion pipeline
-    /// When specified, each executed checkpoint will be saved in a local directory for post processing
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_ingestion_dir: Option<PathBuf>,
 }
 
 fn default_checkpoint_execution_max_concurrency() -> usize {
@@ -538,7 +533,6 @@ impl Default for CheckpointExecutorConfig {
         Self {
             checkpoint_execution_max_concurrency: default_checkpoint_execution_max_concurrency(),
             local_execution_timeout_sec: default_local_execution_timeout_sec(),
-            data_ingestion_dir: None,
         }
     }
 }
@@ -653,10 +647,7 @@ impl ValidatorConfigBuilder {
 
         let pruning_config = AuthorityStorePruningConfig::default();
 
-        let checkpoint_executor_config = CheckpointExecutorConfig {
-            // TODO: data_ingestion_dir: self.data_ingestion_dir,
-            ..Default::default()
-        };
+        let checkpoint_executor_config = CheckpointExecutorConfig::default();
 
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),

@@ -155,7 +155,6 @@ pub struct SwarmBuilder<R = OsRng> {
     fullnode_rpc_addr: Option<SocketAddr>,
     fullnode_rpc_config: Option<types::config::rpc_config::RpcConfig>,
     supported_protocol_versions_config: ProtocolVersionsConfig,
-    data_ingestion_dir: Option<PathBuf>,
     fullnode_run_with_range: Option<types::config::node_config::RunWithRange>,
 }
 
@@ -172,7 +171,6 @@ impl Default for SwarmBuilder {
             fullnode_rpc_addr: None,
             fullnode_rpc_config: None,
             supported_protocol_versions_config: ProtocolVersionsConfig::Default,
-            data_ingestion_dir: None,
             fullnode_run_with_range: None,
         }
     }
@@ -197,7 +195,6 @@ impl<R> SwarmBuilder<R> {
             fullnode_rpc_addr: self.fullnode_rpc_addr,
             fullnode_rpc_config: self.fullnode_rpc_config,
             supported_protocol_versions_config: self.supported_protocol_versions_config,
-            data_ingestion_dir: self.data_ingestion_dir,
             fullnode_run_with_range: self.fullnode_run_with_range,
         }
     }
@@ -303,11 +300,6 @@ impl<R> SwarmBuilder<R> {
         self
     }
 
-    pub fn with_data_ingestion_dir(mut self, path: PathBuf) -> Self {
-        self.data_ingestion_dir = Some(path);
-        self
-    }
-
     pub fn with_fullnode_run_with_range(
         mut self,
         run_with_range: types::config::node_config::RunWithRange,
@@ -343,13 +335,6 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                 .rng(self.rng)
                 .build()
         });
-
-        // Apply data_ingestion_dir to all validator configs
-        if let Some(ref dir) = self.data_ingestion_dir {
-            for config in &mut network_config.validator_configs {
-                config.checkpoint_executor_config.data_ingestion_dir = Some(dir.clone());
-            }
-        }
 
         // Create validator nodes
         let mut nodes: HashMap<_, _> = network_config
@@ -417,14 +402,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     builder = builder.with_supported_protocol_versions(versions);
                 }
 
-                let mut fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
-
-                // Apply data_ingestion_dir to fullnode config (fullnodes write all
-                // checkpoint files since they always use the synced-checkpoint path)
-                if let Some(ref dir) = self.data_ingestion_dir {
-                    fullnode_config.checkpoint_executor_config.data_ingestion_dir =
-                        Some(dir.clone());
-                }
+                let fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
 
                 info!(
                     "SwarmBuilder configuring fullnode {} ({})",
