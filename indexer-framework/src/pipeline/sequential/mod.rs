@@ -18,7 +18,7 @@ use crate::pipeline::Processor;
 use crate::pipeline::processor::processor;
 use crate::pipeline::sequential::committer::committer;
 use crate::store::Store;
-use crate::store::TransactionalStore;
+use crate::store::SequentialStore;
 use crate::types::full_checkpoint_content::Checkpoint;
 
 mod committer;
@@ -37,7 +37,7 @@ mod committer;
 /// for, and in turn the ingestion service will only run ahead by its buffer size.
 #[async_trait]
 pub trait Handler: Processor {
-    type Store: TransactionalStore;
+    type Store: SequentialStore;
 
     /// If at least this many rows are pending, the committer will commit them eagerly.
     const MIN_EAGER_ROWS: usize = 50;

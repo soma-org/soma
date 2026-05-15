@@ -15,6 +15,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::pipeline::concurrent::Handler;
+use crate::store::ConcurrentConnection;
 use crate::store::Connection;
 use crate::store::Store;
 
