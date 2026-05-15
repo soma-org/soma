@@ -53,6 +53,13 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    pipeline_chain_ids (pipeline) {
+        pipeline -> Text,
+        chain_id -> Bytea,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
@@ -266,15 +273,29 @@ impl store::Connection for Connection<'_> {
 
     async fn accepts_chain_id(
         &mut self,
-        _pipeline_task: &str,
-        _chain_id: [u8; 32],
+        pipeline_task: &str,
+        chain_id: [u8; 32],
     ) -> anyhow::Result<bool> {
-        // TODO(port): plumb chain_id through to the database. The Sui upstream stores chain_id
-        // at the object-store layer (`_metadata/chain_id/{pipeline_task}`). For postgres-backed
-        // pipelines, the structural protection in soma's redeploy is the per-genesis bucket
-        // naming (Phase 7 of the plan). Until the chain-ids table migration lands, accept all
-        // chain_ids so the pipeline runs.
-        Ok(true)
+        // First writer for this pipeline records the chain id; later calls compare. A
+        // create-if-absent insert plus a read makes this safe under concurrent first-starts:
+        // exactly one INSERT wins, everyone then reads the same stored value.
+        diesel::insert_into(pipeline_chain_ids::table)
+            .values((
+                pipeline_chain_ids::pipeline.eq(pipeline_task),
+                pipeline_chain_ids::chain_id.eq(chain_id.as_slice()),
+            ))
+            .on_conflict(pipeline_chain_ids::pipeline)
+            .do_nothing()
+            .execute(self.deref_mut())
+            .await?;
+
+        let stored: Vec<u8> = pipeline_chain_ids::table
+            .select(pipeline_chain_ids::chain_id)
+            .filter(pipeline_chain_ids::pipeline.eq(pipeline_task))
+            .first(self.deref_mut())
+            .await?;
+
+        Ok(stored.as_slice() == chain_id.as_slice())
     }
 
     async fn committer_watermark(
