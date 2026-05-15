@@ -301,12 +301,28 @@ impl IngestionClient {
                     FetchData::Raw(bytes) => {
                         self.metrics.total_ingested_bytes.inc_by(bytes.len() as u64);
 
+                        // Decode failures (zstd, prost, proto→Checkpoint conversion) are
+                        // permanent: the bytes in the bucket are what they are, and no number
+                        // of retries will make them decodable. Treating them as transient
+                        // burns CPU forever on a single bad blob and freezes the watermark
+                        // (the v0.1.21 incident). Sui upstream has the same bug
+                        // (sui-indexer-alt-framework/src/ingestion/ingestion_client.rs);
+                        // PR the fix there once we have stability data.
                         decode::checkpoint(&bytes).map_err(|e| {
-                            self.metrics.inc_retry(
+                            let reason = e.reason();
+                            error!(
                                 checkpoint,
-                                e.reason(),
-                                IngestionError::DeserializationError(checkpoint, e.into()),
-                            )
+                                reason,
+                                "Permanent decode error: {e}"
+                            );
+                            self.metrics
+                                .total_ingested_permanent_errors
+                                .with_label_values(&[reason])
+                                .inc();
+                            BE::permanent(IngestionError::DeserializationError(
+                                checkpoint,
+                                e.into(),
+                            ))
                         })?
                     }
                     FetchData::Checkpoint(data) => data,
@@ -336,5 +352,70 @@ impl IngestionClient {
         self.metrics.total_ingested_objects.inc_by(data.object_set.len() as u64);
 
         Ok(Arc::new(data))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::tests::test_ingestion_metrics;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    /// A test client that always returns the same raw bytes and counts how often it is called.
+    struct StubBytesClient {
+        bytes: Bytes,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl IngestionClientTrait for StubBytesClient {
+        async fn fetch(&self, _checkpoint: u64) -> FetchResult {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(FetchData::Raw(self.bytes.clone()))
+        }
+    }
+
+    /// Decode failures (zstd, prost, proto→Checkpoint) must terminate the fetch — not retry
+    /// forever. Regression for the v0.1.21 incident: a truncated blob in the bucket caused the
+    /// indexer to burn CPU on infinite retries and freeze the watermark until operators
+    /// bounced it.
+    #[tokio::test(start_paused = true)]
+    async fn decode_failures_terminate_fetch() {
+        // Invalid zstd magic bytes — `decode::checkpoint` calls `decode_checkpoint` which
+        // attempts zstd decompression first, so this fails at the Decompression stage.
+        let client = Arc::new(StubBytesClient {
+            bytes: Bytes::from_static(b"not-zstd-not-prost-just-garbage"),
+            calls: AtomicUsize::new(0),
+        });
+
+        let metrics = test_ingestion_metrics();
+        let ingestion_client =
+            IngestionClient::new_impl(client.clone(), metrics.clone());
+
+        // If decode were transient (the bug), the exponential backoff would retry up to
+        // MAX_TRANSIENT_RETRY_INTERVAL forever. Cap the test with a deadline that is more
+        // than enough for a permanent error to short-circuit, but small enough that the
+        // bug-regressed code would visibly hang against it.
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            ingestion_client.fetch(42),
+        )
+        .await
+        .expect("fetch should terminate quickly on decode failure, not retry forever");
+
+        let err = result.expect_err("expected decode failure");
+        assert!(
+            matches!(err, IngestionError::DeserializationError(42, _)),
+            "expected DeserializationError(42, _), got: {err:?}",
+        );
+
+        // Permanent classification means the client is called exactly once — no retries.
+        assert_eq!(
+            client.calls.load(Ordering::SeqCst),
+            1,
+            "decode failures must not trigger retries",
+        );
     }
 }
