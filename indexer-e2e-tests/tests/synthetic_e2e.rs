@@ -16,12 +16,26 @@ use std::time::Duration;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use indexer_alt_schema::schema::*;
+use std::path::Path;
+
 use indexer_e2e_tests::{OffchainCluster, write_checkpoint_file};
 use indexer_framework::IndexerArgs;
+use indexer_framework::ingestion::ClientArgs;
+use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
 use types::base::SomaAddress;
 use types::test_checkpoint_data_builder::{
     TestCheckpointBuilder, default_test_system_state,
 };
+
+/// Ingest synthetic `.binpb.zst` checkpoint files from a local directory.
+fn local_client_args(dir: &Path) -> ClientArgs {
+    ClientArgs {
+        ingestion: IngestionClientArgs {
+            local_ingestion_path: Some(dir.to_path_buf()),
+            ..Default::default()
+        },
+    }
+}
 
 /// Verify the indexer service exits cleanly after processing the last checkpoint.
 #[tokio::test(flavor = "multi_thread")]
@@ -46,7 +60,7 @@ async fn test_indexer_exits_after_last_checkpoint() {
 
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(
-        dir,
+        local_client_args(dir),
         IndexerArgs { last_checkpoint: Some(0), ..Default::default() },
         &registry,
     )

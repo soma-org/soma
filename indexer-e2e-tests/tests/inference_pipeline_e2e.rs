@@ -24,8 +24,22 @@ use diesel_async::RunQueryDsl;
 use indexer_alt_schema::schema::*;
 use indexer_e2e_tests::OffchainCluster;
 use indexer_framework::IndexerArgs;
+use indexer_framework::ingestion::ClientArgs;
+use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
 use soma_keys::keystore::AccountKeystore as _;
-use test_cluster::TestClusterBuilder;
+use test_cluster::{TestCluster, TestClusterBuilder};
+
+/// Point the indexer at a test cluster's fullnode gRPC `LedgerService` for ingestion.
+fn grpc_client_args(test_cluster: &TestCluster) -> ClientArgs {
+    ClientArgs {
+        ingestion: IngestionClientArgs {
+            rpc_api_url: Some(
+                test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url"),
+            ),
+            ..Default::default()
+        },
+    }
+}
 use types::base::SomaAddress;
 use types::channel::Voucher;
 use types::crypto::{GenericSignature, Signature};
@@ -261,15 +275,9 @@ async fn current_cp(test_cluster: &test_cluster::TestCluster) -> u64 {
 async fn test_provider_registry_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().build().await;
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
+    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
         .await
         .expect("OffchainCluster boot");
 
@@ -323,15 +331,9 @@ async fn test_provider_registry_indexed() {
 async fn test_channel_lifecycle_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().build().await;
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
+    let cluster = OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
         .await
         .expect("OffchainCluster boot");
 

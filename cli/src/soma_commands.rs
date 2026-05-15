@@ -583,10 +583,6 @@ EXAMPLES:
         #[clap(long)]
         epoch_duration_ms: Option<u64>,
 
-        /// Directory for data ingestion.
-        #[clap(long, value_name = "DATA_INGESTION_DIR")]
-        data_ingestion_dir: Option<PathBuf>,
-
         /// Start the network without a fullnode
         #[clap(long = "no-full-node")]
         no_full_node: bool,
@@ -1052,7 +1048,6 @@ impl SomaCommand {
                         config_dir,
                         force_regenesis,
                         fullnode_rpc_port,
-                        data_ingestion_dir,
                         no_full_node,
                         epoch_duration_ms,
                         committee_size,
@@ -1063,7 +1058,6 @@ impl SomaCommand {
                             force_regenesis,
                             epoch_duration_ms,
                             fullnode_rpc_port,
-                            data_ingestion_dir,
                             no_full_node,
                             committee_size,
                         )
@@ -1134,7 +1128,6 @@ async fn start(
     force_regenesis: bool,
     epoch_duration_ms: Option<u64>,
     fullnode_rpc_port: u16,
-    mut data_ingestion_dir: Option<PathBuf>,
     no_full_node: bool,
     committee_size: Option<usize>,
 ) -> Result<(), anyhow::Error> {
@@ -1240,10 +1233,6 @@ async fn start(
 
         soma_config_path
     };
-
-    if let Some(ref dir) = data_ingestion_dir {
-        swarm_builder = swarm_builder.with_data_ingestion_dir(dir.clone());
-    }
 
     let mut fullnode_rpc_address = types::config::node_config::default_json_rpc_address();
     fullnode_rpc_address.set_port(fullnode_rpc_port);

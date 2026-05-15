@@ -2,45 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::BTreeSet;
-use std::path::Path;
 
-use rpc::utils::checkpoint_blob;
-use types::effects::TransactionEffectsAPI as _;
-use types::error::{SomaError, SomaResult};
-use types::full_checkpoint_content::{Checkpoint, CheckpointData, ExecutedTransaction, ObjectSet};
+use types::error::SomaResult;
+use types::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
 use types::storage::object_store::ObjectStore;
 
 use crate::cache::TransactionCacheRead;
 use crate::checkpoints::checkpoint_executor::{CheckpointExecutionData, CheckpointTransactionData};
-
-pub(crate) fn store_checkpoint_locally(
-    path: impl AsRef<Path>,
-    checkpoint: &Checkpoint,
-) -> SomaResult {
-    let path = path.as_ref();
-    let file_name = format!("{}.binpb.zst", checkpoint.summary.sequence_number);
-
-    std::fs::create_dir_all(path).map_err(|err| {
-        SomaError::FileIOError(format!("failed to save full checkpoint content locally {:?}", err))
-    })?;
-
-    let blob = checkpoint_blob::encode_checkpoint(checkpoint).map_err(|err| {
-        SomaError::TransactionSerializationError {
-            error: format!("failed to encode checkpoint as proto+zstd: {}", err),
-        }
-    })?;
-
-    // Write to a temp file then atomically rename. This prevents the sidecar
-    // from reading a partially-written file (rename is atomic on Linux).
-    let tmp_name = format!("{}.binpb.zst.tmp", checkpoint.summary.sequence_number);
-    std::fs::write(path.join(&tmp_name), blob).map_err(|_| {
-        SomaError::FileIOError("failed to save full checkpoint content locally".to_string())
-    })?;
-    std::fs::rename(path.join(&tmp_name), path.join(file_name))
-        .map_err(|_| SomaError::FileIOError("failed to rename checkpoint file".to_string()))?;
-
-    Ok(())
-}
 
 pub(crate) fn load_checkpoint(
     ckpt_data: &CheckpointExecutionData,
