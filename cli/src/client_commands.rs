@@ -165,9 +165,14 @@ pub async fn execute_or_serialize(
         "Cannot specify both --serialize-unsigned-transaction and --serialize-signed-transaction"
     );
 
-    // Build transaction data
+    // Build transaction data — async variant auto-declares
+    // TransactionExpiration::ValidDuring on stateless tx kinds (required
+    // by the protocol post-Stage-6). The sync `build_transaction_data`
+    // leaves expiration unset and gets rejected by validators with
+    // "Use of disabled feature: Stateless transaction must declare
+    // TransactionExpiration::ValidDuring".
     let builder = TransactionBuilder::new(context);
-    let tx_data = builder.build_transaction_data(sender, kind.clone())?;
+    let tx_data = builder.build_transaction_data_async(sender, kind.clone()).await?;
 
     // Handle tx-digest-only mode
     if processing.tx_digest {
