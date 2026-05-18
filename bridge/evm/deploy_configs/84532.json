@@ -1,9 +1,19 @@
 {
-  "committeeMembers": [],
-  "committeeStake": [],
+  "committeeMembers": [
+    "0xc54305d810cc2e2e9dbd981b32eeaddf6adf7fe3",
+    "0x9ef975a257a9cd0dcb53d677f6c88acef3c2b482",
+    "0x3ac37734349b13caf91dfdceb7e3624bb7022b40"
+  ],
+  "committeeStake": [
+    3333,
+    3334,
+    3333
+  ],
   "ethChainId": 13,
-  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   "limiterTotalLimit": "1000000000000",
-  "supportedSomaChains": [2],
-  "somaCommitteeDigest": ""
+  "somaCommitteeDigest": "0xf96bd0e63d2d46b27a6659e9b3c1cb47c75dc7a8ab26063ef4186318db528804",
+  "supportedSomaChains": [
+    2
+  ],
+  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 }

@@ -3898,6 +3898,12 @@ mod _field_impls {
             number: 16i32,
             message_fields: None,
         };
+        pub const BRIDGE_STATE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_state",
+            json_name: "bridgeState",
+            number: 17i32,
+            message_fields: Some(BridgeState::FIELDS),
+        };
     }
     impl MessageFields for SystemState {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3914,6 +3920,7 @@ mod _field_impls {
             Self::SAFE_MODE_FIELD,
             Self::SAFE_MODE_ACCUMULATED_FEES_FIELD,
             Self::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD,
+            Self::BRIDGE_STATE_FIELD,
         ];
     }
     impl SystemState {
@@ -3987,6 +3994,10 @@ mod _field_impls {
         pub fn safe_mode_accumulated_emissions(mut self) -> String {
             self.path.push(SystemState::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD.name);
             self.finish()
+        }
+        pub fn bridge_state(mut self) -> BridgeStateFieldPathBuilder {
+            self.path.push(SystemState::BRIDGE_STATE_FIELD.name);
+            BridgeStateFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ReporterSet {
@@ -5446,6 +5457,345 @@ mod _field_impls {
         }
         pub fn winning_model_id(mut self) -> String {
             self.path.push(Challenge::WINNING_MODEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeState {
+        pub const PAUSED_FIELD: &'static MessageField = &MessageField {
+            name: "paused",
+            json_name: "paused",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const NEXT_WITHDRAWAL_NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "next_withdrawal_nonce",
+            json_name: "nextWithdrawalNonce",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const BRIDGE_COMMITTEE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_committee",
+            json_name: "bridgeCommittee",
+            number: 3i32,
+            message_fields: Some(BridgeCommittee::FIELDS),
+        };
+        pub const PROCESSED_DEPOSIT_NONCES_FIELD: &'static MessageField = &MessageField {
+            name: "processed_deposit_nonces",
+            json_name: "processedDepositNonces",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const SYSTEM_MESSAGE_SEQ_NUMS_FIELD: &'static MessageField = &MessageField {
+            name: "system_message_seq_nums",
+            json_name: "systemMessageSeqNums",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const BRIDGE_REGISTRATIONS_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_registrations",
+            json_name: "bridgeRegistrations",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const TOTAL_USDC_SUPPLY_FIELD: &'static MessageField = &MessageField {
+            name: "total_usdc_supply",
+            json_name: "totalUsdcSupply",
+            number: 7i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeState {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PAUSED_FIELD,
+            Self::NEXT_WITHDRAWAL_NONCE_FIELD,
+            Self::BRIDGE_COMMITTEE_FIELD,
+            Self::PROCESSED_DEPOSIT_NONCES_FIELD,
+            Self::SYSTEM_MESSAGE_SEQ_NUMS_FIELD,
+            Self::BRIDGE_REGISTRATIONS_FIELD,
+            Self::TOTAL_USDC_SUPPLY_FIELD,
+        ];
+    }
+    impl BridgeState {
+        pub fn path_builder() -> BridgeStateFieldPathBuilder {
+            BridgeStateFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeStateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeStateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn paused(mut self) -> String {
+            self.path.push(BridgeState::PAUSED_FIELD.name);
+            self.finish()
+        }
+        pub fn next_withdrawal_nonce(mut self) -> String {
+            self.path.push(BridgeState::NEXT_WITHDRAWAL_NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn bridge_committee(mut self) -> BridgeCommitteeFieldPathBuilder {
+            self.path.push(BridgeState::BRIDGE_COMMITTEE_FIELD.name);
+            BridgeCommitteeFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn processed_deposit_nonces(mut self) -> String {
+            self.path.push(BridgeState::PROCESSED_DEPOSIT_NONCES_FIELD.name);
+            self.finish()
+        }
+        pub fn system_message_seq_nums(mut self) -> String {
+            self.path.push(BridgeState::SYSTEM_MESSAGE_SEQ_NUMS_FIELD.name);
+            self.finish()
+        }
+        pub fn bridge_registrations(mut self) -> String {
+            self.path.push(BridgeState::BRIDGE_REGISTRATIONS_FIELD.name);
+            self.finish()
+        }
+        pub fn total_usdc_supply(mut self) -> String {
+            self.path.push(BridgeState::TOTAL_USDC_SUPPLY_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeCommittee {
+        pub const MEMBERS_FIELD: &'static MessageField = &MessageField {
+            name: "members",
+            json_name: "members",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_DEPOSIT_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_deposit",
+            json_name: "thresholdDeposit",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_WITHDRAW_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_withdraw",
+            json_name: "thresholdWithdraw",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_PAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_pause",
+            json_name: "thresholdPause",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_UNPAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_unpause",
+            json_name: "thresholdUnpause",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_blocklist",
+            json_name: "thresholdBlocklist",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_LIMIT_UPDATE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_limit_update",
+            json_name: "thresholdLimitUpdate",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_EVM_UPGRADE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_evm_upgrade",
+            json_name: "thresholdEvmUpgrade",
+            number: 8i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeCommittee {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MEMBERS_FIELD,
+            Self::THRESHOLD_DEPOSIT_FIELD,
+            Self::THRESHOLD_WITHDRAW_FIELD,
+            Self::THRESHOLD_PAUSE_FIELD,
+            Self::THRESHOLD_UNPAUSE_FIELD,
+            Self::THRESHOLD_BLOCKLIST_FIELD,
+            Self::THRESHOLD_LIMIT_UPDATE_FIELD,
+            Self::THRESHOLD_EVM_UPGRADE_FIELD,
+        ];
+    }
+    impl BridgeCommittee {
+        pub fn path_builder() -> BridgeCommitteeFieldPathBuilder {
+            BridgeCommitteeFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeCommitteeFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeCommitteeFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn members(mut self) -> String {
+            self.path.push(BridgeCommittee::MEMBERS_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_deposit(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_DEPOSIT_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_withdraw(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_WITHDRAW_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_pause(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_PAUSE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_unpause(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_UNPAUSE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_blocklist(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_BLOCKLIST_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_limit_update(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_LIMIT_UPDATE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_evm_upgrade(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_EVM_UPGRADE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeMember {
+        pub const SOMA_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "soma_address",
+            json_name: "somaAddress",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
+            name: "voting_power",
+            json_name: "votingPower",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const IS_BLOCKLISTED_FIELD: &'static MessageField = &MessageField {
+            name: "is_blocklisted",
+            json_name: "isBlocklisted",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeMember {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SOMA_ADDRESS_FIELD,
+            Self::VOTING_POWER_FIELD,
+            Self::HTTP_URL_FIELD,
+            Self::IS_BLOCKLISTED_FIELD,
+        ];
+    }
+    impl BridgeMember {
+        pub fn path_builder() -> BridgeMemberFieldPathBuilder {
+            BridgeMemberFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeMemberFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeMemberFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn soma_address(mut self) -> String {
+            self.path.push(BridgeMember::SOMA_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn voting_power(mut self) -> String {
+            self.path.push(BridgeMember::VOTING_POWER_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeMember::HTTP_URL_FIELD.name);
+            self.finish()
+        }
+        pub fn is_blocklisted(mut self) -> String {
+            self.path.push(BridgeMember::IS_BLOCKLISTED_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeRegistration {
+        pub const BRIDGE_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_pubkey",
+            json_name: "bridgePubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeRegistration {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::BRIDGE_PUBKEY_FIELD,
+            Self::HTTP_URL_FIELD,
+        ];
+    }
+    impl BridgeRegistration {
+        pub fn path_builder() -> BridgeRegistrationFieldPathBuilder {
+            BridgeRegistrationFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeRegistrationFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeRegistrationFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn bridge_pubkey(mut self) -> String {
+            self.path.push(BridgeRegistration::BRIDGE_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeRegistration::HTTP_URL_FIELD.name);
             self.finish()
         }
     }

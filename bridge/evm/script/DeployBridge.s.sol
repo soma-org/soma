@@ -124,17 +124,19 @@ contract DeployBridge is Script {
             config.supportedSomaChains[i] = uint8(somaChainsRaw[i]);
         }
 
-        // Committee digest is informational; if the operator hasn't
-        // run `bridge-committee-export` against this file yet the
-        // field will be `""` and decoding into bytes32 will return
-        // the zero hash. Tolerate that — the empty-committee check
-        // below will trip first and give a clearer error.
-        string memory digestStr =
-            abi.decode(vm.parseJson(json, ".somaCommitteeDigest"), (string));
-        if (bytes(digestStr).length == 0) {
-            config.somaCommitteeDigest = bytes32(0);
+        // Committee digest is informational. `bridge-committee-export`
+        // writes it as a `0x`-prefixed 64-char hex string, which foundry's
+        // `vm.parseJson` auto-decodes as `bytes32` (32 raw bytes) rather
+        // than as a string — so `abi.decode(..., (string))` reverts. Read
+        // the raw ABI-encoded result instead and branch on its length:
+        // 32 bytes → bytes32 payload; anything else (e.g. `""` from a
+        // pre-export config) → fall back to the zero hash and let the
+        // empty-committee check below give a clearer error.
+        bytes memory digestRaw = vm.parseJson(json, ".somaCommitteeDigest");
+        if (digestRaw.length == 32) {
+            config.somaCommitteeDigest = abi.decode(digestRaw, (bytes32));
         } else {
-            config.somaCommitteeDigest = vm.parseBytes32(digestStr);
+            config.somaCommitteeDigest = bytes32(0);
         }
 
         return config;

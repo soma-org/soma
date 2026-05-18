@@ -401,7 +401,9 @@ pub struct ConservationInvariantObservable {
     pub failure_threshold: u32,
     /// Tolerated USDC delta in microdollars. Covers transient
     /// in-flight transfer volume. Zero requires exact equality.
-    pub in_flight_tolerance_micro: u128,
+    /// Widened to `u128` only at the comparison site (see
+    /// `check_once`) so the field stays TOML-deserializable.
+    pub in_flight_tolerance_micro: u64,
     /// Signing queue handle — auto-pause posts an EmergencyPause
     /// action here when the violation threshold trips.
     pub signing_tx: mpsc::Sender<BridgeActionExecutionWrapper>,
@@ -424,7 +426,7 @@ impl ConservationInvariantObservable {
         eth_bridge_contract_address: String,
         interval: Duration,
         failure_threshold: u32,
-        in_flight_tolerance_micro: u128,
+        in_flight_tolerance_micro: u64,
         signing_tx: mpsc::Sender<BridgeActionExecutionWrapper>,
         expected_pause_nonce: ExpectedPauseNonceReader,
     ) -> Self {
@@ -453,7 +455,7 @@ impl ConservationInvariantObservable {
             .await?;
         let soma_supply = (self.soma_supply)().await? as u128;
         info!(eth_locked, soma_supply, "ConservationInvariant: paired reading");
-        let limit = eth_locked.saturating_add(self.in_flight_tolerance_micro);
+        let limit = eth_locked.saturating_add(self.in_flight_tolerance_micro as u128);
         Ok(soma_supply <= limit)
     }
 

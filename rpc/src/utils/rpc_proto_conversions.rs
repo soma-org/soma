@@ -1212,9 +1212,13 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
                 marketplace_params: types::bridge::MarketplaceParameters::default(),
                 protocol_fund_balance: 0,
-                bridge_state: types::bridge::BridgeState::new(
-                    types::bridge::BridgeCommittee::empty(),
-                ),
+                bridge_state: proto_state
+                    .bridge_state
+                    .map(types::bridge::BridgeState::try_from)
+                    .transpose()?
+                    .unwrap_or_else(|| {
+                        types::bridge::BridgeState::new(types::bridge::BridgeCommittee::empty())
+                    }),
 
                 safe_mode: proto_state.safe_mode.unwrap_or(false),
             });
@@ -1536,7 +1540,204 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             safe_mode: Some(v1.safe_mode),
             safe_mode_accumulated_fees: None,
             safe_mode_accumulated_emissions: None,
+            bridge_state: Some(v1.bridge_state.into()),
         })
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Bridge state conversions
+// -----------------------------------------------------------------------------
+//
+// Proto ↔ domain mappings for `types::bridge::BridgeState` and its nested
+// pieces. Used by the SystemState conversions above so callers of
+// `Client::get_latest_system_state` (notably bridge-node) see the live
+// committee, registrations, deposit nonces, and watchdog supply rather
+// than a hardcoded empty BridgeState.
+//
+// String keys for hex maps stay un-prefixed (no `0x`), matching the
+// existing convention used elsewhere in this file (e.g. report records).
+
+// ---- Read direction (proto → domain) ---------------------------------------
+
+impl TryFrom<BridgeMember> for types::bridge::BridgeMember {
+    type Error = String;
+
+    fn try_from(proto: BridgeMember) -> Result<Self, Self::Error> {
+        let soma_address_hex = proto.soma_address.ok_or("BridgeMember: missing soma_address")?;
+        let soma_address = SomaAddress::from_str(&soma_address_hex)
+            .map_err(|e| format!("BridgeMember: parse soma_address {soma_address_hex}: {e}"))?;
+        Ok(types::bridge::BridgeMember {
+            soma_address,
+            voting_power: proto.voting_power.unwrap_or(0),
+            http_url: proto.http_url.unwrap_or_default(),
+            is_blocklisted: proto.is_blocklisted.unwrap_or(false),
+        })
+    }
+}
+
+impl TryFrom<BridgeRegistration> for types::bridge::BridgeRegistration {
+    type Error = String;
+
+    fn try_from(proto: BridgeRegistration) -> Result<Self, Self::Error> {
+        let pubkey_bytes =
+            proto.bridge_pubkey.ok_or("BridgeRegistration: missing bridge_pubkey")?;
+        let bridge_pubkey = types::bridge::BridgePubkey::from_bytes(&pubkey_bytes)
+            .map_err(|e| format!("BridgeRegistration: invalid bridge_pubkey bytes: {e}"))?;
+        Ok(types::bridge::BridgeRegistration {
+            bridge_pubkey,
+            http_url: proto.http_url.unwrap_or_default(),
+        })
+    }
+}
+
+impl TryFrom<BridgeCommittee> for types::bridge::BridgeCommittee {
+    type Error = String;
+
+    fn try_from(proto: BridgeCommittee) -> Result<Self, Self::Error> {
+        let mut members = BTreeMap::new();
+        for (pubkey_hex, proto_member) in proto.members {
+            let bytes = hex::decode(&pubkey_hex).map_err(|e| {
+                format!("BridgeCommittee.members: invalid hex key {pubkey_hex}: {e}")
+            })?;
+            let pubkey =
+                types::bridge::BridgePubkey::from_bytes(&bytes).map_err(|e| {
+                    format!("BridgeCommittee.members: invalid pubkey {pubkey_hex}: {e}")
+                })?;
+            members.insert(pubkey, proto_member.try_into()?);
+        }
+        Ok(types::bridge::BridgeCommittee {
+            members,
+            threshold_deposit: proto.threshold_deposit.unwrap_or(0),
+            threshold_withdraw: proto.threshold_withdraw.unwrap_or(0),
+            threshold_pause: proto.threshold_pause.unwrap_or(0),
+            threshold_unpause: proto.threshold_unpause.unwrap_or(0),
+            threshold_blocklist: proto.threshold_blocklist.unwrap_or(0),
+            threshold_limit_update: proto.threshold_limit_update.unwrap_or(0),
+            threshold_evm_upgrade: proto.threshold_evm_upgrade.unwrap_or(0),
+        })
+    }
+}
+
+impl TryFrom<BridgeState> for types::bridge::BridgeState {
+    type Error = String;
+
+    fn try_from(proto: BridgeState) -> Result<Self, Self::Error> {
+        let bridge_committee = proto
+            .bridge_committee
+            .map(types::bridge::BridgeCommittee::try_from)
+            .transpose()?
+            .unwrap_or_else(types::bridge::BridgeCommittee::empty);
+
+        let processed_deposit_nonces: BTreeSet<u64> =
+            proto.processed_deposit_nonces.into_iter().collect();
+
+        let mut system_message_seq_nums = BTreeMap::new();
+        for (raw_type, seq) in proto.system_message_seq_nums {
+            let msg_type = bridge_message_type_from_u32(raw_type)?;
+            system_message_seq_nums.insert(msg_type, seq);
+        }
+
+        let mut bridge_registrations = BTreeMap::new();
+        for (addr_hex, proto_reg) in proto.bridge_registrations {
+            let addr = SomaAddress::from_str(&addr_hex).map_err(|e| {
+                format!("BridgeState.bridge_registrations: invalid soma address {addr_hex}: {e}")
+            })?;
+            bridge_registrations.insert(addr, proto_reg.try_into()?);
+        }
+
+        Ok(types::bridge::BridgeState {
+            paused: proto.paused.unwrap_or(false),
+            next_withdrawal_nonce: proto.next_withdrawal_nonce.unwrap_or(0),
+            bridge_committee,
+            processed_deposit_nonces,
+            system_message_seq_nums,
+            bridge_registrations,
+            total_usdc_supply: proto.total_usdc_supply.unwrap_or(0),
+        })
+    }
+}
+
+// ---- Write direction (domain → proto) --------------------------------------
+
+impl From<types::bridge::BridgeMember> for BridgeMember {
+    fn from(member: types::bridge::BridgeMember) -> Self {
+        Self {
+            soma_address: Some(hex::encode(member.soma_address.to_inner())),
+            voting_power: Some(member.voting_power),
+            http_url: Some(member.http_url),
+            is_blocklisted: Some(member.is_blocklisted),
+        }
+    }
+}
+
+impl From<types::bridge::BridgeRegistration> for BridgeRegistration {
+    fn from(reg: types::bridge::BridgeRegistration) -> Self {
+        Self {
+            bridge_pubkey: Some(bytes::Bytes::copy_from_slice(reg.bridge_pubkey.as_bytes())),
+            http_url: Some(reg.http_url),
+        }
+    }
+}
+
+impl From<types::bridge::BridgeCommittee> for BridgeCommittee {
+    fn from(committee: types::bridge::BridgeCommittee) -> Self {
+        let members = committee
+            .members
+            .into_iter()
+            .map(|(pk, m)| (hex::encode(pk.as_bytes()), m.into()))
+            .collect();
+        Self {
+            members,
+            threshold_deposit: Some(committee.threshold_deposit),
+            threshold_withdraw: Some(committee.threshold_withdraw),
+            threshold_pause: Some(committee.threshold_pause),
+            threshold_unpause: Some(committee.threshold_unpause),
+            threshold_blocklist: Some(committee.threshold_blocklist),
+            threshold_limit_update: Some(committee.threshold_limit_update),
+            threshold_evm_upgrade: Some(committee.threshold_evm_upgrade),
+        }
+    }
+}
+
+impl From<types::bridge::BridgeState> for BridgeState {
+    fn from(state: types::bridge::BridgeState) -> Self {
+        let system_message_seq_nums = state
+            .system_message_seq_nums
+            .into_iter()
+            .map(|(t, seq)| (t as u32, seq))
+            .collect();
+        let bridge_registrations = state
+            .bridge_registrations
+            .into_iter()
+            .map(|(addr, reg)| (hex::encode(addr.to_inner()), reg.into()))
+            .collect();
+        Self {
+            paused: Some(state.paused),
+            next_withdrawal_nonce: Some(state.next_withdrawal_nonce),
+            bridge_committee: Some(state.bridge_committee.into()),
+            processed_deposit_nonces: state.processed_deposit_nonces.into_iter().collect(),
+            system_message_seq_nums,
+            bridge_registrations,
+            total_usdc_supply: Some(state.total_usdc_supply),
+        }
+    }
+}
+
+/// Map the proto's `uint32` representation of `BridgeMessageType` back to
+/// the enum. Mirrors the `#[repr(u8)]` discriminants on the domain enum;
+/// any unknown discriminant is rejected so a future on-chain variant
+/// doesn't silently misroute as an existing one.
+fn bridge_message_type_from_u32(raw: u32) -> Result<types::bridge::BridgeMessageType, String> {
+    use types::bridge::BridgeMessageType;
+    match raw {
+        0 => Ok(BridgeMessageType::UsdcDeposit),
+        1 => Ok(BridgeMessageType::UsdcWithdraw),
+        2 => Ok(BridgeMessageType::EmergencyOp),
+        4 => Ok(BridgeMessageType::UpdateCommitteeBlocklist),
+        5 => Ok(BridgeMessageType::LimitUpdate),
+        6 => Ok(BridgeMessageType::EvmContractUpgrade),
+        other => Err(format!("BridgeState: unknown BridgeMessageType discriminant {other}")),
     }
 }
 
@@ -2239,5 +2440,121 @@ impl TryFrom<&ExecutedTransaction> for types::full_checkpoint_content::ExecutedT
         };
 
         Ok(Self { transaction, signatures, effects })
+    }
+}
+
+#[cfg(test)]
+mod bridge_state_conversion_tests {
+    use super::*;
+    use types::bridge::{
+        BridgeCommittee as DomainBridgeCommittee, BridgeMember as DomainBridgeMember,
+        BridgeMessageType, BridgePubkey, BridgeRegistration as DomainBridgeRegistration,
+        BridgeState as DomainBridgeState,
+    };
+
+    /// Round-trip a populated `BridgeState` through the proto layer and
+    /// back, asserting equality. Catches field omissions, key-encoding
+    /// mismatches, and discriminant mishandling in the conversions added
+    /// for v0.1.24-rc1. Single big test by design — round-trip equality is
+    /// the contract; field-by-field tests are easy to keep passing while
+    /// silently dropping a new field.
+    #[test]
+    fn bridge_state_round_trip_preserves_every_field() {
+        // Two known-valid compressed secp256k1 pubkeys — same fixtures used
+        // by `types::bridge::test_encode_blocklist_payload_regression`.
+        let pk_a = BridgePubkey::from_bytes(
+            &hex::decode("02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4")
+                .unwrap(),
+        )
+        .unwrap();
+        let pk_b = BridgePubkey::from_bytes(
+            &hex::decode("027f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d4279")
+                .unwrap(),
+        )
+        .unwrap();
+
+        let addr_a = SomaAddress::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let addr_b = SomaAddress::from_str(
+            "2222222222222222222222222222222222222222222222222222222222222222",
+        )
+        .unwrap();
+
+        let mut members = BTreeMap::new();
+        members.insert(
+            pk_a.clone(),
+            DomainBridgeMember {
+                soma_address: addr_a,
+                voting_power: 3333,
+                http_url: "http://bridge-a.example:9191".to_string(),
+                is_blocklisted: false,
+            },
+        );
+        members.insert(
+            pk_b.clone(),
+            DomainBridgeMember {
+                soma_address: addr_b,
+                voting_power: 3334,
+                http_url: "http://bridge-b.example:9191".to_string(),
+                is_blocklisted: true, // exercise the bool default explicitly
+            },
+        );
+        let bridge_committee = DomainBridgeCommittee {
+            members,
+            // Non-default thresholds catch a "preserve thresholds" omission.
+            threshold_deposit: 1234,
+            threshold_withdraw: 2345,
+            threshold_pause: 456,
+            threshold_unpause: 5001,
+            threshold_blocklist: 5002,
+            threshold_limit_update: 5003,
+            threshold_evm_upgrade: 5004,
+        };
+
+        let mut processed_deposit_nonces = BTreeSet::new();
+        processed_deposit_nonces.insert(0u64);
+        processed_deposit_nonces.insert(1);
+        processed_deposit_nonces.insert(42);
+
+        let mut system_message_seq_nums = BTreeMap::new();
+        system_message_seq_nums.insert(BridgeMessageType::EmergencyOp, 7u64);
+        system_message_seq_nums.insert(BridgeMessageType::LimitUpdate, 3);
+
+        let mut bridge_registrations = BTreeMap::new();
+        bridge_registrations.insert(
+            addr_a,
+            DomainBridgeRegistration {
+                bridge_pubkey: pk_a.clone(),
+                http_url: "http://bridge-a-pending.example:9191".to_string(),
+            },
+        );
+
+        let original = DomainBridgeState {
+            paused: true,
+            next_withdrawal_nonce: 99,
+            bridge_committee,
+            processed_deposit_nonces,
+            system_message_seq_nums,
+            bridge_registrations,
+            total_usdc_supply: 1_234_567_890,
+        };
+
+        let proto: BridgeState = original.clone().into();
+        let round_tripped: DomainBridgeState =
+            proto.try_into().expect("proto -> domain round-trip");
+        assert_eq!(original, round_tripped);
+    }
+
+    /// An unknown `BridgeMessageType` discriminant must be rejected — a
+    /// future on-chain variant that the conversions don't recognize should
+    /// fail loudly, not silently misroute as an existing variant.
+    #[test]
+    fn unknown_bridge_message_type_discriminant_is_rejected() {
+        assert!(bridge_message_type_from_u32(99).is_err());
+        // Byte 3 is intentionally unused in `BridgeMessageType`; gap must
+        // also stay rejected so we don't add a wrong route by accident.
+        assert!(bridge_message_type_from_u32(3).is_err());
     }
 }

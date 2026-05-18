@@ -3657,6 +3657,12 @@ pub struct SystemState {
     pub safe_mode_accumulated_fees: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "16")]
     pub safe_mode_accumulated_emissions: ::core::option::Option<u64>,
+    /// Bridge state (pause flag, committee, registrations, nonces).
+    /// Mirrors `types::bridge::BridgeState`. Consumers read this for
+    /// committee discovery, replay-defense checks, and the watchdog
+    /// conservation invariant.
+    #[prost(message, optional, tag = "17")]
+    pub bridge_state: ::core::option::Option<BridgeState>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4008,6 +4014,111 @@ pub struct Challenge {
     /// Winning model ID used by submitter
     #[prost(string, optional, tag = "11")]
     pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeState {
+    /// Pause flag set by EmergencyPause / cleared by EmergencyUnpause.
+    #[prost(bool, optional, tag = "1")]
+    pub paused: ::core::option::Option<bool>,
+    /// Monotonic counter assigned to each outbound USDC withdrawal. The
+    /// PendingWithdrawal `nonce` field is this value at the time the
+    /// withdrawal was created.
+    #[prost(uint64, optional, tag = "2")]
+    pub next_withdrawal_nonce: ::core::option::Option<u64>,
+    /// Live committee — populated at epoch boundaries by
+    /// `try_rotate_committee` reading the BridgeRegistrations below.
+    #[prost(message, optional, tag = "3")]
+    pub bridge_committee: ::core::option::Option<BridgeCommittee>,
+    /// Replay defense for inbound USDC deposits. Each deposit's nonce is
+    /// added on successful execution; later attempts to reuse the same
+    /// nonce are rejected. Grows monotonically.
+    #[prost(uint64, repeated, tag = "4")]
+    pub processed_deposit_nonces: ::prost::alloc::vec::Vec<u64>,
+    /// Per-message-type sequence numbers for system messages
+    /// (EmergencyOp = 2, UpdateCommitteeBlocklist = 4, LimitUpdate = 5,
+    /// EvmContractUpgrade = 6). Token transfers don't consume from this
+    /// map. Keys are `BridgeMessageType` discriminants (u8 widened to
+    /// uint32 for proto compatibility).
+    #[prost(btree_map = "uint32, uint64", tag = "5")]
+    pub system_message_seq_nums: ::prost::alloc::collections::BTreeMap<u32, u64>,
+    /// Pre-registered bridge keys awaiting the next committee rotation.
+    /// Cleared on each successful `try_rotate_committee`.
+    /// Key: validator Soma address (hex, no 0x prefix).
+    #[prost(btree_map = "string, message", tag = "6")]
+    pub bridge_registrations: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        BridgeRegistration,
+    >,
+    /// Running total of USDC minted on Soma minus USDC burned, in raw
+    /// 6-decimal units. The watchdog reads this for the conservation
+    /// invariant against the Eth-side vault balance.
+    #[prost(uint64, optional, tag = "7")]
+    pub total_usdc_supply: ::core::option::Option<u64>,
+}
+/// Committee active in the current epoch. Keyed by bridge pubkey so
+/// signature verification can ecrecover and look up directly.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeCommittee {
+    /// Bridge pubkey (33-byte compressed secp256k1, hex-encoded) -> member.
+    #[prost(btree_map = "string, message", tag = "1")]
+    pub members: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        BridgeMember,
+    >,
+    /// Voting-power thresholds in basis points (1 BPS = 0.01%).
+    ///
+    /// f+1 (~3334)
+    #[prost(uint64, optional, tag = "2")]
+    pub threshold_deposit: ::core::option::Option<u64>,
+    /// f+1 (~3334)
+    #[prost(uint64, optional, tag = "3")]
+    pub threshold_withdraw: ::core::option::Option<u64>,
+    /// small minority (~450)
+    #[prost(uint64, optional, tag = "4")]
+    pub threshold_pause: ::core::option::Option<u64>,
+    /// 5001 (50.01%)
+    #[prost(uint64, optional, tag = "5")]
+    pub threshold_unpause: ::core::option::Option<u64>,
+    /// 5001
+    #[prost(uint64, optional, tag = "6")]
+    pub threshold_blocklist: ::core::option::Option<u64>,
+    /// 5001
+    #[prost(uint64, optional, tag = "7")]
+    pub threshold_limit_update: ::core::option::Option<u64>,
+    /// 5001
+    #[prost(uint64, optional, tag = "8")]
+    pub threshold_evm_upgrade: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeMember {
+    /// Validator soma address (hex, no 0x prefix). Audit/lookup only —
+    /// sig verification uses the pubkey (map key in `BridgeCommittee.members`).
+    #[prost(string, optional, tag = "1")]
+    pub soma_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub voting_power: ::core::option::Option<u64>,
+    /// Public HTTP URL the validator's bridge node listens on for
+    /// peer sig-request RPCs.
+    #[prost(string, optional, tag = "3")]
+    pub http_url: ::core::option::Option<::prost::alloc::string::String>,
+    /// Blocklisted members stay in the map (so peers recognize their
+    /// sigs rather than getting "unknown signer" errors) but contribute
+    /// 0 voting power to threshold checks.
+    #[prost(bool, optional, tag = "4")]
+    pub is_blocklisted: ::core::option::Option<bool>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BridgeRegistration {
+    /// 33-byte compressed secp256k1 pubkey (raw bytes, not hex).
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub bridge_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Public HTTP URL the validator will run its bridge node on.
+    #[prost(string, optional, tag = "2")]
+    pub http_url: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// A transaction.
 #[non_exhaustive]

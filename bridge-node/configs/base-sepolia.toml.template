@@ -207,3 +207,27 @@ scan_window = 1024
 # [outbound_relayer]
 # poll_interval_ms = 2000           # 2s outbound poll for quicker test signal
 # scan_window = 32                  # smaller window — smoke tests have ≤1 tx
+
+# -----------------------------------------------------------------------------
+# Soma-side relayer (opt-in; added in 0.1.24)
+# -----------------------------------------------------------------------------
+# When present, the bridge node calls `BridgeNode::with_relayer` at
+# startup. The relayer assembles + submits quorum-signed certs back to
+# Soma (`BridgeAttachDepositSignatures`, `BridgeAttachWithdrawalSignatures`,
+# etc.) — without it the node runs in **sig-cache-only mode**: observe
+# + sign, but external assembly. End-to-end requires this block.
+#
+# The wallet pays gas for every cert-submission tx. In practice a single
+# relayer keypair is shared across all bridge nodes — submissions are
+# idempotent on chain (first node to assemble the cert wins; duplicates
+# are rejected as replay). To split the bill per node, generate a
+# distinct keypair + fund it per replica.
+#
+# Generate a fresh ed25519 keypair with:
+#   `soma keytool generate ed25519`
+# It writes `<address>.key` to CWD; rename to `relayer.key` and place
+# alongside `bridge.key`.
+#
+# [soma_relayer]
+# address  = "{{SOMA_RELAYER_ADDRESS}}"
+# key_path = "/var/lib/soma/{{VALIDATOR_NAME}}/relayer.key"

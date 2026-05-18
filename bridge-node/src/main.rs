@@ -31,7 +31,9 @@ use tracing_subscriber::EnvFilter;
 use bridge_node::config::BridgeNodeConfig;
 use bridge_node::node::BridgeNode;
 use bridge_node::soma_client::SomaBridgeClient;
+use types::base::SomaAddress;
 use types::bridge::{BridgePubkey, SOMA_BRIDGE_CHAIN_ID};
+use types::crypto::SomaKeyPair;
 
 /// CLI entry point for the bridge daemon. The single required arg is
 /// `--config <PATH>` pointing at a TOML file matching
@@ -183,19 +185,40 @@ async fn run(args: Args) -> Result<(), RunError> {
     // API doesn't support.
     drop(soma_client);
 
-    // 4. Construct the node. The `BridgeNodeConfig` has no Soma-side
-    // relayer fields (relayer_address + relayer_keypair would need to
-    // be added), so we don't call `.with_relayer()` here. Without it
-    // the node runs in **sig-cache-only mode**: it observes events and
-    // serves sigs to peers, but no one assembles a quorum cert and
-    // submits it on Soma. End-to-end requires adding the relayer
-    // fields to `BridgeNodeConfig` and wiring them in.
+    // 4. Construct the node. If a `soma_relayer` block is present,
+    // load the keypair off disk and call `.with_relayer()` so the
+    // node assembles + submits quorum certs back to Soma; otherwise
+    // it stays in **sig-cache-only mode** (legacy behavior — observe
+    // + sign, but external process submits).
     //
     // Note: `BridgeNodeConfig.outbound_relayer` is a *different*
     // relayer — it's the Eth-side operator wallet that submits release
     // txs to Ethereum. That one is read inside `BridgeNode::run()`
     // directly from the config and doesn't need wiring at this layer.
-    let node = BridgeNode::new(config, bridge_keypair, committee);
+    let mut node = BridgeNode::new(config.clone(), bridge_keypair, committee);
+    if let Some(soma_relayer) = config.soma_relayer.as_ref() {
+        let relayer_keypair = load_soma_keypair(&soma_relayer.key_path)?;
+        let derived = SomaAddress::from(&relayer_keypair.public());
+        if derived != soma_relayer.address {
+            return Err(RunError::Startup(format!(
+                "soma_relayer.address {} does not match address derived from key_path {} ({derived})",
+                soma_relayer.address,
+                soma_relayer.key_path.display(),
+            )));
+        }
+        info!(
+            relayer_address = %soma_relayer.address,
+            key_path = %soma_relayer.key_path.display(),
+            ?soma_chain_id,
+            "Soma-side relayer enabled: cert submission live"
+        );
+        node = node.with_relayer(soma_relayer.address, relayer_keypair, soma_chain_id);
+    } else {
+        info!(
+            "no `soma_relayer` block in config; running in sig-cache-only mode \
+             (observe + sign, but no cert submission to Soma)"
+        );
+    }
 
     // 5. Spawn all subsystems. `run()` returns the JoinHandles for
     // every spawned task — we wait on them below.
@@ -332,4 +355,20 @@ fn load_bridge_keypair(path: &std::path::Path) -> Result<Secp256k1KeyPair, RunEr
          (tried: fastcrypto base64, plain base64 of raw 32-byte privkey, raw bytes)",
         path.display()
     )))
+}
+
+/// Load a `SomaKeyPair` from a file. Mirrors `soma keytool` output:
+/// a single line of base64 encoding `flag || privkey_bytes`. Whitespace
+/// around the payload is tolerated so files generated with
+/// `printf '%s' "$key" > out` and `echo "$key" > out` both work.
+fn load_soma_keypair(path: &std::path::Path) -> Result<SomaKeyPair, RunError> {
+    let contents = std::fs::read_to_string(path).map_err(|e| {
+        RunError::Startup(format!("read soma_relayer.key_path {}: {e}", path.display()))
+    })?;
+    SomaKeyPair::decode_base64(contents.trim()).map_err(|e| {
+        RunError::Startup(format!(
+            "soma_relayer.key_path {} is not a base64-encoded SomaKeyPair: {e}",
+            path.display()
+        ))
+    })
 }

@@ -1394,6 +1394,259 @@ impl<'de> serde::Deserialize<'de> for BridgeAttachWithdrawalSignatures {
         deserializer.deserialize_struct("soma.rpc.BridgeAttachWithdrawalSignatures", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for BridgeCommittee {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.members.is_empty() {
+            len += 1;
+        }
+        if self.threshold_deposit.is_some() {
+            len += 1;
+        }
+        if self.threshold_withdraw.is_some() {
+            len += 1;
+        }
+        if self.threshold_pause.is_some() {
+            len += 1;
+        }
+        if self.threshold_unpause.is_some() {
+            len += 1;
+        }
+        if self.threshold_blocklist.is_some() {
+            len += 1;
+        }
+        if self.threshold_limit_update.is_some() {
+            len += 1;
+        }
+        if self.threshold_evm_upgrade.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeCommittee", len)?;
+        if !self.members.is_empty() {
+            struct_ser.serialize_field("members", &self.members)?;
+        }
+        if let Some(v) = self.threshold_deposit.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdDeposit", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_withdraw.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdWithdraw", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_pause.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdPause", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_unpause.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdUnpause", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_blocklist.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdBlocklist", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_limit_update.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdLimitUpdate", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.threshold_evm_upgrade.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("thresholdEvmUpgrade", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeCommittee {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "members",
+            "threshold_deposit",
+            "thresholdDeposit",
+            "threshold_withdraw",
+            "thresholdWithdraw",
+            "threshold_pause",
+            "thresholdPause",
+            "threshold_unpause",
+            "thresholdUnpause",
+            "threshold_blocklist",
+            "thresholdBlocklist",
+            "threshold_limit_update",
+            "thresholdLimitUpdate",
+            "threshold_evm_upgrade",
+            "thresholdEvmUpgrade",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Members,
+            ThresholdDeposit,
+            ThresholdWithdraw,
+            ThresholdPause,
+            ThresholdUnpause,
+            ThresholdBlocklist,
+            ThresholdLimitUpdate,
+            ThresholdEvmUpgrade,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "members" => Ok(GeneratedField::Members),
+                            "thresholdDeposit" | "threshold_deposit" => Ok(GeneratedField::ThresholdDeposit),
+                            "thresholdWithdraw" | "threshold_withdraw" => Ok(GeneratedField::ThresholdWithdraw),
+                            "thresholdPause" | "threshold_pause" => Ok(GeneratedField::ThresholdPause),
+                            "thresholdUnpause" | "threshold_unpause" => Ok(GeneratedField::ThresholdUnpause),
+                            "thresholdBlocklist" | "threshold_blocklist" => Ok(GeneratedField::ThresholdBlocklist),
+                            "thresholdLimitUpdate" | "threshold_limit_update" => Ok(GeneratedField::ThresholdLimitUpdate),
+                            "thresholdEvmUpgrade" | "threshold_evm_upgrade" => Ok(GeneratedField::ThresholdEvmUpgrade),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeCommittee;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeCommittee")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeCommittee, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut members__ = None;
+                let mut threshold_deposit__ = None;
+                let mut threshold_withdraw__ = None;
+                let mut threshold_pause__ = None;
+                let mut threshold_unpause__ = None;
+                let mut threshold_blocklist__ = None;
+                let mut threshold_limit_update__ = None;
+                let mut threshold_evm_upgrade__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Members => {
+                            if members__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("members"));
+                            }
+                            members__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::ThresholdDeposit => {
+                            if threshold_deposit__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdDeposit"));
+                            }
+                            threshold_deposit__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdWithdraw => {
+                            if threshold_withdraw__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdWithdraw"));
+                            }
+                            threshold_withdraw__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdPause => {
+                            if threshold_pause__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdPause"));
+                            }
+                            threshold_pause__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdUnpause => {
+                            if threshold_unpause__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdUnpause"));
+                            }
+                            threshold_unpause__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdBlocklist => {
+                            if threshold_blocklist__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdBlocklist"));
+                            }
+                            threshold_blocklist__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdLimitUpdate => {
+                            if threshold_limit_update__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdLimitUpdate"));
+                            }
+                            threshold_limit_update__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ThresholdEvmUpgrade => {
+                            if threshold_evm_upgrade__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("thresholdEvmUpgrade"));
+                            }
+                            threshold_evm_upgrade__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeCommittee {
+                    members: members__.unwrap_or_default(),
+                    threshold_deposit: threshold_deposit__,
+                    threshold_withdraw: threshold_withdraw__,
+                    threshold_pause: threshold_pause__,
+                    threshold_unpause: threshold_unpause__,
+                    threshold_blocklist: threshold_blocklist__,
+                    threshold_limit_update: threshold_limit_update__,
+                    threshold_evm_upgrade: threshold_evm_upgrade__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeCommittee", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for BridgeDeposit {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -1892,6 +2145,162 @@ impl<'de> serde::Deserialize<'de> for BridgeEmergencyUnpause {
         deserializer.deserialize_struct("soma.rpc.BridgeEmergencyUnpause", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for BridgeMember {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.soma_address.is_some() {
+            len += 1;
+        }
+        if self.voting_power.is_some() {
+            len += 1;
+        }
+        if self.http_url.is_some() {
+            len += 1;
+        }
+        if self.is_blocklisted.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeMember", len)?;
+        if let Some(v) = self.soma_address.as_ref() {
+            struct_ser.serialize_field("somaAddress", v)?;
+        }
+        if let Some(v) = self.voting_power.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("votingPower", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.http_url.as_ref() {
+            struct_ser.serialize_field("httpUrl", v)?;
+        }
+        if let Some(v) = self.is_blocklisted.as_ref() {
+            struct_ser.serialize_field("isBlocklisted", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeMember {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "soma_address",
+            "somaAddress",
+            "voting_power",
+            "votingPower",
+            "http_url",
+            "httpUrl",
+            "is_blocklisted",
+            "isBlocklisted",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SomaAddress,
+            VotingPower,
+            HttpUrl,
+            IsBlocklisted,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "somaAddress" | "soma_address" => Ok(GeneratedField::SomaAddress),
+                            "votingPower" | "voting_power" => Ok(GeneratedField::VotingPower),
+                            "httpUrl" | "http_url" => Ok(GeneratedField::HttpUrl),
+                            "isBlocklisted" | "is_blocklisted" => Ok(GeneratedField::IsBlocklisted),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeMember;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeMember")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeMember, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut soma_address__ = None;
+                let mut voting_power__ = None;
+                let mut http_url__ = None;
+                let mut is_blocklisted__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SomaAddress => {
+                            if soma_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("somaAddress"));
+                            }
+                            soma_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::VotingPower => {
+                            if voting_power__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("votingPower"));
+                            }
+                            voting_power__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::HttpUrl => {
+                            if http_url__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("httpUrl"));
+                            }
+                            http_url__ = map_.next_value()?;
+                        }
+                        GeneratedField::IsBlocklisted => {
+                            if is_blocklisted__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("isBlocklisted"));
+                            }
+                            is_blocklisted__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeMember {
+                    soma_address: soma_address__,
+                    voting_power: voting_power__,
+                    http_url: http_url__,
+                    is_blocklisted: is_blocklisted__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeMember", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for BridgeRegisterBridgeKey {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -2010,6 +2419,349 @@ impl<'de> serde::Deserialize<'de> for BridgeRegisterBridgeKey {
             }
         }
         deserializer.deserialize_struct("soma.rpc.BridgeRegisterBridgeKey", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BridgeRegistration {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.bridge_pubkey.is_some() {
+            len += 1;
+        }
+        if self.http_url.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeRegistration", len)?;
+        if let Some(v) = self.bridge_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("bridgePubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.http_url.as_ref() {
+            struct_ser.serialize_field("httpUrl", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeRegistration {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "bridge_pubkey",
+            "bridgePubkey",
+            "http_url",
+            "httpUrl",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            BridgePubkey,
+            HttpUrl,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "bridgePubkey" | "bridge_pubkey" => Ok(GeneratedField::BridgePubkey),
+                            "httpUrl" | "http_url" => Ok(GeneratedField::HttpUrl),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeRegistration;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeRegistration")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeRegistration, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut bridge_pubkey__ = None;
+                let mut http_url__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::BridgePubkey => {
+                            if bridge_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgePubkey"));
+                            }
+                            bridge_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::HttpUrl => {
+                            if http_url__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("httpUrl"));
+                            }
+                            http_url__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeRegistration {
+                    bridge_pubkey: bridge_pubkey__,
+                    http_url: http_url__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeRegistration", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BridgeState {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.paused.is_some() {
+            len += 1;
+        }
+        if self.next_withdrawal_nonce.is_some() {
+            len += 1;
+        }
+        if self.bridge_committee.is_some() {
+            len += 1;
+        }
+        if !self.processed_deposit_nonces.is_empty() {
+            len += 1;
+        }
+        if !self.system_message_seq_nums.is_empty() {
+            len += 1;
+        }
+        if !self.bridge_registrations.is_empty() {
+            len += 1;
+        }
+        if self.total_usdc_supply.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BridgeState", len)?;
+        if let Some(v) = self.paused.as_ref() {
+            struct_ser.serialize_field("paused", v)?;
+        }
+        if let Some(v) = self.next_withdrawal_nonce.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextWithdrawalNonce", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.bridge_committee.as_ref() {
+            struct_ser.serialize_field("bridgeCommittee", v)?;
+        }
+        if !self.processed_deposit_nonces.is_empty() {
+            struct_ser.serialize_field("processedDepositNonces", &self.processed_deposit_nonces.iter().map(ToString::to_string).collect::<Vec<_>>())?;
+        }
+        if !self.system_message_seq_nums.is_empty() {
+            let v: std::collections::BTreeMap<_, _> = self.system_message_seq_nums.iter()
+                .map(|(k, v)| (k, v.to_string())).collect();
+            struct_ser.serialize_field("systemMessageSeqNums", &v)?;
+        }
+        if !self.bridge_registrations.is_empty() {
+            struct_ser.serialize_field("bridgeRegistrations", &self.bridge_registrations)?;
+        }
+        if let Some(v) = self.total_usdc_supply.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("totalUsdcSupply", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BridgeState {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "paused",
+            "next_withdrawal_nonce",
+            "nextWithdrawalNonce",
+            "bridge_committee",
+            "bridgeCommittee",
+            "processed_deposit_nonces",
+            "processedDepositNonces",
+            "system_message_seq_nums",
+            "systemMessageSeqNums",
+            "bridge_registrations",
+            "bridgeRegistrations",
+            "total_usdc_supply",
+            "totalUsdcSupply",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Paused,
+            NextWithdrawalNonce,
+            BridgeCommittee,
+            ProcessedDepositNonces,
+            SystemMessageSeqNums,
+            BridgeRegistrations,
+            TotalUsdcSupply,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "paused" => Ok(GeneratedField::Paused),
+                            "nextWithdrawalNonce" | "next_withdrawal_nonce" => Ok(GeneratedField::NextWithdrawalNonce),
+                            "bridgeCommittee" | "bridge_committee" => Ok(GeneratedField::BridgeCommittee),
+                            "processedDepositNonces" | "processed_deposit_nonces" => Ok(GeneratedField::ProcessedDepositNonces),
+                            "systemMessageSeqNums" | "system_message_seq_nums" => Ok(GeneratedField::SystemMessageSeqNums),
+                            "bridgeRegistrations" | "bridge_registrations" => Ok(GeneratedField::BridgeRegistrations),
+                            "totalUsdcSupply" | "total_usdc_supply" => Ok(GeneratedField::TotalUsdcSupply),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BridgeState;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BridgeState")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BridgeState, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut paused__ = None;
+                let mut next_withdrawal_nonce__ = None;
+                let mut bridge_committee__ = None;
+                let mut processed_deposit_nonces__ = None;
+                let mut system_message_seq_nums__ = None;
+                let mut bridge_registrations__ = None;
+                let mut total_usdc_supply__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Paused => {
+                            if paused__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("paused"));
+                            }
+                            paused__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextWithdrawalNonce => {
+                            if next_withdrawal_nonce__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextWithdrawalNonce"));
+                            }
+                            next_withdrawal_nonce__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::BridgeCommittee => {
+                            if bridge_committee__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeCommittee"));
+                            }
+                            bridge_committee__ = map_.next_value()?;
+                        }
+                        GeneratedField::ProcessedDepositNonces => {
+                            if processed_deposit_nonces__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("processedDepositNonces"));
+                            }
+                            processed_deposit_nonces__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
+                        GeneratedField::SystemMessageSeqNums => {
+                            if system_message_seq_nums__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("systemMessageSeqNums"));
+                            }
+                            system_message_seq_nums__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<crate::utils::_serde::NumberDeserialize<u32>, crate::utils::_serde::NumberDeserialize<u64>>>()?
+                                    .into_iter().map(|(k,v)| (k.0, v.0)).collect()
+                            );
+                        }
+                        GeneratedField::BridgeRegistrations => {
+                            if bridge_registrations__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeRegistrations"));
+                            }
+                            bridge_registrations__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::TotalUsdcSupply => {
+                            if total_usdc_supply__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("totalUsdcSupply"));
+                            }
+                            total_usdc_supply__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BridgeState {
+                    paused: paused__,
+                    next_withdrawal_nonce: next_withdrawal_nonce__,
+                    bridge_committee: bridge_committee__,
+                    processed_deposit_nonces: processed_deposit_nonces__.unwrap_or_default(),
+                    system_message_seq_nums: system_message_seq_nums__.unwrap_or_default(),
+                    bridge_registrations: bridge_registrations__.unwrap_or_default(),
+                    total_usdc_supply: total_usdc_supply__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BridgeState", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for BridgeUpdateCommitteeBlocklist {
@@ -17450,6 +18202,9 @@ impl serde::Serialize for SystemState {
         if self.safe_mode_accumulated_emissions.is_some() {
             len += 1;
         }
+        if self.bridge_state.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemState", len)?;
         if let Some(v) = self.epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -17500,6 +18255,9 @@ impl serde::Serialize for SystemState {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("safeModeAccumulatedEmissions", ToString::to_string(&v).as_str())?;
         }
+        if let Some(v) = self.bridge_state.as_ref() {
+            struct_ser.serialize_field("bridgeState", v)?;
+        }
         struct_ser.end()
     }
 }
@@ -17533,6 +18291,8 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             "safeModeAccumulatedFees",
             "safe_mode_accumulated_emissions",
             "safeModeAccumulatedEmissions",
+            "bridge_state",
+            "bridgeState",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -17550,6 +18310,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             SafeMode,
             SafeModeAccumulatedFees,
             SafeModeAccumulatedEmissions,
+            BridgeState,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -17585,6 +18346,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                             "safeMode" | "safe_mode" => Ok(GeneratedField::SafeMode),
                             "safeModeAccumulatedFees" | "safe_mode_accumulated_fees" => Ok(GeneratedField::SafeModeAccumulatedFees),
                             "safeModeAccumulatedEmissions" | "safe_mode_accumulated_emissions" => Ok(GeneratedField::SafeModeAccumulatedEmissions),
+                            "bridgeState" | "bridge_state" => Ok(GeneratedField::BridgeState),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -17619,6 +18381,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                 let mut safe_mode__ = None;
                 let mut safe_mode_accumulated_fees__ = None;
                 let mut safe_mode_accumulated_emissions__ = None;
+                let mut bridge_state__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Epoch => {
@@ -17713,6 +18476,12 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::BridgeState => {
+                            if bridge_state__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bridgeState"));
+                            }
+                            bridge_state__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -17732,6 +18501,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                     safe_mode: safe_mode__,
                     safe_mode_accumulated_fees: safe_mode_accumulated_fees__,
                     safe_mode_accumulated_emissions: safe_mode_accumulated_emissions__,
+                    bridge_state: bridge_state__,
                 })
             }
         }

@@ -2397,6 +2397,7 @@ mod _getter_impls {
                 safe_mode: None,
                 safe_mode_accumulated_fees: None,
                 safe_mode_accumulated_emissions: None,
+                bridge_state: None,
             }
         }
         #[doc(hidden)]
@@ -2521,6 +2522,25 @@ mod _getter_impls {
         }
         pub fn with_safe_mode_accumulated_emissions(mut self, field: u64) -> Self {
             self.safe_mode_accumulated_emissions = Some(field.into());
+            self
+        }
+        pub fn bridge_state(&self) -> &BridgeState {
+            self.bridge_state
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| BridgeState::default_instance() as _)
+        }
+        pub fn bridge_state_opt(&self) -> Option<&BridgeState> {
+            self.bridge_state.as_ref().map(|field| field as _)
+        }
+        pub fn bridge_state_opt_mut(&mut self) -> Option<&mut BridgeState> {
+            self.bridge_state.as_mut().map(|field| field as _)
+        }
+        pub fn bridge_state_mut(&mut self) -> &mut BridgeState {
+            self.bridge_state.get_or_insert_default()
+        }
+        pub fn with_bridge_state(mut self, field: BridgeState) -> Self {
+            self.bridge_state = Some(field.into());
             self
         }
     }
@@ -3280,6 +3300,164 @@ mod _getter_impls {
         }
         pub fn with_winning_model_id(mut self, field: String) -> Self {
             self.winning_model_id = Some(field.into());
+            self
+        }
+    }
+    impl BridgeState {
+        pub const fn const_default() -> Self {
+            Self {
+                paused: None,
+                next_withdrawal_nonce: None,
+                bridge_committee: None,
+                processed_deposit_nonces: Vec::new(),
+                system_message_seq_nums: std::collections::BTreeMap::new(),
+                bridge_registrations: std::collections::BTreeMap::new(),
+                total_usdc_supply: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeState = BridgeState::const_default();
+            &DEFAULT
+        }
+        pub fn with_paused(mut self, field: bool) -> Self {
+            self.paused = Some(field.into());
+            self
+        }
+        pub fn with_next_withdrawal_nonce(mut self, field: u64) -> Self {
+            self.next_withdrawal_nonce = Some(field.into());
+            self
+        }
+        pub fn bridge_committee(&self) -> &BridgeCommittee {
+            self.bridge_committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| BridgeCommittee::default_instance() as _)
+        }
+        pub fn bridge_committee_opt(&self) -> Option<&BridgeCommittee> {
+            self.bridge_committee.as_ref().map(|field| field as _)
+        }
+        pub fn bridge_committee_opt_mut(&mut self) -> Option<&mut BridgeCommittee> {
+            self.bridge_committee.as_mut().map(|field| field as _)
+        }
+        pub fn bridge_committee_mut(&mut self) -> &mut BridgeCommittee {
+            self.bridge_committee.get_or_insert_default()
+        }
+        pub fn with_bridge_committee(mut self, field: BridgeCommittee) -> Self {
+            self.bridge_committee = Some(field.into());
+            self
+        }
+        pub fn processed_deposit_nonces(&self) -> &[u64] {
+            &self.processed_deposit_nonces
+        }
+        pub fn processed_deposit_nonces_mut(&mut self) -> &mut Vec<u64> {
+            &mut self.processed_deposit_nonces
+        }
+        pub fn with_processed_deposit_nonces(mut self, field: Vec<u64>) -> Self {
+            self.processed_deposit_nonces = field;
+            self
+        }
+        pub fn with_total_usdc_supply(mut self, field: u64) -> Self {
+            self.total_usdc_supply = Some(field.into());
+            self
+        }
+    }
+    impl BridgeCommittee {
+        pub const fn const_default() -> Self {
+            Self {
+                members: std::collections::BTreeMap::new(),
+                threshold_deposit: None,
+                threshold_withdraw: None,
+                threshold_pause: None,
+                threshold_unpause: None,
+                threshold_blocklist: None,
+                threshold_limit_update: None,
+                threshold_evm_upgrade: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeCommittee = BridgeCommittee::const_default();
+            &DEFAULT
+        }
+        pub fn with_threshold_deposit(mut self, field: u64) -> Self {
+            self.threshold_deposit = Some(field.into());
+            self
+        }
+        pub fn with_threshold_withdraw(mut self, field: u64) -> Self {
+            self.threshold_withdraw = Some(field.into());
+            self
+        }
+        pub fn with_threshold_pause(mut self, field: u64) -> Self {
+            self.threshold_pause = Some(field.into());
+            self
+        }
+        pub fn with_threshold_unpause(mut self, field: u64) -> Self {
+            self.threshold_unpause = Some(field.into());
+            self
+        }
+        pub fn with_threshold_blocklist(mut self, field: u64) -> Self {
+            self.threshold_blocklist = Some(field.into());
+            self
+        }
+        pub fn with_threshold_limit_update(mut self, field: u64) -> Self {
+            self.threshold_limit_update = Some(field.into());
+            self
+        }
+        pub fn with_threshold_evm_upgrade(mut self, field: u64) -> Self {
+            self.threshold_evm_upgrade = Some(field.into());
+            self
+        }
+    }
+    impl BridgeMember {
+        pub const fn const_default() -> Self {
+            Self {
+                soma_address: None,
+                voting_power: None,
+                http_url: None,
+                is_blocklisted: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeMember = BridgeMember::const_default();
+            &DEFAULT
+        }
+        pub fn with_soma_address(mut self, field: String) -> Self {
+            self.soma_address = Some(field.into());
+            self
+        }
+        pub fn with_voting_power(mut self, field: u64) -> Self {
+            self.voting_power = Some(field.into());
+            self
+        }
+        pub fn with_http_url(mut self, field: String) -> Self {
+            self.http_url = Some(field.into());
+            self
+        }
+        pub fn with_is_blocklisted(mut self, field: bool) -> Self {
+            self.is_blocklisted = Some(field.into());
+            self
+        }
+    }
+    impl BridgeRegistration {
+        pub const fn const_default() -> Self {
+            Self {
+                bridge_pubkey: None,
+                http_url: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BridgeRegistration = BridgeRegistration::const_default();
+            &DEFAULT
+        }
+        pub fn with_bridge_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.bridge_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_http_url(mut self, field: String) -> Self {
+            self.http_url = Some(field.into());
             self
         }
     }

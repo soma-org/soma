@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
+use types::base::SomaAddress;
 
 use crate::types::BridgeAction;
 
@@ -29,8 +30,14 @@ pub struct WatchdogConfigBlock {
     pub failure_threshold: u32,
     /// USDC-micro tolerance for in-flight transfers. Production sets
     /// to cover realistic burst volume.
+    ///
+    /// Note: kept as `u64` rather than `u128` because the `toml` crate
+    /// does not support `u128` deserialization. `u64::MAX` USDC-micro
+    /// is ~1.8e13 USDC, well above any plausible bridge supply, so the
+    /// narrower type is harmless here. The comparison in
+    /// `ConservationInvariantObservable::check_once` widens to `u128`.
     #[serde(default = "default_watchdog_tolerance_micro")]
-    pub in_flight_tolerance_micro: u128,
+    pub in_flight_tolerance_micro: u64,
 }
 
 impl WatchdogConfigBlock {
@@ -45,7 +52,7 @@ fn default_watchdog_poll_ms() -> u64 {
 fn default_watchdog_failure_threshold() -> u32 {
     6
 }
-fn default_watchdog_tolerance_micro() -> u128 {
+fn default_watchdog_tolerance_micro() -> u64 {
     // 1 USDC = 1_000_000 micro. Default to 1k USDC of in-flight slack.
     1_000_000 * 1_000
 }
@@ -145,6 +152,34 @@ pub struct BridgeNodeConfig {
     /// `bridge/evm/` layout). See [`crate::outbound_relayer`].
     #[serde(default)]
     pub outbound_relayer: Option<OutboundRelayerConfigBlock>,
+
+    /// Optional Soma-side relayer (cert-submission wallet). When
+    /// `Some`, the bridge node assembles the quorum-signed cert for
+    /// each observed deposit / withdrawal and submits the resulting
+    /// Soma transaction from this wallet — flipping the node out of
+    /// sig-cache-only mode into full end-to-end participation. `None`
+    /// keeps the legacy behavior: observe + sign, but rely on an
+    /// external process to assemble + submit the cert.
+    #[serde(default)]
+    pub soma_relayer: Option<SomaRelayerConfigBlock>,
+}
+
+/// Soma-side relayer (wired via `BridgeNode::with_relayer`). The
+/// wallet pays gas for the inbound-cert submission tx; in practice
+/// a single relayer key is shared across all bridge nodes — the
+/// first node to assemble the cert wins the submission race, and
+/// duplicate submissions are rejected as replay on-chain.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SomaRelayerConfigBlock {
+    /// Soma address derived from the relayer keypair. Surfaced
+    /// separately so operators can validate the on-chain balance
+    /// without decoding the keypair file.
+    pub address: SomaAddress,
+    /// Path to the relayer's SomaKeyPair file (base64-encoded
+    /// flag-prefixed bytes, same format as `soma keytool generate`
+    /// emits). Loaded at startup; the contents are zeroized when
+    /// the node shuts down.
+    pub key_path: PathBuf,
 }
 
 /// Outbound-relayer config block. Triggers spinning up an
