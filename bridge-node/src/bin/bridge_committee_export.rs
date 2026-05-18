@@ -53,11 +53,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use bridge_node::soma_client::SomaBridgeClient;
 use clap::Parser;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use types::bridge::{BridgeChainId, derive_eth_address};
+use types::bridge::derive_eth_address;
 
 /// Operator tool: export the live Soma BridgeState committee in the format
 /// the Foundry `DeployBridge.s.sol` script consumes.
@@ -159,19 +158,27 @@ enum RunError {
 async fn run(args: Args) -> Result<(), RunError> {
     eprintln!("[1/4] Connecting to Soma RPC at {} ...", args.soma_rpc);
 
-    // The `soma_chain_id` passed to `new_rpc` is used by the client for
-    // outbound-tx record-id derivation + metric labels. This tool only
-    // *reads*, so any well-formed Soma-side chain id works. Use the
-    // dev-config default to keep the construction simple.
-    let client = SomaBridgeClient::new_rpc(&args.soma_rpc, BridgeChainId::SomaCustom)
-        .await
+    // NOTE: we deliberately do NOT use `SomaBridgeClient::get_bridge_committee`
+    // here. That path goes through `Client::get_latest_system_state()`, which
+    // converts the proto `SystemState` into the domain type via a
+    // `TryFrom<proto::SystemState>` impl whose `bridge_state` field is
+    // hardcoded to `BridgeState::new(BridgeCommittee::empty())` (see
+    // `rpc/src/utils/rpc_proto_conversions.rs` — the proto schema doesn't
+    // carry `bridge_state` yet). Read the raw SystemState object and BCS-
+    // decode it instead so we see the actual on-chain committee.
+    let mut client = rpc::api::client::Client::new(args.soma_rpc.as_str())
         .map_err(|e| RunError::Rpc(format!("connect: {e}")))?;
 
-    eprintln!("[2/4] Fetching BridgeState.bridge_committee ...");
-    let committee = client
-        .get_bridge_committee()
+    eprintln!("[2/4] Fetching SystemState object {} (raw BCS) ...", types::SYSTEM_STATE_OBJECT_ID);
+    let state_object = client
+        .get_object(types::SYSTEM_STATE_OBJECT_ID)
         .await
-        .map_err(|e| RunError::Rpc(format!("get_bridge_committee: {e}")))?;
+        .map_err(|e| RunError::Rpc(format!("get_object(SystemState): {e}")))?;
+    let system_state: types::system_state::SystemState =
+        bcs::from_bytes(state_object.as_inner().data.contents())
+            .map_err(|e| RunError::Rpc(format!("BCS decode SystemState: {e}")))?;
+    use types::system_state::SystemStateTrait as _;
+    let committee = system_state.bridge_state().bridge_committee.clone();
 
     eprintln!(
         "       Got {} committee member(s) (including blocklisted).",
