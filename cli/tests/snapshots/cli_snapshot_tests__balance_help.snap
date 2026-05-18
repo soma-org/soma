@@ -10,11 +10,9 @@ Arguments:
   [ADDRESS]  Address to check (defaults to active address)
 
 Options:
-      --with-coins  Show individual coin details
-      --json        Output as JSON
-  -h, --help        Print help
+      --json  Output as JSON
+  -h, --help  Print help
 
 EXAMPLES:
     soma balance
     soma balance 0x1234...5678
-    soma balance --with-coins

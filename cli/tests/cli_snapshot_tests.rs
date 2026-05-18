@@ -11,7 +11,6 @@
 //! Update snapshots: cargo insta review
 
 use assert_cmd::Command;
-use predicates::prelude::*;
 
 fn soma_cmd() -> Command {
     Command::cargo_bin("soma").expect("soma binary should be built")
@@ -101,15 +100,6 @@ fn test_inference_proxy_help() {
 }
 
 #[test]
-fn test_send_help() {
-    let output =
-        soma_cmd().args(["send", "--help"]).output().expect("failed to run soma send --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("send_help", stdout);
-}
-
-#[test]
 fn test_status_help() {
     let output =
         soma_cmd().args(["status", "--help"]).output().expect("failed to run soma status --help");
@@ -154,15 +144,6 @@ fn test_stake_help() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     insta::assert_snapshot!("stake_help", stdout);
-}
-
-#[test]
-fn test_pay_help() {
-    let output =
-        soma_cmd().args(["pay", "--help"]).output().expect("failed to run soma pay --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("pay_help", stdout);
 }
 
 #[test]
@@ -247,11 +228,6 @@ fn test_completions_help() {
 #[test]
 fn test_unknown_command() {
     soma_cmd().arg("nonexistent-command").assert().failure();
-}
-
-#[test]
-fn test_send_missing_required_args() {
-    soma_cmd().args(["send"]).assert().failure().stderr(predicate::str::contains("--to"));
 }
 
 // =============================================================================

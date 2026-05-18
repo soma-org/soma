@@ -12,7 +12,7 @@ use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::AccountKeystore as _;
 use types::object::ObjectID;
 
-use crate::response::{ClientCommandResponse, GasCoinsOutput, ObjectOutput, ObjectsOutput};
+use crate::response::{ClientCommandResponse, ObjectOutput, ObjectsOutput};
 
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
@@ -30,13 +30,6 @@ pub enum ObjectsCommand {
     /// List all objects owned by an address
     #[clap(name = "list")]
     List {
-        /// Owner address (defaults to active address)
-        owner: Option<KeyIdentity>,
-    },
-
-    /// List gas coins owned by an address
-    #[clap(name = "gas")]
-    Gas {
         /// Owner address (defaults to active address)
         owner: Option<KeyIdentity>,
     },
@@ -87,22 +80,6 @@ pub async fn execute(
             }
 
             Ok(ClientCommandResponse::Objects(ObjectsOutput { address, objects }))
-        }
-
-        ObjectsCommand::Gas { owner } => {
-            // Stage 13c: gas is balance-mode — there are no per-coin
-            // gas objects to enumerate. Read the USDC accumulator
-            // balance and surface it via the same output struct so
-            // existing scripts that parse `soma objects gas` keep
-            // working (with `coins` empty).
-            let address = match owner {
-                Some(key_id) => context.config.keystore.get_by_identity(&key_id)?,
-                None => context.active_address()?,
-            };
-            let mut client = context.get_client().await?;
-            let usdc =
-                client.get_balance_by_coin_type(&address, types::object::CoinType::Usdc).await?;
-            Ok(ClientCommandResponse::Gas(GasCoinsOutput { address, usdc, coins: Vec::new() }))
         }
     }
 }

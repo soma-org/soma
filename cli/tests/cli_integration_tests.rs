@@ -225,33 +225,6 @@ fn test_validator_summary_display() {
 }
 
 // =============================================================================
-// Merge coins response tests
-// =============================================================================
-
-#[test]
-fn test_merge_coins_nothing_to_merge_display() {
-    use cli::commands::merge::MergeCoinsResponse;
-
-    // Stage 13b: `merge-coins` is now a no-op stub (balance-mode has
-    // no coin objects to merge). The only variant is NothingToMerge
-    // and it prints a deprecation notice.
-    let response = MergeCoinsResponse::NothingToMerge;
-    let display = format!("{}", response);
-    assert!(display.contains("no-op"), "Should say no-op: {display}");
-    assert!(display.contains("deprecated"), "Should say deprecated: {display}");
-}
-
-#[test]
-fn test_merge_coins_json() {
-    use cli::commands::merge::MergeCoinsResponse;
-
-    let response = MergeCoinsResponse::NothingToMerge;
-    let json = serde_json::to_string(&response).unwrap();
-    // NothingToMerge serializes as null (untagged enum)
-    assert_eq!(json, "null");
-}
-
-// =============================================================================
 // New address output tests
 // =============================================================================
 

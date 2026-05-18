@@ -1,6 +1,5 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 157
 expression: stdout
 ---
 Stake SOMA with a validator
@@ -9,7 +8,7 @@ Usage: soma stake [OPTIONS] --validator <VALIDATOR> --amount <AMOUNT>
 
 Options:
       --validator <VALIDATOR>           Validator address to stake with
-      --amount <AMOUNT>                 Amount to stake in SOMA. Debited directly from the sender's SOMA balance accumulator (Stage 9d-C2: balance-mode)
+      --amount <AMOUNT>                 Amount to stake in SOMA, debited from your SOMA balance
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
       --simulate                        Perform a dry run (simulation) of the transaction, without executing it
       --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`

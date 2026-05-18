@@ -132,15 +132,11 @@ pub enum SomaCommand {
         after_help = "\
 EXAMPLES:
     soma balance
-    soma balance 0x1234...5678
-    soma balance --with-coins"
+    soma balance 0x1234...5678"
     )]
     Balance {
         /// Address to check (defaults to active address)
         address: Option<KeyIdentity>,
-        /// Show individual coin details
-        #[clap(long)]
-        with_coins: bool,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -153,8 +149,7 @@ EXAMPLES:
     soma transfer 10 0x1234...5678              # send 10 SOMA
     soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
     soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
-    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
-    soma transfer 10 0xABC... --coins 0xC1,0xC2 # use specific input coins"
+    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second"
     )]
     Transfer {
         /// Amount to send (in SOMA by default, or USDC with --usdc)
@@ -168,9 +163,6 @@ EXAMPLES:
         /// Per-recipient amounts (comma-separated). Overrides the positional amount.
         #[clap(long, value_delimiter = ',')]
         amounts: Option<Vec<String>>,
-        /// Input coin object IDs (comma-separated, auto-selected if not provided)
-        #[clap(long, value_delimiter = ',')]
-        coins: Option<Vec<ObjectID>>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
@@ -191,45 +183,6 @@ EXAMPLES:
         /// Object ID to transfer
         #[clap(long)]
         object_id: ObjectID,
-        /// Gas object (auto-selected if not provided)
-        #[clap(long)]
-        gas: Option<ObjectID>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// [deprecated: use `transfer`] Send SOMA to a recipient
-    #[clap(name = "send", hide = true)]
-    Send {
-        /// Recipient address or alias
-        #[clap(long)]
-        to: KeyIdentity,
-        /// Amount to send in SOMA (e.g., 1 or 0.5)
-        #[clap(long)]
-        amount: SomaAmount,
-        /// Specific coin to send from (auto-selected if not provided)
-        #[clap(long)]
-        coin: Option<ObjectID>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// [deprecated: use `transfer`] Pay SOMA to multiple recipients
-    #[clap(name = "pay", hide = true)]
-    Pay {
-        /// Recipient addresses
-        #[clap(long, required = true, num_args(1..))]
-        recipients: Vec<KeyIdentity>,
-        /// Amounts to send to each recipient (in SOMA, e.g., 1 or 0.5)
-        #[clap(long, required = true, num_args(1..))]
-        amounts: Vec<SomaAmount>,
-        /// Input coin object IDs (auto-selected if not provided)
-        #[clap(long, num_args(1..))]
-        coins: Option<Vec<ObjectID>>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
@@ -247,8 +200,7 @@ EXAMPLES:
         /// Validator address to stake with
         #[clap(long)]
         validator: SomaAddress,
-        /// Amount to stake in SOMA. Debited directly from the sender's
-        /// SOMA balance accumulator (Stage 9d-C2: balance-mode).
+        /// Amount to stake in SOMA, debited from your SOMA balance.
         #[clap(long)]
         amount: SomaAmount,
         #[clap(flatten)]
@@ -269,7 +221,7 @@ EXAMPLES:
         /// StakingPool ObjectID. Use `soma stakes` to list yours.
         #[clap(long)]
         pool: ObjectID,
-        /// Amount to withdraw in SOMA. Omit to drain the entire row.
+        /// Amount to withdraw in SOMA. Omit to withdraw your full stake.
         #[clap(long)]
         amount: Option<SomaAmount>,
         #[clap(flatten)]
@@ -278,7 +230,7 @@ EXAMPLES:
         json: bool,
     },
 
-    /// List active stakes for an address (reads the post-9d delegations table)
+    /// List active stakes for an address
     #[clap(
         name = "stakes",
         after_help = "\
@@ -290,20 +242,6 @@ EXAMPLES:
         /// Staker address (defaults to the active wallet address)
         #[clap(long)]
         staker: Option<SomaAddress>,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Merge dust coins to reduce object count
-    #[clap(
-        name = "merge",
-        visible_alias = "merge-coins",
-        after_help = "\
-EXAMPLES:
-    soma merge
-    soma merge --json"
-    )]
-    MergeCoins {
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -688,21 +626,14 @@ impl SomaCommand {
             // =================================================================
             // COMMON USER ACTIONS
             // =================================================================
-            SomaCommand::MergeCoins { json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::merge::execute(&mut context).await?;
-                result.print(json);
-                Ok(())
-            }
-
-            SomaCommand::Balance { address, with_coins, json } => {
+            SomaCommand::Balance { address, json } => {
                 let context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::balance::execute(&context, address, with_coins).await?;
+                let result = commands::balance::execute(&context, address).await?;
                 result.print(json);
                 Ok(())
             }
 
-            SomaCommand::Transfer { amount, recipients, usdc, amounts, coins, tx_args, json } => {
+            SomaCommand::Transfer { amount, recipients, usdc, amounts, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
 
                 // Parse the positional amount based on token type
@@ -731,8 +662,6 @@ impl SomaCommand {
                     })
                     .transpose()?;
 
-                // Stage 13b: balance-mode only — `coins` arg dropped.
-                let _ = coins;
                 let result = commands::transfer::execute(
                     &mut context,
                     base_amount,
@@ -749,55 +678,15 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::TransferObject { to, object_id, gas, tx_args, json } => {
+            SomaCommand::TransferObject { to, object_id, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::transfer::execute_transfer_object(
                     &mut context,
                     to,
                     object_id,
-                    gas,
                     tx_args,
                 )
                 .await?;
-                result.print(json);
-                if result.has_failed_transaction() {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-
-            SomaCommand::Send { to, amount, coin, tx_args, json } => {
-                // Stage 13b: balance-mode only. `coin` arg ignored.
-                ensure!(amount.shannons() > 0, "Amount must be greater than 0");
-                let _ = coin;
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::send::execute(&mut context, to, amount.shannons(), tx_args).await?;
-                result.print(json);
-                if result.has_failed_transaction() {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-
-            SomaCommand::Pay { recipients, amounts, coins, tx_args, json } => {
-                // Backward compat: delegate to unified transfer
-                ensure!(
-                    recipients.len() == amounts.len(),
-                    "Number of recipients ({}) must match number of amounts ({})",
-                    recipients.len(),
-                    amounts.len()
-                );
-                for (i, a) in amounts.iter().enumerate() {
-                    ensure!(a.shannons() > 0, "Amount {} must be greater than 0", i + 1);
-                }
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
-                // Stage 13b: balance-mode only — `coins` arg dropped.
-                let _ = coins;
-                let result =
-                    commands::pay::execute(&mut context, recipients, amounts_shannons, tx_args)
-                        .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -860,7 +749,8 @@ impl SomaCommand {
                     epoch_start_timestamp_ms,
                     epoch_duration_ms,
                     protocol_version,
-                    balance,
+                    soma_balance,
+                    usdc_balance,
                     server_unreachable,
                 ) = match context.get_client().await {
                     Ok(client) => {
@@ -871,10 +761,19 @@ impl SomaCommand {
                         let epoch_start_ms = state.as_ref().map(|s| s.epoch_start_timestamp_ms());
                         let epoch_dur_ms = state.as_ref().map(|s| s.epoch_duration_ms());
                         let protocol_version = client.get_protocol_version().await.ok();
-                        let balance = if let Some(addr) = &active_address {
-                            client.get_balance(addr).await.ok()
+                        let (soma_balance, usdc_balance) = if let Some(addr) = &active_address {
+                            (
+                                client
+                                    .get_balance_by_coin_type(addr, types::object::CoinType::Soma)
+                                    .await
+                                    .ok(),
+                                client
+                                    .get_balance_by_coin_type(addr, types::object::CoinType::Usdc)
+                                    .await
+                                    .ok(),
+                            )
                         } else {
-                            None
+                            (None, None)
                         };
                         let unreachable =
                             server_version.is_none() && chain_id.is_none() && epoch.is_none();
@@ -885,11 +784,12 @@ impl SomaCommand {
                             epoch_start_ms,
                             epoch_dur_ms,
                             protocol_version,
-                            balance,
+                            soma_balance,
+                            usdc_balance,
                             unreachable,
                         )
                     }
-                    Err(_) => (None, None, None, None, None, None, None, true),
+                    Err(_) => (None, None, None, None, None, None, None, None, true),
                 };
 
                 let next_epoch_in = epoch_start_timestamp_ms
@@ -907,7 +807,8 @@ impl SomaCommand {
                     next_epoch_in,
                     protocol_version,
                     active_address: active_address.map(|a| a.to_string()),
-                    balance,
+                    soma_balance,
+                    usdc_balance,
                     server_reachable: !server_unreachable,
                 };
                 output.print(json);
@@ -1160,7 +1061,7 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let mut genesis_config = GenesisConfig::for_local_testing();
+        let genesis_config = GenesisConfig::for_local_testing();
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);

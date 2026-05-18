@@ -453,7 +453,6 @@ pub enum ClientCommandResponse {
     ChainInfo(ChainInfoOutput),
     Object(ObjectOutput),
     Objects(ObjectsOutput),
-    Gas(GasCoinsOutput),
     Balance(BalanceOutput),
     Transaction(TransactionResponse),
     TransactionDigest(TransactionDigest),
@@ -512,7 +511,6 @@ impl Display for ClientCommandResponse {
             ClientCommandResponse::ChainInfo(output) => write!(f, "{}", output),
             ClientCommandResponse::Object(output) => write!(f, "{}", output),
             ClientCommandResponse::Objects(output) => write!(f, "{}", output),
-            ClientCommandResponse::Gas(output) => write!(f, "{}", output),
             ClientCommandResponse::Balance(output) => write!(f, "{}", output),
             ClientCommandResponse::Transaction(output) => write!(f, "{}", output),
             ClientCommandResponse::TransactionDigest(digest) => {
@@ -976,36 +974,9 @@ impl Display for ObjectsOutput {
     }
 }
 
-/// Stage 13c: balance-mode "gas" output. There are no per-coin gas
-/// objects anymore; gas comes from the sender's USDC accumulator.
-/// `coins` is kept on the struct for serialization stability with
-/// older client tooling but will always be empty in balance-mode.
-#[derive(Debug, Serialize)]
-pub struct GasCoinsOutput {
-    pub address: SomaAddress,
-    pub usdc: u64,
-    pub coins: Vec<(ObjectRef, u64)>,
-}
-
-impl Display for GasCoinsOutput {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut builder = TableBuilder::default();
-        builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record(["USDC (gas)", &self.usdc.to_string().green().to_string()]);
-
-        let mut table = builder.build();
-        table.with(TableStyle::rounded());
-        table.with(TablePanel::header("Gas (balance-mode)"));
-        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(tabled::settings::style::BorderSpanCorrection);
-        writeln!(f, "{}", table)
-    }
-}
-
-/// Stage 13c: balance-mode CLI output. Coin objects are gone, so
-/// what we display is the per-coin-type accumulator balance for the
-/// address. SOMA balance is shown in both base units (shannons) and
-/// the human-readable SOMA unit; USDC is base-unit only.
+/// Per-coin-type accumulator balance for an address. Both SOMA and
+/// USDC are shown in human-readable form and in base units (shannons
+/// / microdollars).
 #[derive(Debug, Serialize)]
 pub struct BalanceOutput {
     pub address: SomaAddress,
@@ -1017,7 +988,11 @@ impl Display for BalanceOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record(["USDC", &self.usdc.to_string().green().to_string()]);
+        builder.push_record([
+            "USDC",
+            &crate::usdc_amount::format_usdc(self.usdc).green().to_string(),
+        ]);
+        builder.push_record(["USDC (microdollars)", &self.usdc.to_string()]);
         builder.push_record(["SOMA", &format_soma(self.soma as u128).green().to_string()]);
         builder.push_record(["SOMA (shannons)", &self.soma.to_string()]);
 
@@ -1072,7 +1047,9 @@ pub struct StatusOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub balance: Option<u64>,
+    pub soma_balance: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usdc_balance: Option<u64>,
     pub server_reachable: bool,
 }
 
@@ -1099,9 +1076,11 @@ impl Display for StatusOutput {
         if let Some(ref addr) = self.active_address {
             builder.push_record(["Active Address", addr]);
         }
-        if let Some(bal) = self.balance {
-            let soma = format_soma(bal as u128);
-            builder.push_record(["Balance", &soma]);
+        if let Some(bal) = self.soma_balance {
+            builder.push_record(["SOMA Balance", &format_soma(bal as u128)]);
+        }
+        if let Some(bal) = self.usdc_balance {
+            builder.push_record(["USDC Balance", &crate::usdc_amount::format_usdc(bal)]);
         }
 
         let mut table = builder.build();
@@ -1163,10 +1142,7 @@ impl Display for SimulationResponse {
 
         let mut builder = TableBuilder::default();
         builder.push_record(["Status", &status_str]);
-        builder.push_record([
-            "Estimated Gas",
-            &format!("{} shannons ({})", self.gas_used, format_soma(self.gas_used as u128)),
-        ]);
+        builder.push_record(["Estimated Fee", &format_fee(self.gas_used)]);
 
         if !self.created.is_empty() {
             builder.push_record(["Would Create", &format!("{} object(s)", self.created.len())]);
@@ -1507,9 +1483,14 @@ impl Display for ValidatorSummary {
 // HELPER FUNCTIONS
 // =============================================================================
 
-/// Format a fee value showing SOMA first with shannons in parentheses.
-fn format_fee(shannons: u64) -> String {
-    format!("{} ({} shannons)", format_soma(shannons as u128), format_with_commas(shannons as u128))
+/// Format a transaction fee. Fees are charged in USDC microdollars —
+/// debited from the sender's USDC accumulator, not in SOMA.
+fn format_fee(microdollars: u64) -> String {
+    format!(
+        "{} ({} microdollars)",
+        crate::usdc_amount::format_usdc(microdollars),
+        format_with_commas(microdollars as u128)
+    )
 }
 
 /// Format a balance in shannons as SOMA with appropriate suffix (public API).

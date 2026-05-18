@@ -10,17 +10,10 @@ use types::object::CoinType;
 
 use crate::response::BalanceOutput;
 
-/// Stage 13c: read the address's USDC and SOMA accumulator balances.
-/// Coin objects are gone (Stage 13a), so the previous "list owned
-/// Coin objects and sum them" path always returned 0.
-///
-/// `_with_coins` is accepted for backwards-compatible CLI flag
-/// parsing but no longer means anything — there are no per-coin
-/// objects to enumerate.
+/// Read the address's USDC and SOMA accumulator balances.
 pub async fn execute(
     context: &WalletContext,
     address: Option<KeyIdentity>,
-    _with_coins: bool,
 ) -> Result<BalanceOutput> {
     let address = match address {
         Some(key_id) => context.config.keystore.get_by_identity(&key_id)?,

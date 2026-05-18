@@ -13,7 +13,6 @@ Arguments:
 Options:
       --usdc                            Send USDC instead of SOMA
       --amounts <AMOUNTS>               Per-recipient amounts (comma-separated). Overrides the positional amount
-      --coins <COINS>                   Input coin object IDs (comma-separated, auto-selected if not provided)
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
       --simulate                        Perform a dry run (simulation) of the transaction, without executing it
       --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
@@ -26,4 +25,3 @@ EXAMPLES:
     soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
     soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
     soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
-    soma transfer 10 0xABC... --coins 0xC1,0xC2 # use specific input coins

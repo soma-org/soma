@@ -135,7 +135,7 @@ impl SomaEnv {
 
     pub fn localnet() -> Self {
         Self {
-            alias: "local".to_string(),
+            alias: "localnet".to_string(),
             rpc: SOMA_LOCAL_NETWORK_URL.into(),
             basic_auth: None,
             chain_id: None,

@@ -72,16 +72,11 @@ pub async fn execute(
     crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
 
-// Stage 13b: keep `_` to suppress unused-import warning if any
-// callers stop passing ObjectID after migrating.
-const _UNUSED_OBJECT_ID: Option<ObjectID> = None;
-
 /// Transfer an arbitrary object to a recipient (non-coin transfer).
 pub async fn execute_transfer_object(
     context: &mut WalletContext,
     to: KeyIdentity,
     object_id: ObjectID,
-    _gas: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.get_object_owner(&object_id).await?;
@@ -94,6 +89,5 @@ pub async fn execute_transfer_object(
 
     let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
 
-    // Stage 13c: gas is balance-mode; the `_gas` arg is ignored.
     crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
