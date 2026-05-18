@@ -1600,10 +1600,9 @@ impl TryFrom<BridgeCommittee> for types::bridge::BridgeCommittee {
             let bytes = hex::decode(&pubkey_hex).map_err(|e| {
                 format!("BridgeCommittee.members: invalid hex key {pubkey_hex}: {e}")
             })?;
-            let pubkey =
-                types::bridge::BridgePubkey::from_bytes(&bytes).map_err(|e| {
-                    format!("BridgeCommittee.members: invalid pubkey {pubkey_hex}: {e}")
-                })?;
+            let pubkey = types::bridge::BridgePubkey::from_bytes(&bytes).map_err(|e| {
+                format!("BridgeCommittee.members: invalid pubkey {pubkey_hex}: {e}")
+            })?;
             members.insert(pubkey, proto_member.try_into()?);
         }
         Ok(types::bridge::BridgeCommittee {
@@ -1702,11 +1701,8 @@ impl From<types::bridge::BridgeCommittee> for BridgeCommittee {
 
 impl From<types::bridge::BridgeState> for BridgeState {
     fn from(state: types::bridge::BridgeState) -> Self {
-        let system_message_seq_nums = state
-            .system_message_seq_nums
-            .into_iter()
-            .map(|(t, seq)| (t as u32, seq))
-            .collect();
+        let system_message_seq_nums =
+            state.system_message_seq_nums.into_iter().map(|(t, seq)| (t as u32, seq)).collect();
         let bridge_registrations = state
             .bridge_registrations
             .into_iter()
