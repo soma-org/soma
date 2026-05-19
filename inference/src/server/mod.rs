@@ -75,6 +75,24 @@ pub async fn run(
         tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
     }
 
+    // On-chain offerings. Each `[[offerings]]` block in the provider TOML
+    // is registered (or updated) on chain, so the operator declares its
+    // pricing in exactly one place — the same card that drives the served
+    // `/v1/models` catalog. Prices convert to on-chain micros via
+    // `pricing::offering_prices_from_card`. Best-effort, like the provider
+    // registration above: a transient failure is logged, not fatal.
+    for card in &cfg.offerings {
+        let prices = crate::pricing::offering_prices_from_card(card);
+        match sdk::offering::register_or_update(&wallet, address, card.id.clone(), prices).await {
+            Ok(()) => tracing::info!(model_id = %card.id, "offering registered on-chain"),
+            Err(e) => tracing::warn!(
+                model_id = %card.id,
+                err = %e,
+                "on-chain offering register/update failed (continuing)",
+            ),
+        }
+    }
+
     // Background settle ticker. Insurance against provider crashes —
     // SIGTERM hook only fires on graceful shutdown, so without this
     // any unsettled drift between ticks is earnings the provider

@@ -30,6 +30,15 @@ pub struct ModelCard {
     pub default_parameters: Option<serde_json::Value>,
     #[serde(default)]
     pub expiration_date: Option<String>,
+    /// Provider SLA: time-to-first-token bound (ms). `serve` propagates it
+    /// to the on-chain `Offering`; channels opened against the offering
+    /// snapshot it. Absent / `None` registers as `0` = check disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttft_bound_ms: Option<u32>,
+    /// Provider SLA: time-to-output-token bound (ms per output token).
+    /// Absent / `None` registers as `0` = check disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttot_bound_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soma: Option<SomaInfo>,
 }

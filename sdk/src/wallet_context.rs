@@ -341,6 +341,26 @@ impl WalletContext {
         response
     }
 
+    /// Execute a transaction, wait for finalization, and return an `Err`
+    /// if the RPC failed or the effects status is not success.
+    ///
+    /// Same success criteria as [`Self::execute_transaction_must_succeed`],
+    /// but surfaces the failure as a `Result` instead of panicking — for
+    /// callers that treat a chain error as recoverable (e.g. a server's
+    /// best-effort boot registration) rather than process-fatal.
+    pub async fn execute_transaction_require_success(
+        &self,
+        tx: Transaction,
+    ) -> anyhow::Result<TransactionExecutionResponseWithCheckpoint> {
+        let response = self.execute_transaction_may_fail(tx).await?;
+        anyhow::ensure!(
+            response.effects.status().is_ok(),
+            "transaction failed: {:?}",
+            response.effects.status()
+        );
+        Ok(response)
+    }
+
     /// Execute a transaction and wait for it to be finalized
     /// The transaction execution is not guaranteed to succeed and may fail
     pub async fn execute_transaction_may_fail(

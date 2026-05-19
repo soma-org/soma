@@ -31,7 +31,7 @@ pub async fn register(
 ) -> anyhow::Result<ObjectID> {
     let kind = TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(Provider::derive_id(sender))
 }
 
@@ -46,7 +46,7 @@ pub async fn update(
     let provider_id = Provider::derive_id(sender);
     let kind = TransactionKind::UpdateProvider(UpdateProviderArgs { provider_id, endpoint });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 

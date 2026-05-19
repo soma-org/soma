@@ -146,6 +146,8 @@ async fn proxy_provider_full_stack_against_real_chain() {
         supported_parameters: vec!["max_tokens".into()],
         default_parameters: None,
         expiration_date: None,
+        ttft_bound_ms: Some(60_000),
+        ttot_bound_ms: Some(10_000),
         pricing: inference::catalog::Pricing {
             prompt: "0.0000002".into(),
             completion: "0.0000004".into(),
@@ -417,6 +419,8 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         supported_parameters: vec!["max_tokens".into()],
         default_parameters: None,
         expiration_date: None,
+        ttft_bound_ms: Some(60_000),
+        ttot_bound_ms: Some(10_000),
         pricing: inference::catalog::Pricing {
             prompt: "0.0000002".into(),
             completion: "0.0000004".into(),

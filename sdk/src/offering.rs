@@ -4,10 +4,11 @@
 //! Stable SDK surface for the per-(provider, model) on-chain `Offering`
 //! shared object. Mirrors `sdk::provider` shape:
 //!
-//! - [`register`]    — submit `RegisterOffering`.
-//! - [`update`]      — submit `UpdateOffering`.
-//! - [`deactivate`]  — submit `DeactivateOffering` (one-way for v1).
-//! - [`get`]         — read the on-chain `Offering` record.
+//! - [`register`]           — submit `RegisterOffering`.
+//! - [`update`]             — submit `UpdateOffering`.
+//! - [`register_or_update`] — idempotent boot path (register else update).
+//! - [`deactivate`]         — submit `DeactivateOffering` (one-way for v1).
+//! - [`get`]                — read the on-chain `Offering` record.
 //!
 //! All four go through the same `build_signed → execute_must_succeed`
 //! path as every other SDK helper.
@@ -59,7 +60,7 @@ pub async fn register(
     let tx = crate::transaction_builder::TransactionBuilder::new(ctx)
         .build_transaction_async(sender, kind)
         .await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(Offering::derive_id(sender, &model_id))
 }
 
@@ -88,8 +89,25 @@ pub async fn update(
     let tx = crate::transaction_builder::TransactionBuilder::new(ctx)
         .build_transaction_async(sender, kind)
         .await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
+}
+
+/// Idempotent register-or-update for the `(sender, model_id)` Offering —
+/// the path a provider server takes on boot. Registers if no Offering
+/// object exists yet, otherwise updates prices / SLA bounds in place.
+/// Mirrors [`crate::provider::register_or_update`].
+pub async fn register_or_update(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    model_id: String,
+    p: OfferingPrices,
+) -> anyhow::Result<()> {
+    if get(ctx, sender, &model_id).await?.is_some() {
+        update(ctx, sender, model_id, p).await
+    } else {
+        register(ctx, sender, model_id, p).await.map(|_| ())
+    }
 }
 
 /// Submit a `DeactivateOffering` tx. Flips `active=false` on the row;
@@ -106,7 +124,7 @@ pub async fn deactivate(
     let tx = crate::transaction_builder::TransactionBuilder::new(ctx)
         .build_transaction_async(sender, kind)
         .await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 

@@ -4,6 +4,8 @@
 //! Pricing math: per-request worst-case (signed in pre-flight) and realized
 //! (charged in post-flight). Costs are integer micros (1 micro = $1e-6).
 
+use sdk::offering::OfferingPrices;
+
 use crate::catalog::{ModelCard, Pricing};
 use crate::openai::ChatRequest;
 use crate::openai::chat::Usage;
@@ -44,6 +46,23 @@ pub fn cost_micros(price_str: &str, quantity: u64) -> u64 {
     let cost = scaled.saturating_mul(quantity as u128);
     let micros = (cost + 999_999) / 1_000_000;
     micros.min(u128::from(u64::MAX)) as u64
+}
+
+/// Convert a provider's `[[offerings]]` card (the TOML block the operator
+/// authors) into on-chain [`OfferingPrices`]. Per-1k token rates use
+/// `cost_micros(price, 1000)`; `request` is the flat per-request charge.
+/// SLA bounds pass through (absent = `0` = disabled). `pricing.image` has
+/// no on-chain slot and is ignored.
+pub fn offering_prices_from_card(card: &ModelCard) -> OfferingPrices {
+    OfferingPrices {
+        prompt_micros_per_1k: cost_micros(&card.pricing.prompt, 1000),
+        completion_micros_per_1k: cost_micros(&card.pricing.completion, 1000),
+        cache_read_micros_per_1k: cost_micros(&card.pricing.input_cache_read, 1000),
+        cache_write_micros_per_1k: cost_micros(&card.pricing.input_cache_write, 1000),
+        request_micros: cost_micros(&card.pricing.request, 1),
+        ttft_bound_ms: card.ttft_bound_ms.unwrap_or(0),
+        ttot_bound_ms: card.ttot_bound_ms.unwrap_or(0),
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -112,5 +131,60 @@ mod tests {
         // $0.00000028 per token × 1e6 tokens = $0.28 = 280_000 micros.
         assert_eq!(cost_micros("0.00000028", 1_000_000), 280_000);
         assert_eq!(cost_micros("0", 1_000_000), 0);
+    }
+
+    fn card(prompt: &str, completion: &str, ttft: Option<u32>, ttot: Option<u32>) -> ModelCard {
+        use crate::catalog::{Architecture, TopProvider};
+        ModelCard {
+            id: "m".into(),
+            name: "m".into(),
+            canonical_slug: None,
+            hugging_face_id: None,
+            created: 0,
+            description: None,
+            context_length: 0,
+            architecture: Architecture {
+                input_modalities: vec![],
+                output_modalities: vec![],
+                tokenizer: String::new(),
+                instruct_type: None,
+            },
+            top_provider: TopProvider {
+                context_length: 0,
+                max_completion_tokens: None,
+                is_moderated: false,
+            },
+            supported_parameters: vec![],
+            default_parameters: None,
+            expiration_date: None,
+            ttft_bound_ms: ttft,
+            ttot_bound_ms: ttot,
+            pricing: Pricing {
+                prompt: prompt.into(),
+                completion: completion.into(),
+                request: "0".into(),
+                image: "0".into(),
+                input_cache_read: "0".into(),
+                input_cache_write: "0".into(),
+            },
+            soma: None,
+        }
+    }
+
+    #[test]
+    fn offering_prices_from_card_maps_pricing_to_micros() {
+        // $1e-6/prompt-token, $5e-6/completion-token → 1000 / 5000 micros
+        // per 1k tokens — the same numbers a provider would otherwise pass
+        // to `soma offering register`.
+        let p = offering_prices_from_card(&card("0.000001", "0.000005", Some(60_000), Some(10_000)));
+        assert_eq!(p.prompt_micros_per_1k, 1_000);
+        assert_eq!(p.completion_micros_per_1k, 5_000);
+        assert_eq!(p.request_micros, 0);
+        assert_eq!(p.ttft_bound_ms, 60_000);
+        assert_eq!(p.ttot_bound_ms, 10_000);
+
+        // Absent SLA bounds register as disabled (0).
+        let p0 = offering_prices_from_card(&card("0", "0", None, None));
+        assert_eq!((p0.ttft_bound_ms, p0.ttot_bound_ms), (0, 0));
     }
 }

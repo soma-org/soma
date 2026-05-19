@@ -409,6 +409,8 @@ mod tests {
             supported_parameters: vec![],
             default_parameters: None,
             expiration_date: None,
+            ttft_bound_ms: None,
+            ttot_bound_ms: None,
             pricing: Pricing {
                 prompt: prompt.to_string(),
                 completion: completion.to_string(),

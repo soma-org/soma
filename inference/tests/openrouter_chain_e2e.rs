@@ -137,6 +137,8 @@ async fn openrouter_full_stack_round_trip() {
         supported_parameters: vec!["max_tokens".into(), "temperature".into()],
         default_parameters: None,
         expiration_date: None,
+        ttft_bound_ms: Some(60_000),
+        ttot_bound_ms: Some(10_000),
         pricing: inference::catalog::Pricing {
             // 0.000001 USD/token = $1/1M tokens. Matches the chain
             // snapshot's 1000 micros / 1k tokens above.
