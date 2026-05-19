@@ -273,21 +273,29 @@ mod tests {
         format!("0x{}", hex::encode(&data))
     }
 
-    /// Helper: mock `eth_getLogs` returning deposit events.
+    /// Helper: mock `eth_getLogs` returning deposit events, plus an
+    /// `eth_getTransactionReceipt` for each tx so the syncer can
+    /// translate block-level `log_index` into the tx-local position
+    /// (see `EthClient::resolve_tx_local_log_idx`). Each deposit gets
+    /// its own tx with a single log at receipt position 0; we expose
+    /// that as block-level `log_index = 0xa0 + i` so the assertion
+    /// pins down the translation logic (tx-local 0, not block-level
+    /// 0xa0+i).
     async fn mock_get_logs_with_deposits(
         server: &MockServer,
         deposits: Vec<(u64, u64)>, // (nonce, amount) pairs
     ) {
         let logs: Vec<_> = deposits
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(i, (nonce, amount))| {
                 json!({
                     "address": "0x0000000000000000000000000000000000000001",
                     "topics": [],
-                    "data": encode_deposit_data(nonce, amount),
+                    "data": encode_deposit_data(*nonce, *amount),
                     "blockNumber": format!("0x{:x}", 100 + i),
-                    "transactionHash": format!("0x{}", hex::encode([i as u8; 32]))
+                    "transactionHash": format!("0x{}", hex::encode([i as u8; 32])),
+                    "logIndex": format!("0x{:x}", 0xa0 + i)
                 })
             })
             .collect();
@@ -301,6 +309,36 @@ mod tests {
             })))
             .mount(server)
             .await;
+
+        // Per-tx receipt mocks. Each receipt has exactly one log (at
+        // tx-local position 0) so the translation result is 0
+        // regardless of the block-level index we gave above.
+        for (i, (nonce, amount)) in deposits.iter().enumerate() {
+            let tx_hash = format!("0x{}", hex::encode([i as u8; 32]));
+            let block_log_index = format!("0x{:x}", 0xa0 + i);
+            Mock::given(method("POST"))
+                .and(body_partial_json(json!({
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash.clone()]
+                })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "blockNumber": format!("0x{:x}", 100 + i),
+                        "logs": [{
+                            "address": "0x0000000000000000000000000000000000000001",
+                            "topics": [],
+                            "data": encode_deposit_data(*nonce, *amount),
+                            "blockNumber": format!("0x{:x}", 100 + i),
+                            "transactionHash": tx_hash,
+                            "logIndex": block_log_index
+                        }]
+                    }
+                })))
+                .mount(server)
+                .await;
+        }
     }
 
     #[tokio::test]

@@ -77,10 +77,9 @@ pub async fn execute(
             // single `save()` keeps the command atomic: a down active env
             // can't fail it after the new env is already persisted.
             let client = env.create_rpc_client(None).await?;
-            let chain_id = client
-                .get_chain_identifier()
-                .await
-                .map_err(|e| anyhow!("Failed to fetch chain ID from {}: {}", env.rpc, e.message()))?;
+            let chain_id = client.get_chain_identifier().await.map_err(|e| {
+                anyhow!("Failed to fetch chain ID from {}: {}", env.rpc, e.message())
+            })?;
             env.chain_id = Some(chain_id.clone());
 
             context.config.envs.push(env);

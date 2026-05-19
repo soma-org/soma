@@ -608,15 +608,75 @@ impl EthClient {
             )
             .await?;
 
+        // Cache receipts keyed by tx_hash so two deposits in the same
+        // tx don't trigger two `eth_getTransactionReceipt` calls.
+        let mut receipt_cache: std::collections::HashMap<String, EthTransactionReceipt> =
+            std::collections::HashMap::new();
+
         let mut events = Vec::new();
         for log in &logs {
-            if let Some(event) = self.parse_deposit_log(log)? {
+            if let Some(mut event) = self.parse_deposit_log(log)? {
+                // `parse_deposit_log` stores the block-level `log.log_index`
+                // as `event_idx`, but the sig server looks deposits up by
+                // their position within the tx's receipt
+                // (`receipt.logs[event_idx]`). On any block with more than
+                // a handful of logs those two values diverge and peers
+                // return `BridgeError::InternalError` to every signature
+                // request. Translate now so the WAL stores the canonical
+                // tx-local index. Mirrors `log_index_in_tx` in
+                // sui-bridge's `EthLog` construction.
+                event.event_idx = self.resolve_tx_local_log_idx(log, &mut receipt_cache).await?;
                 events.push(event);
             }
         }
 
         debug!(count = events.len(), "Parsed deposit events");
         Ok(events)
+    }
+
+    /// Translate a log's block-level `log_index` into its position
+    /// within the tx receipt's logs array. The sig server's
+    /// `handle_eth_tx_hash` indexes positionally
+    /// (`receipt.logs.get(event_idx)`), so this matches the lookup
+    /// semantics. Sui's bridge daemon does the same iteration in
+    /// `EthClient::get_logs_for_block_with_retry`.
+    async fn resolve_tx_local_log_idx(
+        &self,
+        log: &EthLog,
+        receipt_cache: &mut std::collections::HashMap<String, EthTransactionReceipt>,
+    ) -> BridgeResult<u16> {
+        let tx_hash = log
+            .transaction_hash
+            .as_ref()
+            .ok_or_else(|| BridgeError::Internal("log missing transactionHash".into()))?
+            .clone();
+        let block_log_index =
+            log.log_index.ok_or_else(|| BridgeError::Internal("log missing logIndex".into()))?;
+
+        let receipt = if let Some(r) = receipt_cache.get(&tx_hash) {
+            r
+        } else {
+            let fetched: Option<EthTransactionReceipt> =
+                self.rpc_call("eth_getTransactionReceipt", serde_json::json!([&tx_hash])).await?;
+            let fetched = fetched.ok_or_else(|| {
+                BridgeError::Internal(format!(
+                    "receipt not found for tx {tx_hash} (deposit log discovered but parent tx vanished)"
+                ))
+            })?;
+            receipt_cache.entry(tx_hash.clone()).or_insert(fetched)
+        };
+
+        for (idx, receipt_log) in receipt.logs.iter().enumerate() {
+            if receipt_log.log_index == Some(block_log_index) {
+                // Saturating cast — receipts with >65k logs are not
+                // physically possible at current block gas caps.
+                return Ok(idx.min(u16::MAX as usize) as u16);
+            }
+        }
+        Err(BridgeError::Internal(format!(
+            "log_index {block_log_index} not found in receipt logs for tx {tx_hash} (expected tx-local position; receipt had {} logs)",
+            receipt.logs.len()
+        )))
     }
 
     /// Parse a raw Ethereum log into a DepositEvent.
@@ -918,6 +978,13 @@ mod tests {
         data[184..192].copy_from_slice(&5_000_000u64.to_be_bytes()); // amount
         // word 6 (timestampMs) left zero for this test fixture.
 
+        // Two logs in this block — the SomaBridge log we care about
+        // (block-level logIndex 0x2a) and an unrelated USDC Transfer
+        // emitted earlier in the same tx (block-level logIndex 0x29,
+        // tx-local position 0). The translation logic must map our log
+        // to tx-local position 1, not the block-level 0x2a.
+        let tx_hash_hex = format!("0x{}", hex::encode([0xCC; 32]));
+        let unrelated_addr = "0x0000000000000000000000000000000000000002";
         Mock::given(method("POST"))
             .and(body_partial_json(json!({"method": "eth_getLogs"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -927,8 +994,38 @@ mod tests {
                     "topics": [],
                     "data": format!("0x{}", hex::encode(&data)),
                     "blockNumber": "0x64",
-                    "transactionHash": format!("0x{}", hex::encode([0xCC; 32]))
+                    "transactionHash": tx_hash_hex,
+                    "logIndex": "0x2a"
                 }]
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"method": "eth_getTransactionReceipt"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "jsonrpc": "2.0", "id": 1,
+                "result": {
+                    "blockNumber": "0x64",
+                    "logs": [
+                        {
+                            "address": unrelated_addr,
+                            "topics": [],
+                            "data": "0x",
+                            "blockNumber": "0x64",
+                            "transactionHash": tx_hash_hex,
+                            "logIndex": "0x29"
+                        },
+                        {
+                            "address": contract_addr,
+                            "topics": [],
+                            "data": format!("0x{}", hex::encode(&data)),
+                            "blockNumber": "0x64",
+                            "transactionHash": tx_hash_hex,
+                            "logIndex": "0x2a"
+                        }
+                    ]
+                }
             })))
             .mount(&server)
             .await;
@@ -940,6 +1037,9 @@ mod tests {
         assert_eq!(events[0].nonce, 7);
         assert_eq!(events[0].amount, 5_000_000);
         assert_eq!(events[0].block_number, 100);
+        // The bug being fixed: stored event_idx must be the tx-local
+        // position (1), not the block-level logIndex (0x2a = 42).
+        assert_eq!(events[0].event_idx, 1, "event_idx must be tx-local, not block-level");
     }
 
     #[tokio::test]

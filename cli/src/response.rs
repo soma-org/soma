@@ -988,10 +988,8 @@ impl Display for BalanceOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record([
-            "USDC",
-            &crate::usdc_amount::format_usdc(self.usdc).green().to_string(),
-        ]);
+        builder
+            .push_record(["USDC", &crate::usdc_amount::format_usdc(self.usdc).green().to_string()]);
         builder.push_record(["USDC (microdollars)", &self.usdc.to_string()]);
         builder.push_record(["SOMA", &format_soma(self.soma as u128).green().to_string()]);
         builder.push_record(["SOMA (shannons)", &self.soma.to_string()]);
