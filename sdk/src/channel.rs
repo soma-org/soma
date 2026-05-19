@@ -184,7 +184,7 @@ pub async fn open_channel(
     });
     let tx = build_signed(ctx, sender, kind).await?;
     let tx_digest = *tx.digest();
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(predicted_channel_id(tx_digest))
 }
 
@@ -207,7 +207,7 @@ pub async fn settle(
         voucher_signature,
     });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 
@@ -221,7 +221,7 @@ pub async fn top_up(
 ) -> anyhow::Result<()> {
     let kind = TransactionKind::TopUp(TopUpArgs { channel_id, coin_type, amount });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 
@@ -233,7 +233,7 @@ pub async fn request_close(
 ) -> anyhow::Result<()> {
     let kind = TransactionKind::RequestClose(RequestCloseArgs { channel_id });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 
@@ -251,7 +251,7 @@ pub async fn rate(
 ) -> anyhow::Result<()> {
     let kind = TransactionKind::RateChannel(RateChannelArgs { channel_id, negative, reason_code });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 
@@ -289,7 +289,7 @@ pub async fn withdraw_after_timeout_with_payee(
     let kind =
         TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id, payee });
     let tx = build_signed(ctx, sender, kind).await?;
-    let _ = ctx.execute_transaction_must_succeed(tx).await;
+    ctx.execute_transaction_require_success(tx).await?;
     Ok(())
 }
 

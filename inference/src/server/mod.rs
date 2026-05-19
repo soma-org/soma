@@ -93,6 +93,18 @@ pub async fn run(
         }
     }
 
+    // Heartbeat. Periodically re-submits `UpdateProvider` so the
+    // on-chain `Provider.registered_at_ms` keeps advancing while the
+    // server is alive — the boot registration above stamps it once;
+    // discovery needs an ongoing signal to tell a live provider from
+    // one that vanished without unregistering.
+    spawn_heartbeat(
+        wallet.clone(),
+        address,
+        cfg.server.public_endpoint.clone(),
+        HEARTBEAT_INTERVAL_SECS,
+    );
+
     // Background settle ticker. Insurance against provider crashes —
     // SIGTERM hook only fires on graceful shutdown, so without this
     // any unsettled drift between ticks is earnings the provider
@@ -125,6 +137,44 @@ pub async fn run(
         .with_graceful_shutdown(shutdown_signal(chain.clone(), ledger.clone(), channel.clone()));
     serve.await?;
     Ok(())
+}
+
+/// How often the provider re-stamps its on-chain heartbeat.
+const HEARTBEAT_INTERVAL_SECS: u64 = 300;
+
+/// Periodically re-submits `UpdateProvider` so the on-chain
+/// `Provider.registered_at_ms` keeps advancing while the server is
+/// alive. Discovery can then treat a provider whose heartbeat has gone
+/// stale (no beat for several intervals) as gone — a crash-safe signal
+/// the boot-time registration alone can't give, since it stamps the
+/// field once and never again.
+///
+/// Uses `register_or_update` rather than `update` so a heartbeat also
+/// heals a boot registration that failed transiently. Best-effort: a
+/// failed beat is logged, not fatal; the next tick retries.
+fn spawn_heartbeat(
+    wallet: Arc<WalletContext>,
+    address: SomaAddress,
+    endpoint: String,
+    interval_secs: u64,
+) {
+    if interval_secs == 0 {
+        tracing::info!("provider heartbeat disabled (interval_secs = 0)");
+        return;
+    }
+    tracing::info!(interval_secs, "provider heartbeat armed");
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+        // Skip the immediate first tick — boot registration just ran.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            match sdk::provider::register_or_update(&wallet, address, endpoint.clone()).await {
+                Ok(()) => tracing::debug!("provider heartbeat sent"),
+                Err(e) => tracing::warn!(err = %e, "provider heartbeat failed (will retry)"),
+            }
+        }
+    });
 }
 
 /// Background ticker that settles every channel with new progress
