@@ -176,7 +176,8 @@ mod tests {
         // $1e-6/prompt-token, $5e-6/completion-token → 1000 / 5000 micros
         // per 1k tokens — the same numbers a provider would otherwise pass
         // to `soma offering register`.
-        let p = offering_prices_from_card(&card("0.000001", "0.000005", Some(60_000), Some(10_000)));
+        let p =
+            offering_prices_from_card(&card("0.000001", "0.000005", Some(60_000), Some(10_000)));
         assert_eq!(p.prompt_micros_per_1k, 1_000);
         assert_eq!(p.completion_micros_per_1k, 5_000);
         assert_eq!(p.request_micros, 0);
