@@ -31,6 +31,7 @@ use types::bridge::{
 };
 use types::effects::TransactionEffects;
 use types::object::{CoinType, ObjectType};
+use types::system_state::SystemStateTrait;
 use types::transaction::Transaction;
 
 use crate::error::{BridgeError, BridgeResult};
@@ -100,6 +101,13 @@ pub trait SomaBridgeClientInner: Send + Sync + 'static {
     ) -> BridgeResult<u64>;
 
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee>;
+
+    /// Current epoch number from the live `SystemState`. Bridge txs
+    /// (gasless, non-zero sender) need `TransactionExpiration::ValidDuring`
+    /// to satisfy the Stage-5.5c stateless-tx check in
+    /// `authority::handle_transaction_*`; the relayer pairs this epoch
+    /// with the chain identifier to produce the expiration.
+    async fn current_epoch(&self) -> BridgeResult<u64>;
 
     /// Membership query against `BridgeState.processed_deposit_nonces`.
     /// Returns `true` iff `nonce` has already been recorded as a processed
@@ -203,6 +211,12 @@ impl<C: SomaBridgeClientInner> SomaBridgeClient<C> {
 
     pub async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         self.inner.get_bridge_committee().await
+    }
+
+    /// Live epoch number — used by the relayer to set
+    /// `TransactionExpiration::ValidDuring` on bridge txs.
+    pub async fn current_epoch(&self) -> BridgeResult<u64> {
+        self.inner.current_epoch().await
     }
 
     pub async fn is_deposit_processed(&self, nonce: u64) -> BridgeResult<bool> {
@@ -421,6 +435,15 @@ impl SomaBridgeClientInner for SomaBridgeRpcClient {
         Ok(state.bridge_state().bridge_committee.clone())
     }
 
+    async fn current_epoch(&self) -> BridgeResult<u64> {
+        let mut c = self.client.lock().await;
+        let state = c
+            .get_latest_system_state()
+            .await
+            .map_err(|s| BridgeError::Internal(format!("get_latest_system_state: {s}")))?;
+        Ok(state.epoch())
+    }
+
     async fn is_deposit_processed(&self, nonce: u64) -> BridgeResult<bool> {
         let mut c = self.client.lock().await;
         let state = c
@@ -600,6 +623,12 @@ pub mod tests {
 
         async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
             Ok(self.committee.lock().unwrap().clone())
+        }
+
+        async fn current_epoch(&self) -> BridgeResult<u64> {
+            // Mock doesn't model epoch progression; return 0 so any
+            // ValidDuring window the relayer builds covers `[0, 1]`.
+            Ok(0)
         }
 
         async fn is_deposit_processed(&self, nonce: u64) -> BridgeResult<bool> {

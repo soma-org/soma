@@ -65,6 +65,9 @@ use crate::soma_client::{BridgeActionStatus, SomaBridgeClient, SomaBridgeClientI
 use crate::storage::BridgeOrchestratorTables;
 use crate::tx_builder::build_bridge_transaction;
 use crate::types::BridgeAction;
+use std::str::FromStr;
+use types::digests::ChainIdentifier;
+use types::system_state::SystemStateTrait;
 
 /// Channel capacity for both signing- and execution-queue mpsc channels.
 const CHANNEL_SIZE: usize = 1000;
@@ -392,8 +395,38 @@ impl<C: SomaBridgeClientInner + 'static> BridgeActionExecutor<C> {
             return;
         }
 
+        // Fetch current epoch + chain identifier before building the tx.
+        // Bridge actions are gasless + non-zero-sender, so the chain's
+        // Stage-5.5c check requires `TransactionExpiration::ValidDuring`.
+        // We re-fetch each retry rather than caching: the relayer might
+        // sit on a cert across an epoch boundary, and submitting a tx
+        // whose ValidDuring window has rolled off the live epoch would
+        // be rejected with the same "expiration too far in the past"
+        // error mode we're trying to avoid.
+        let (current_epoch, chain) = match fetch_epoch_and_chain(client).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    attempt,
+                    "failed to fetch epoch + chain_id for tx ValidDuring; \
+                     will retry"
+                );
+                let _ = execution_tx
+                    .send(CertifiedBridgeActionExecutionWrapper(cert, attempt + 1))
+                    .await;
+                return;
+            }
+        };
+
         // Build + sign the wrapper user-tx.
-        let tx = match build_bridge_transaction(relayer_address, relayer_keypair.as_ref(), &cert) {
+        let tx = match build_bridge_transaction(
+            relayer_address,
+            relayer_keypair.as_ref(),
+            &cert,
+            current_epoch,
+            chain,
+        ) {
             Ok(tx) => tx,
             Err(e) => {
                 error!(
@@ -497,6 +530,25 @@ fn remove_from_wal(store: &BridgeOrchestratorTables, action: &BridgeAction) {
     if let Err(e) = store.remove_pending_action(&digest) {
         error!(?digest, error = %e, "failed to remove action from WAL");
     }
+}
+
+/// Look up the live epoch number and the chain identifier so the tx
+/// builder can declare `TransactionExpiration::ValidDuring`. The chain
+/// identifier is the genesis `CheckpointDigest`; we fetch the base58
+/// string via the cached `GetServiceInfo.chain_id` field and parse it.
+/// Bundled as a single helper so the execution loop has one fallible
+/// step to retry on transient RPC failures rather than two.
+async fn fetch_epoch_and_chain<C: SomaBridgeClientInner>(
+    client: &Arc<SomaBridgeClient<C>>,
+) -> BridgeResult<(u64, ChainIdentifier)> {
+    let epoch = client.current_epoch().await?;
+    let chain_id_str = client.cached_chain_identifier().await?;
+    let digest = types::digests::CheckpointDigest::from_str(chain_id_str).map_err(|e| {
+        crate::error::BridgeError::Internal(format!(
+            "invalid chain_id digest {chain_id_str:?}: {e}"
+        ))
+    })?;
+    Ok((epoch, ChainIdentifier::from(digest)))
 }
 
 #[cfg(test)]

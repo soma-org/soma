@@ -15,17 +15,25 @@
 //! and sign with the relayer's keypair.
 
 use fastcrypto::traits::Signer;
+use std::sync::atomic::{AtomicU32, Ordering};
 use types::base::SomaAddress;
 use types::crypto::Signature;
+use types::digests::ChainIdentifier;
 use types::transaction::{
     BridgeAttachWithdrawalSignaturesArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
     BridgeEmergencyUnpauseArgs, BridgeUpdateCommitteeBlocklistArgs, Transaction, TransactionData,
-    TransactionKind,
+    TransactionExpiration, TransactionKind,
 };
 
 use crate::aggregator::CertifiedBridgeAction;
 use crate::error::{BridgeError, BridgeResult};
 use crate::types::BridgeAction;
+
+/// Per-process counter feeding `TransactionExpiration::ValidDuring.nonce`.
+/// Required so two retries of the same action don't produce a tx with an
+/// identical digest (the relayer would race against itself for the
+/// notify_read slot). Mirrors the SDK's `transaction_builder::STATELESS_NONCE`.
+static EXPIRATION_NONCE: AtomicU32 = AtomicU32::new(0);
 
 /// Build and sign a Soma `Transaction` carrying `cert.action` plus the
 /// quorum cert. The returned `Transaction` is ready for submission via
@@ -36,15 +44,32 @@ use crate::types::BridgeAction;
 /// messages whose ecrecovered pubkeys are already inside `cert.signatures`).
 /// The relayer key only authorizes the wrapper user-tx; it doesn't
 /// participate in bridge consensus.
+///
+/// `current_epoch` + `chain` are used to set
+/// `TransactionExpiration::ValidDuring`. Bridge txs have `gas == []`
+/// (system-tx, gasless) and a non-zero sender (the relayer wallet),
+/// so the Stage-5.5c "stateless tx must declare ValidDuring" check
+/// in `authority::handle_transaction_*` rejects anything with
+/// `expiration == None`. The window spans `[current_epoch,
+/// current_epoch + 1]` — the maximum the protocol allows.
 pub fn build_bridge_transaction(
     relayer_address: SomaAddress,
     relayer_signer: &dyn Signer<Signature>,
     cert: &CertifiedBridgeAction,
+    current_epoch: u64,
+    chain: ChainIdentifier,
 ) -> BridgeResult<Transaction> {
     let kind = action_to_transaction_kind(cert)?;
-    // Accumulator-mode pricing: USDC is debited from `relayer_address`
-    // at execution; no explicit gas object is selected.
-    let data = TransactionData::new(kind, relayer_address, vec![]);
+    let expiration = TransactionExpiration::ValidDuring {
+        min_epoch: Some(current_epoch),
+        max_epoch: Some(current_epoch.saturating_add(1)),
+        chain,
+        nonce: EXPIRATION_NONCE.fetch_add(1, Ordering::Relaxed),
+    };
+    // Accumulator-mode pricing: bridge txs are system-tx (gasless),
+    // so `gas_payment` is `vec![]`. Replay protection comes from the
+    // `ValidDuring` window above.
+    let data = TransactionData::new_with_expiration(kind, relayer_address, vec![], expiration);
     Ok(Transaction::from_data_and_signer(data, vec![relayer_signer]))
 }
 
@@ -162,6 +187,16 @@ mod tests {
         BTreeMap::new()
     }
 
+    /// Test-only placeholder chain identifier so we can call
+    /// `build_bridge_transaction` without spinning up a real chain.
+    /// The on-chain check verifies the digest matches the genesis
+    /// checkpoint, so this is sufficient for compile-time builder
+    /// testing; production callers fetch the real value via
+    /// `SomaBridgeClient::cached_chain_identifier`.
+    fn test_chain() -> ChainIdentifier {
+        ChainIdentifier::from(types::digests::CheckpointDigest::new([0u8; 32]))
+    }
+
     #[test]
     fn test_build_deposit_transaction() {
         let (sender, kp) = relayer();
@@ -177,7 +212,7 @@ mod tests {
             timestamp_ms: 0,
         };
         let cert = CertifiedBridgeAction { action, signatures: empty_sigs() };
-        let tx = build_bridge_transaction(sender, &kp, &cert).expect("tx built");
+        let tx = build_bridge_transaction(sender, &kp, &cert, 0, test_chain()).expect("tx built");
         // Should be a BridgeDeposit kind.
         let inner = &tx.inner().intent_message.value;
         assert!(matches!(inner.kind(), TransactionKind::BridgeDeposit(_)));
@@ -197,7 +232,7 @@ mod tests {
             timestamp_ms: 0,
         };
         let cert = CertifiedBridgeAction { action, signatures: empty_sigs() };
-        let tx = build_bridge_transaction(sender, &kp, &cert).expect("tx built");
+        let tx = build_bridge_transaction(sender, &kp, &cert, 0, test_chain()).expect("tx built");
         assert!(matches!(
             tx.inner().intent_message.value.kind(),
             TransactionKind::BridgeAttachWithdrawalSignatures(_)
@@ -211,7 +246,7 @@ mod tests {
             action: BridgeAction::EmergencyPause { nonce: 5 },
             signatures: empty_sigs(),
         };
-        let tx = build_bridge_transaction(sender, &kp, &cert).unwrap();
+        let tx = build_bridge_transaction(sender, &kp, &cert, 0, test_chain()).unwrap();
         assert!(matches!(
             tx.inner().intent_message.value.kind(),
             TransactionKind::BridgeEmergencyPause(_)
@@ -225,7 +260,7 @@ mod tests {
             action: BridgeAction::EmergencyUnpause { nonce: 5 },
             signatures: empty_sigs(),
         };
-        let tx = build_bridge_transaction(sender, &kp, &cert).unwrap();
+        let tx = build_bridge_transaction(sender, &kp, &cert, 0, test_chain()).unwrap();
         assert!(matches!(
             tx.inner().intent_message.value.kind(),
             TransactionKind::BridgeEmergencyUnpause(_)
@@ -249,7 +284,7 @@ mod tests {
             members: vec![pk0.clone(), pk1.clone()],
         };
         let cert = CertifiedBridgeAction { action, signatures: empty_sigs() };
-        let tx = build_bridge_transaction(sender, &kp, &cert).unwrap();
+        let tx = build_bridge_transaction(sender, &kp, &cert, 0, test_chain()).unwrap();
         let kind = tx.inner().intent_message.value.kind();
         let TransactionKind::BridgeUpdateCommitteeBlocklist(args) = kind else {
             panic!("wrong tx kind");
@@ -276,7 +311,7 @@ mod tests {
             },
             signatures: empty_sigs(),
         };
-        assert!(build_bridge_transaction(sender, &kp, &limit).is_err());
+        assert!(build_bridge_transaction(sender, &kp, &limit, 0, test_chain()).is_err());
 
         let upgrade = CertifiedBridgeAction {
             action: BridgeAction::EvmContractUpgrade {
@@ -288,7 +323,7 @@ mod tests {
             },
             signatures: empty_sigs(),
         };
-        assert!(build_bridge_transaction(sender, &kp, &upgrade).is_err());
+        assert!(build_bridge_transaction(sender, &kp, &upgrade, 0, test_chain()).is_err());
     }
 
     /// `Ed25519SomaSignature` import is here only to make the test file

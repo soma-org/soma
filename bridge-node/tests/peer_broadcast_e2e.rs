@@ -81,6 +81,9 @@ impl SomaBridgeClientInner for InTestSomaClient {
     async fn get_bridge_committee(&self) -> BridgeResult<BridgeCommittee> {
         Ok(BridgeCommittee::empty())
     }
+    async fn current_epoch(&self) -> BridgeResult<u64> {
+        Ok(0)
+    }
     async fn is_deposit_processed(&self, _nonce: u64) -> BridgeResult<bool> {
         Ok(false)
     }
