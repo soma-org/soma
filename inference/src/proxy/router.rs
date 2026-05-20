@@ -138,7 +138,7 @@ impl Router {
         // fails. The chain-side Offering objects are already on-chain
         // authoritative, so the indexer view is just a fast bulk read.
         for rec in recs {
-            match self.fetch_provider_info(&rec.endpoint).await {
+            match self.fetch_provider_catalog(rec.address, &rec.endpoint).await {
                 Ok(info) => providers.push(info),
                 Err(e) => tracing::warn!(addr = %rec.address, err = %e, "provider unreachable"),
             }
@@ -149,18 +149,26 @@ impl Router {
         Ok(())
     }
 
-    async fn fetch_provider_info(&self, endpoint: &str) -> anyhow::Result<ProviderInfo> {
-        let info_url = format!("{}/soma/info", endpoint.trim_end_matches('/'));
-        let info: serde_json::Value = self.http.get(info_url).send().await?.json().await?;
-        let pubkey_hex = info.get("pubkey_hex").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let address_str = info.get("address").and_then(|v| v.as_str()).unwrap_or("");
-        let address = SomaAddress::from_hex_literal(address_str)
-            .or_else(|_| SomaAddress::from_hex(address_str))
-            .map_err(|e| anyhow::anyhow!("provider /soma/info bad address {address_str}: {e}"))?;
-
+    /// Build a `ProviderInfo` for `(address, endpoint)`. `address` and
+    /// `endpoint` come straight from the indexer's `providers()` row, so
+    /// there is no need to re-fetch them from the provider's `/soma/info`
+    /// — the only thing still pulled over HTTP here is the served model
+    /// catalog. Once `soma-graphql` exposes offerings (Step 5 TODO at
+    /// the call site), this becomes a pure indexer read and `/v1/models`
+    /// can be removed from the provider entirely.
+    async fn fetch_provider_catalog(
+        &self,
+        address: SomaAddress,
+        endpoint: &str,
+    ) -> anyhow::Result<ProviderInfo> {
         let models_url = format!("{}/v1/models", endpoint.trim_end_matches('/'));
         let mr: ModelsResponse = self.http.get(models_url).send().await?.json().await?;
-        Ok(ProviderInfo { address, pubkey_hex, endpoint: endpoint.to_string(), catalog: mr.data })
+        Ok(ProviderInfo {
+            address,
+            pubkey_hex: String::new(),
+            endpoint: endpoint.to_string(),
+            catalog: mr.data,
+        })
     }
 
     pub async fn ensure_cache(&self) -> anyhow::Result<()> {
