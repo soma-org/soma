@@ -78,14 +78,14 @@ fn test_start_provider_help() {
 }
 
 #[test]
-fn test_start_proxy_help() {
+fn test_proxy_help() {
     let output = soma_cmd()
-        .args(["start", "proxy", "--help"])
+        .args(["proxy", "--help"])
         .output()
-        .expect("failed to run soma start proxy --help");
+        .expect("failed to run soma proxy --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("start_proxy_help", stdout);
+    insta::assert_snapshot!("proxy_help", stdout);
 }
 
 #[test]

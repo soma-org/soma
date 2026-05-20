@@ -2,11 +2,11 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Run the local agent-facing inference proxy (formerly `soma inference proxy`)
+Run the local agent-facing inference proxy
 
-Listens on `127.0.0.1:<port>`. Agent CLIs point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks one per model, and signs vouchers per request.
+Listens on `127.0.0.1:<port>` and speaks the OpenAI API. Agents point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks one per model, and signs vouchers per request.
 
-Usage: soma start proxy [OPTIONS] --indexer-url <INDEXER_URL>
+Usage: soma proxy [OPTIONS] --indexer-url <INDEXER_URL>
 
 Options:
       --address <ADDRESS>
@@ -59,4 +59,4 @@ Options:
           Print help (see a summary with '-h')
 
 EXAMPLE:
-    soma start proxy --listen 127.0.0.1:11434 --indexer-url ...
+    soma proxy --listen 127.0.0.1:11434 --indexer-url ...

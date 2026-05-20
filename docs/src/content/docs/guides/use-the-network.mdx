@@ -12,7 +12,7 @@ To buy inference, you run a local proxy that speaks the OpenAI API. It discovers
 2. **Start the proxy.** Listens on `127.0.0.1:8088` by default.
 
     ```sh
-    soma start proxy
+    soma proxy
     ```
 
 3. **Point any OpenAI client at it.** Set the base URL to `http://127.0.0.1:8088/v1` and the proxy handles the rest — discovery, channel opening, voucher signing, streaming.
@@ -31,4 +31,4 @@ To buy inference, you run a local proxy that speaks the OpenAI API. It discovers
     soma channel request-close --channel-id <ID>
     ```
 
-`soma channel list` shows what's currently open. Full config options are in `soma start proxy --help`.
+`soma channel list` shows what's currently open. Full config options are in `soma proxy --help`.

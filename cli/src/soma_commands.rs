@@ -257,6 +257,17 @@ EXAMPLES:
         json: bool,
     },
 
+    /// Run the local agent-facing inference proxy
+    ///
+    /// Listens on `127.0.0.1:<port>` and speaks the OpenAI API. Agents
+    /// point at it via `OPENAI_BASE_URL`. The proxy discovers providers,
+    /// picks one per model, and signs vouchers per request.
+    #[clap(
+        name = "proxy",
+        after_help = "EXAMPLE:\n    soma proxy --listen 127.0.0.1:11434 --indexer-url ..."
+    )]
+    Proxy(ProxyArgs),
+
     // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
@@ -354,15 +365,14 @@ EXAMPLES:
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a long-running service (localnet, validator, provider, proxy)
+    /// Start a long-running service (localnet, validator, provider)
     #[clap(
         name = "start",
         after_help = "\
 EXAMPLES:
     soma start localnet --force-regenesis
     soma start validator --config validator.yaml
-    soma start provider --config provider.toml
-    soma start proxy --indexer-url ..."
+    soma start provider --config provider.toml"
     )]
     Start {
         #[clap(subcommand)]
@@ -493,17 +503,6 @@ EXAMPLES:
         after_help = "EXAMPLE:\n    soma start provider --config provider.toml"
     )]
     Provider(ProviderArgs),
-
-    /// Run the local agent-facing inference proxy (formerly `soma inference proxy`)
-    ///
-    /// Listens on `127.0.0.1:<port>`. Agent CLIs point at it via
-    /// `OPENAI_BASE_URL`. The proxy discovers providers, picks one per
-    /// model, and signs vouchers per request.
-    #[clap(
-        name = "proxy",
-        after_help = "EXAMPLE:\n    soma start proxy --listen 127.0.0.1:11434 --indexer-url ..."
-    )]
-    Proxy(ProxyArgs),
 }
 
 /// Subcommands for `soma tx` — transaction queries and raw execution.
@@ -570,10 +569,9 @@ impl SomaCommand {
                 StartCommand::Localnet { log_level, .. } => {
                     log_level.parse().unwrap_or(tracing::Level::INFO)
                 }
-                StartCommand::Validator { .. }
-                | StartCommand::Provider(_)
-                | StartCommand::Proxy(_) => tracing::Level::INFO,
+                StartCommand::Validator { .. } | StartCommand::Provider(_) => tracing::Level::INFO,
             },
+            SomaCommand::Proxy(_) => tracing::Level::INFO,
             _ => tracing::Level::ERROR,
         }
     }
@@ -772,6 +770,8 @@ impl SomaCommand {
                 Ok(())
             }
 
+            SomaCommand::Proxy(args) => commands::inference::run_proxy(args).await,
+
             SomaCommand::Channel { cmd } => cmd.execute().await,
 
             SomaCommand::Bridge { cmd } => {
@@ -868,9 +868,6 @@ impl SomaCommand {
                     }
                     StartCommand::Provider(args) => {
                         commands::inference::run_provider(args).await?;
-                    }
-                    StartCommand::Proxy(args) => {
-                        commands::inference::run_proxy(args).await?;
                     }
                 }
                 Ok(())

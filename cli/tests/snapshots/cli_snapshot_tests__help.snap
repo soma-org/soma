@@ -15,13 +15,14 @@ Commands:
   tx         Get transaction details or execute serialized transactions
   wallet     Manage wallet addresses and keys
   env        Manage network environments (switch, add, list)
+  proxy      Run the local agent-facing inference proxy
   channel    Manage on-chain payment channels (open, settle, top-up, close)
   bridge     Soma ↔ Eth USDC bridge: initiate withdrawals, inspect the live `BridgeState`. Inbound deposits go through the Eth-side `SomaBridge.deposit(...)` call — there's no Soma-side command for that direction
   provider   Manage on-chain provider registry (register, update, show)
   offering   Manage per-(provider, model) on-chain offerings
   model      Read the protocol-config `ModelRegistry`
   validator  Manage validators (register, set gas price, commission)
-  start      Start a long-running service (localnet, validator, provider, proxy)
+  start      Start a long-running service (localnet, validator, provider)
   network    Inspect local network configuration and validator addresses
   genesis    Bootstrap and initialize a new SOMA network
   keytool    Low-level keystore operations (generate, import, export keys)
