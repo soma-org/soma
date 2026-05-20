@@ -1,0 +1,63 @@
+---
+title: Economics
+description: Incentive design, emissions, fees, staking, and bonds.
+---
+
+SOMA is used for staking, bonds, fees, and rewards.
+
+## Fees
+
+Every transaction generates fees. Fees are partially burned and partially recycled into the rewards pool, targeting an **annual burn of 5%** of circulating supply.
+
+Fee computation uses three network parameters:
+
+- `base_fee`: charged per transaction
+- `write_object_fee`: charged per object written
+- `value_fee_bps`: proportional to value transferred
+
+The adjustment rate (`fee_adjustment_rate_bps`) moves fees toward the 5% burn target each epoch, bounded by `min_value_fee_bps` and `max_value_fee_bps`.
+
+## Emissions
+New SOMA is distributed each epoch following a **linear** curve toward a maximum supply of **10 million SOMA**.
+
+Each epoch, new emissions and fees combine into a rewards pool:
+
+```
+epoch_rewards = epoch_emissions + epoch_fees
+```
+
+Distribution:
+- **20%** to validators, proportional to stake
+- **80%** to target winners, split:
+    - 50% to the submitter
+    - 50% to the model whose weights were used
+
+```
+validator_share  = epoch_rewards * 0.20
+target_share     = epoch_rewards * 0.80
+submitter_reward = target_share * 0.50
+model_reward     = target_share * 0.50
+```
+
+## Staking
+[Models](/concepts/models/#stake) and validators must stake SOMA to participate. Stake determines influence:
+
+- Models: more stake means more weight in [target assignment](/concepts/targets/#model-assignment)
+- Validators: more stake means more weight in consensus
+
+The minimum model stake is set by the network parameter `model_min_stake`, currently set to 1 SOMA.
+
+SOMA holders who don't want to run validators can delegate their stake:
+
+- Delegators earn a share of rewards based on performance, minus a commission the model or validator sets
+- Commission rates range from 0 to 10,000 basis points (0%–100%)
+- Self-staked rewards are not subject to commission
+
+## Bonds
+Submitters post bonds with each submission. The bond amount is proportional to data size:
+
+```
+bond = submission_bond_per_byte * data_size
+```
+
+Bonds are returned if the submission is honest. If fraudulent, the bond is forfeited and returned to the rewards pool. All bond parameters are queryable on the network.

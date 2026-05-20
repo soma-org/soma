@@ -1,0 +1,223 @@
+---
+title: Common Commands
+description: Everyday commands for sending SOMA, checking balances, and staking.
+---
+import { Aside } from '@astrojs/starlight/components';
+
+## balance
+
+Check SOMA balance for an address.
+
+```
+soma balance [ADDRESS] [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `address` | `SomaAddress` | No | Address to check (defaults to active address) |
+| `--with-coins` | flag | No | Show individual coin objects |
+| `--json` | flag | No | Output as JSON |
+
+### Examples
+
+```
+soma balance
+```
+
+```
+soma balance 0x1234...5678
+```
+
+```
+soma balance --with-coins
+```
+
+## send
+
+Send SOMA to a recipient.
+
+```
+soma send --to <RECIPIENT> --amount <AMOUNT> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--to` | `KeyIdentity` | Yes | Recipient address or alias |
+| `--amount` | `SomaAmount` | Yes | Amount of SOMA to send |
+| `--coin` | `ObjectID` | No | Specific coin object to spend |
+| `--json` | flag | No | Output as JSON |
+
+<Aside>
+This command also accepts [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### Examples
+
+```
+soma send --to 0x1234...5678 --amount 1
+```
+
+```
+soma send --to my-alias --amount 0.5 --coin 0xABCD...
+```
+
+## transfer
+
+Transfer an object to a recipient.
+
+```
+soma transfer --to <RECIPIENT> --object-id <OBJECT_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--to` | `KeyIdentity` | Yes | Recipient address or alias |
+| `--object-id` | `ObjectID` | Yes | Object to transfer |
+| `--gas` | `ObjectID` | No | Gas coin to use for the transaction |
+| `--json` | flag | No | Output as JSON |
+
+<Aside>
+This command also accepts [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### Examples
+
+```
+soma transfer --to 0x1234...5678 --object-id 0xABCD...
+```
+
+```
+soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS...
+```
+
+## pay
+
+Pay SOMA to multiple recipients in a single transaction.
+
+```
+soma pay --recipients <ADDRESSES...> --amounts <AMOUNTS...> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--recipients` | `Vec<KeyIdentity>` | Yes | One or more recipient addresses |
+| `--amounts` | `Vec<SomaAmount>` | Yes | Corresponding amounts for each recipient |
+| `--coins` | `Vec<ObjectID>` | No | Specific coin objects to spend |
+| `--json` | flag | No | Output as JSON |
+
+<Aside>
+This command also accepts [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### Examples
+
+```
+soma pay --recipients 0xABC... --amounts 1
+```
+
+```
+soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
+```
+
+## stake
+
+Stake SOMA with a validator or model.
+
+```
+soma stake --validator <ADDRESS> | --model <OBJECT_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--validator` | `SomaAddress` | Mutually exclusive with `--model` | Validator to stake with |
+| `--model` | `ObjectID` | Mutually exclusive with `--validator` | Model to stake with |
+| `--amount` | `SomaAmount` | No | Amount to stake (defaults to full balance) |
+| `--coin` | `ObjectID` | No | Specific coin object to stake |
+| `--json` | flag | No | Output as JSON |
+
+<Aside>
+This command also accepts [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### Examples
+
+```
+soma stake --validator 0xVAL... --amount 10
+```
+
+```
+soma stake --model 0xMODEL... --amount 5
+```
+
+## unstake
+
+Withdraw staked SOMA.
+
+```
+soma unstake <STAKED_SOMA_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `staked_soma_id` | `ObjectID` | Yes | ID of the staked SOMA object |
+| `--json` | flag | No | Output as JSON |
+
+<Aside>
+This command also accepts [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### Examples
+
+```
+soma unstake 0xSTAKED_SOMA_ID
+```
+
+## faucet
+
+Request test SOMA from a faucet server.
+
+```
+soma faucet [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--address` | `SomaAddress` | No | Address to fund (defaults to active address) |
+| `--url` | `string` | No | Faucet server URL |
+| `--json` | flag | No | Output as JSON |
+
+### Examples
+
+```
+soma faucet
+```
+
+```
+soma faucet --address 0x1234...5678
+```
+
+```
+soma faucet --url http://127.0.0.1:9123
+```
+
+## status
+
+Show network connection status, version info, and active address.
+
+```
+soma status [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--json` | flag | No | Output as JSON |
+
+### Examples
+
+```
+soma status
+```
+
+```
+soma status --json
+```

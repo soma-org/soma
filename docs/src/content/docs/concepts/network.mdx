@@ -1,0 +1,60 @@
+---
+title: Network
+description: Consensus mechanism and parallel model computation.
+---
+
+SOMA uses a blockchain to ensuring no single person or entity can fully control the network. This was a deliberate choice to distribute control over the system to the greatest number of people.
+
+## Epochs
+An epoch is 24 hours.
+Each epoch, the cycle repeats:
+- Validators [generate targets](/concepts/targets/#generation)
+- [Submitters](/concepts/submitting/) download weights and submit data
+- [Models](/concepts/models/) commit, reveal, or update their weights
+- [Audit window](/concepts/submitting/#resolution) runs on previous epoch's winners
+- [Rewards](/concepts/economics/#emissions) are claimed for old submissions that pass audits
+
+Then it starts again. Epochs create predictable rhythm. Submitters know when to submit. Models know when weights lock. The entire network synchronizes around this cycle.
+
+## Consensus
+SOMA is built on Sui's consensus layer. Everything else (Sui's execution environment, virtual machine, smart contract system) is removed. What remains is Mysticeti, a consensus mechanism optimized for speed:
+- Transactions confirm in under 0.33s
+- Throughput exceeds 200,000+ TPS
+
+This matters because SOMA's operations are lightweight but frequent. Submissions, verifications, and challenges, thousands per epoch. The consensus layer must keep up without becoming a bottleneck.
+
+## Collusion Resistance
+No single anti-cheating mechanism is sufficient. SOMA's design layers several:
+- [Bonds](/concepts/economics/#bonds) make false claims expensive.
+- [Optimistic verification](/concepts/submitting/#resolution) keeps costs low while maintaining security.
+- [Commit-reveal](/concepts/models/#publishing-weights) prevents models from copying each other mid-round.
+
+But the deeper protection is structural: the system separates knowledge from action at every step.
+
+- Models must publish weights before targets are known, so a model developer who is also a submitter can't tune their model to favor their own submissions.
+- Models are assigned to targets via [stake-weighted KNN](/concepts/targets/#model-assignment) over their embeddings. Assignment is deterministic based on model specialization and stake, and cannot be manipulated.
+
+## Protocol Upgrades
+
+The network's architecture and objective function are not fixed. They can evolve through validator consensus.
+
+SOMA inherits its upgrade mechanism from Sui: protocol changes are gated by **feature flags**, named boolean switches that control whether specific behaviors are active. Activation follows three steps:
+
+1. Validators signal support for a new feature flag or protocol config version during normal operations
+2. When support reaches a **two-thirds supermajority** of total stake, the change is approved
+3. The change activates at the next **epoch boundary**
+
+This means upgrades are:
+
+- Gradual: validators adopt new software at their own pace, but changes only activate with consensus
+- Atomic: changes take effect at epoch boundaries, so there's no mid-epoch inconsistency
+- Transparent: all feature flag states and validator votes are on the network
+
+This mechanism governs two critical parameters:
+
+- **Model [architecture](/concepts/models/#architecture)**: layer count, embedding dimension, attention heads, loss function. This is a protocol-level specification. When the network is ready for V2, validators vote to activate it, and all models must conform to remain eligible for [target assignment](/concepts/targets/#model-assignment).
+- **Objective function** (currently cross-entropy + SIGReg): determines what "better" means for the entire network. Changing it reshapes competitive dynamics.
+
+Both are controlled by the validator set, not any single entity.
+
+The protocol version and architecture version are both queryable on the network, so all participants can verify which rules are currently active.

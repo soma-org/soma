@@ -1,0 +1,40 @@
+---
+title: Running a Validator
+description: Set up and operate a validator node on the SOMA network.
+---
+import { LinkCard } from '@astrojs/starlight/components';
+
+Validators are the backbone of the SOMA network. They:
+
+- Run consensus
+- Generate targets each epoch
+- Audit winning submissions
+- Store model weights
+
+In return, validators earn 20% of the network's epoch rewards, distributed proportionally by stake.
+
+## Requirements at a Glance
+
+| Requirement | Details |
+|-------------|---------|
+| Stake | ≥0.12% of total voting power (scales with total staked) |
+| Hardware | 14+ CPU cores, 14+ GB RAM, 250 GB+ NVMe SSD |
+| Network | Stable connection with a public IP or DNS hostname |
+| Uptime | Validators are expected to maintain high availability |
+
+## Validator Lifecycle
+
+1. Generate validator identity
+2. Configure your node (YAML config + genesis blob) and start syncing
+3. Secure required stake and join the committee once your node is fully synced
+4. Monitor performance, update software, and collect rewards
+
+For background on how consensus and epochs work, see [Network](/concepts/network/). For staking economics, see [Economics](/concepts/economics/).
+
+## Guides
+
+<LinkCard title="Node Setup" href="/guides/validator/node-setup/" description="Hardware requirements, configuration, and starting your node." />
+
+<LinkCard title="Join the Network" href="/guides/validator/join-network/" description="Generate validator identity and join the active committee." />
+
+<LinkCard title="Manage a Validator" href="/guides/validator/manage/" description="Day-to-day operations, updates, commission, staking, and rewards." />

@@ -1,0 +1,40 @@
+---
+title: Local Network
+description: Spin up a local SOMA network for development and testing.
+---
+import { Aside } from '@astrojs/starlight/components';
+
+
+The SOMA CLI provides the `soma start` command to create and start a local instance of the SOMA network, including a faucet and model scoring services.
+
+## Local Start Command
+
+```
+soma start localnet --force-regenesis
+```
+
+Calls the SOMA CLI binary with the `localnet` subcommand and one flag:
+- `--force-regenesis` to generate a new genesis and not persist the local network state.
+
+The localnet bundles a faucet and scoring services by default.
+
+
+<Aside type="caution">
+Each time you start the network by passing `--force-regenesis`, the local network starts from a random genesis with no previous data and the local network is not persisted. If you want to persist data, do not pass the `--force-regenesis` flag.
+
+A temporary directory is created in `/tmp`, which might not work if the `/tmp` folder is mounted to `/tmpfs`. If this is the case, set `TMPDIR=./some_folder`.
+</Aside>
+
+
+
+## Persisting local network state
+
+If you stop and start the network without the `--force-regenesis` flag, all history is preserved and accessible.
+
+The behavior of `soma start` depends on your setup:
+
+- If `~/.soma/soma_config` exists and contains a `genesis.blob`, it uses the existing genesis and network configuration
+- If the folder does not exist, it creates one and generates a new genesis configuration
+- If you pass `--network.config`, it checks for the specified network configuration file and loads the genesis blob accordingly
+
+To generate a custom genesis, use the `soma genesis` command and pass the desired custom values. For more information about possible flags and options, run `soma genesis --help` .

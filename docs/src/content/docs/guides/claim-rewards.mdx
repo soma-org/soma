@@ -1,0 +1,68 @@
+---
+title: Claim Rewards
+description: Claim earned rewards from data submissions and model commissions.
+---
+import { Aside } from '@astrojs/starlight/components';
+
+After a successful data submission or model commission, your rewards become claimable once the challenge window passes. This guide covers claiming for both data submitters and model developers.
+
+<Aside title="Prerequisites">
+- Funded testnet account with `SOMA_SECRET_KEY` in your `.env`
+- `pip install soma-sdk python-dotenv`
+</Aside>
+
+## How rewards work
+
+When a data submission wins a target, the reward splits 50/50 between the data submitter and the model whose embeddings were used. Both parties must claim their share explicitly.
+
+Rewards are locked for a **challenge window of 2 epochs** after submission. During this window, validators audit the submission. If the submission passes audit, the reward becomes claimable. If it's fraudulent, the submitter's bond is forfeited.
+
+For more on reward mechanics, see [Economics](/concepts/economics/).
+
+## Claim your rewards
+
+```python
+import asyncio
+import os
+
+from dotenv import load_dotenv
+from soma_sdk import Keypair, SomaClient
+
+load_dotenv()
+
+
+async def main():
+    kp = Keypair.from_secret_key(os.environ["SOMA_SECRET_KEY"])
+    client = await SomaClient(chain="testnet")
+
+    # Find targets you've submitted to that are now claimable
+    targets = await client.get_targets(status="claimable", submitter=kp.address())
+
+    for target in targets:
+        await client.claim_rewards(signer=kp, target_id=target.id)
+        print(f"Claimed reward for target {target.id}")
+
+    balance = await client.get_balance(kp.address())
+    print(f"Balance: {balance}")
+
+
+asyncio.run(main())
+```
+
+## Waiting for the challenge window
+
+If you've just submitted and want to claim immediately after the window:
+
+```python
+await client.wait_for_next_epoch()
+await client.wait_for_next_epoch()
+await client.claim_rewards(signer=kp, target_id=target_id)
+```
+
+`wait_for_next_epoch()` blocks until the next epoch boundary. Calling it twice covers the 2-epoch challenge window.
+
+## Model developer rewards
+
+Model developers earn commission when their model produces the winning embedding for a submission. The commission rate is set during [model registration](/guides/model-development/#register) and can be updated later.
+
+Claiming works the same way. Once the challenge window passes, call `claim_rewards` for any target where your model was the winner. Claimed rewards are added directly to your model's stake pool, automatically increasing your [routing priority](/concepts/targets/#model-assignment) and chance of being assigned to future targets. You can [unstake](/reference/sdk/scoring-admin/#withdraw_stake) at any time.

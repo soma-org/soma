@@ -1,0 +1,487 @@
+---
+title: Scoring, Admin & Convenience Methods
+description: API reference for scoring, admin, faucet, and high-level convenience methods.
+---
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside>
+Unless otherwise noted, convenience methods handle transaction building, signing, and execution in a single call. Amounts are in SOMA (float), not shannons. Coin selection is automatic.
+</Aside>
+
+## Model Management
+
+### commit_model
+
+Commit a new model in a single call. Handles commitment computation, ID generation, transaction building, signing, and execution.
+
+```python
+async def commit_model(
+    signer: Keypair,
+    weights_url: str,
+    encrypted_weights: bytes,
+    decryption_key: str,
+    embedding: list[float],
+    commission_rate: int,
+    stake_amount: Optional[float] = None,
+) -> str
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign the transaction |
+| `weights_url` | `str` | Yes | - | URL where encrypted weights will be hosted |
+| `encrypted_weights` | `bytes` | Yes | - | Encrypted model weights |
+| `decryption_key` | `str` | Yes | - | Hex AES-256 decryption key (committed during this phase) |
+| `embedding` | `list[float]` | Yes | - | Model embedding vector (committed during this phase) |
+| `commission_rate` | `int` | Yes | - | Commission rate in basis points (100 = 1%) |
+| `stake_amount` | `float` | No | `None` | Stake in SOMA (uses network minimum if omitted) |
+
+**Returns**: `str`. The assigned model ID.
+
+### reveal_model
+
+Reveal a previously committed model. Must be called in the epoch after commit. The weights URL and encrypted weights were already provided during commit. Only the decryption key and embedding are needed here.
+
+```python
+async def reveal_model(
+    signer: Keypair,
+    model_id: str,
+    decryption_key: str,
+    embedding: list[float],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `model_id` | `str` | Yes | - | Model ID from commit step |
+| `decryption_key` | `str` | Yes | - | Hex AES-256 decryption key |
+| `embedding` | `list[float]` | Yes | - | Model embedding vector |
+
+### commit_model_update
+
+Commit updated weights for an active model.
+
+```python
+async def commit_model_update(
+    signer: Keypair,
+    model_id: str,
+    weights_url: str,
+    encrypted_weights: bytes,
+    decryption_key: str,
+    embedding: list[float],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `model_id` | `str` | Yes | - | Model ID to update |
+| `weights_url` | `str` | Yes | - | URL of new encrypted weights |
+| `encrypted_weights` | `bytes` | Yes | - | New encrypted weights |
+| `decryption_key` | `str` | Yes | - | Hex AES-256 decryption key (committed during this phase) |
+| `embedding` | `list[float]` | Yes | - | Updated model embedding vector (committed during this phase) |
+
+### reveal_model_update
+
+Reveal updated weights. Must be called in the epoch after commit. The weights URL and encrypted weights were already provided during the update commit. Only the decryption key and embedding are needed here.
+
+```python
+async def reveal_model_update(
+    signer: Keypair,
+    model_id: str,
+    decryption_key: str,
+    embedding: list[float],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `model_id` | `str` | Yes | - | Model ID |
+| `decryption_key` | `str` | Yes | - | Hex AES-256 decryption key |
+| `embedding` | `list[float]` | Yes | - | Updated embedding vector |
+
+### deactivate_model
+
+Voluntarily deactivate a model.
+
+```python
+async def deactivate_model(
+    signer: Keypair,
+    model_id: str,
+) -> None
+```
+
+### set_model_commission_rate
+
+Set a model's commission rate for the next epoch.
+
+```python
+async def set_model_commission_rate(
+    signer: Keypair,
+    model_id: str,
+    new_rate: int,
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Model owner keypair |
+| `model_id` | `str` | Yes | - | Model ID |
+| `new_rate` | `int` | Yes | - | New rate in basis points |
+
+### report_model
+
+Report a misbehaving model.
+
+```python
+async def report_model(signer: Keypair, model_id: str) -> None
+```
+
+### undo_report_model
+
+Undo a previous model report.
+
+```python
+async def undo_report_model(signer: Keypair, model_id: str) -> None
+```
+
+## Data Submission
+
+### submit_data
+
+Submit data to fill a target. Handles commitment computation, coin selection, and execution.
+
+```python
+async def submit_data(
+    signer: Keypair,
+    target_id: str,
+    data: bytes,
+    data_url: str,
+    model_id: str,
+    embedding: list[float],
+    distance_score: float,
+    loss_score: list[float],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `target_id` | `str` | Yes | - | Target to submit to |
+| `data` | `bytes` | Yes | - | Raw submission data |
+| `data_url` | `str` | Yes | - | URL where data is hosted |
+| `model_id` | `str` | Yes | - | Model used for scoring |
+| `embedding` | `list[float]` | Yes | - | Data embedding vector |
+| `distance_score` | `float` | Yes | - | Distance score (must be ≤ target threshold) |
+| `loss_score` | `list[float]` | Yes | - | Loss score from model inference |
+
+### claim_rewards
+
+Claim rewards from a filled target after the challenge window closes.
+
+```python
+async def claim_rewards(signer: Keypair, target_id: str) -> None
+```
+
+### report_submission
+
+Report a fraudulent submission.
+
+```python
+async def report_submission(
+    signer: Keypair,
+    target_id: str,
+) -> None
+```
+
+### undo_report_submission
+
+Undo a previous submission report.
+
+```python
+async def undo_report_submission(signer: Keypair, target_id: str) -> None
+```
+
+## Scoring
+
+<Aside>
+Scoring methods require `scoring_url` to be set when constructing the client.
+</Aside>
+
+### score
+
+Score a data submission against target models. The scoring service downloads model weights and data, runs inference, and returns the results.
+
+```python
+async def score(
+    data_url: str,
+    models: list[ModelManifest],
+    target_embedding: list[float],
+    data: Optional[bytes] = None,
+    data_checksum: Optional[str] = None,
+    data_size: Optional[int] = None,
+    seed: int = 0,
+) -> ScoreResult
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `data_url` | `str` | Yes | - | URL of the submission data |
+| `models` | `list[ModelManifest]` | Yes | - | Model manifests to score against |
+| `target_embedding` | `list[float]` | Yes | - | Target's embedding vector |
+| `data` | `bytes` | No | `None` | Raw data (alternative to URL fetch) |
+| `data_checksum` | `str` | No | `None` | Expected data checksum |
+| `data_size` | `int` | No | `None` | Expected data size |
+| `seed` | `int` | No | `0` | Random seed for reproducibility |
+
+**Returns**: [`ScoreResult`](/reference/sdk/types/#scoreresult)
+
+#### Example
+
+```python
+targets = await client.get_targets(status="open", limit=1)
+target = targets[0]
+manifests = await client.get_model_manifests(target)
+
+result = await client.score(
+    data_url="https://storage.example.com/data.bin",
+    models=manifests,
+    target_embedding=target.embedding,
+)
+print(f"Winner: model {result.winner}, distances: {result.distance}")
+```
+
+### scoring_health
+
+Check if the scoring service is healthy.
+
+```python
+async def scoring_health() -> bool
+```
+
+**Returns**: `bool`. `True` if the service is reachable.
+
+## Transfers & Payments
+
+### transfer_coin
+
+Transfer SOMA to a recipient.
+
+```python
+async def transfer_coin(
+    signer: Keypair,
+    recipient: str,
+    amount: float,
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign the transaction |
+| `recipient` | `str` | Yes | - | Recipient address |
+| `amount` | `float` | Yes | - | Amount in SOMA |
+
+### transfer_objects
+
+Transfer objects by their IDs.
+
+```python
+async def transfer_objects(
+    signer: Keypair,
+    recipient: str,
+    object_ids: list[str],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `recipient` | `str` | Yes | - | Recipient address |
+| `object_ids` | `list[str]` | Yes | - | Object IDs to transfer |
+
+### pay_coins
+
+Pay multiple recipients in a single transaction.
+
+```python
+async def pay_coins(
+    signer: Keypair,
+    recipients: list[str],
+    amounts: list[float],
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `recipients` | `list[str]` | Yes | - | Recipient addresses |
+| `amounts` | `list[float]` | Yes | - | Amounts in SOMA (must match recipients length) |
+
+## Admin
+
+<Aside>
+Admin methods require `admin_url` to be set. Typically used only in local development.
+</Aside>
+
+### advance_epoch
+
+Force-advance the epoch (admin/localnet only).
+
+```python
+async def advance_epoch() -> int
+```
+
+**Returns**: `int`. The new epoch number.
+
+### request_faucet
+
+<Aside>
+Requires `faucet_url` to be set. Only available on testnets and localnet.
+</Aside>
+
+Request test SOMA for an address.
+
+```python
+async def request_faucet(address: str) -> FaucetResponse
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `address` | `str` | Yes | - | SOMA address to fund |
+
+**Returns**: [`FaucetResponse`](/reference/sdk/types/#faucetresponse)
+
+#### Example
+
+```python
+response = await client.request_faucet(kp.address())
+print(f"Status: {response.status}")
+for coin in response.coins_sent:
+    print(f"  {coin.id}: {coin.amount} shannons")
+```
+
+## Staking
+
+### add_stake
+
+Stake SOMA with a validator.
+
+```python
+async def add_stake(
+    signer: Keypair,
+    validator: str,
+    amount: Optional[float] = None,
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `validator` | `str` | Yes | - | Validator address |
+| `amount` | `float` | No | `None` | Amount in SOMA (entire coin if omitted) |
+
+### withdraw_stake
+
+Withdraw staked SOMA.
+
+```python
+async def withdraw_stake(
+    signer: Keypair,
+    staked_soma_id: str,
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `staked_soma_id` | `str` | Yes | - | StakedSoma object ID |
+
+### add_stake_to_model
+
+Stake SOMA with a model.
+
+```python
+async def add_stake_to_model(
+    signer: Keypair,
+    model_id: str,
+    amount: Optional[float] = None,
+) -> None
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `signer` | `Keypair` | Yes | - | Keypair to sign |
+| `model_id` | `str` | Yes | - | Model object ID |
+| `amount` | `float` | No | `None` | Amount in SOMA (entire coin if omitted) |
+
+## Validator Management
+
+### add_validator
+
+Register a new validator.
+
+```python
+async def add_validator(
+    signer: Keypair,
+    pubkey_bytes: bytes,
+    network_pubkey_bytes: bytes,
+    worker_pubkey_bytes: bytes,
+    proof_of_possession: bytes,
+    net_address: bytes,
+    p2p_address: bytes,
+    primary_address: bytes,
+    proxy_address: bytes,
+) -> None
+```
+
+### remove_validator
+
+Remove a validator from the committee.
+
+```python
+async def remove_validator(signer: Keypair, pubkey_bytes: bytes) -> None
+```
+
+### update_validator_metadata
+
+Update validator metadata (takes effect next epoch).
+
+```python
+async def update_validator_metadata(
+    signer: Keypair,
+    next_epoch_network_address: Optional[bytes] = None,
+    next_epoch_p2p_address: Optional[bytes] = None,
+    next_epoch_primary_address: Optional[bytes] = None,
+    next_epoch_proxy_address: Optional[bytes] = None,
+    next_epoch_protocol_pubkey: Optional[bytes] = None,
+    next_epoch_worker_pubkey: Optional[bytes] = None,
+    next_epoch_network_pubkey: Optional[bytes] = None,
+    next_epoch_proof_of_possession: Optional[bytes] = None,
+) -> None
+```
+
+### set_validator_commission_rate
+
+Set the validator commission rate for the next epoch.
+
+```python
+async def set_validator_commission_rate(signer: Keypair, new_rate: int) -> None
+```
+
+### report_validator
+
+Report a misbehaving validator.
+
+```python
+async def report_validator(signer: Keypair, reportee: str) -> None
+```
+
+### undo_report_validator
+
+Undo a previous validator report.
+
+```python
+async def undo_report_validator(signer: Keypair, reportee: str) -> None
+```

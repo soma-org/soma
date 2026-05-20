@@ -1,0 +1,295 @@
+---
+title: Submission Commands
+description: CLI reference for model and target commands.
+---
+import { Aside } from '@astrojs/starlight/components';
+
+## model
+
+Register, update, and manage models on the network.
+
+<Aside>
+State-modifying subcommands accept [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### commit
+
+Commit a new model (phase 1 of commit-reveal). Commitments are auto-computed from the weights file, embedding, and decryption key. Model ID and staking pool ID are auto-generated on chain.
+
+```
+soma model commit [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--weights-file` | `path` | Yes | Path to the encrypted weights file |
+| `--weights-url` | `string` | Yes | URL where the encrypted weights are (or will be) hosted |
+| `--embedding` | `string` | Yes | Comma-separated floats for the model embedding |
+| `--decryption-key` | `hex (32 bytes)` | Yes | Hex AES-256 decryption key (commitment auto-computed) |
+| `--architecture-version` | `u64` | No | Architecture version (auto-fetched if omitted) |
+| `--stake-amount` | `SomaAmount` | No | Amount of SOMA to stake (auto-fetches minimum if omitted) |
+| `--commission-rate` | `u64` | No | Commission rate in basis points (default `0`) |
+
+```
+soma model commit \
+  --weights-file ./model.bin \
+  --weights-url https://storage.example.com/weights.bin \
+  --embedding 0.1,0.2,0.3 \
+  --decryption-key 0x789...012 \
+  --commission-rate 500
+```
+
+### reveal
+
+Reveal model weights (phase 2 of commit-reveal). Must be called in the epoch following the commit. The weights URL and file were already provided during commit. Only the decryption key and embedding are needed here.
+
+```
+soma model reveal <MODEL_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+| `--decryption-key` | `hex (32 bytes)` | Yes | Hex AES-256 decryption key |
+| `--embedding` | `string` | Yes | Comma-separated floats for the model embedding |
+
+```
+soma model reveal 0xMODEL... \
+  --decryption-key 0x789...012 \
+  --embedding 0.1,0.2,0.3,0.4
+```
+
+### update-commit
+
+Commit updated weights for an active model. Commitments are auto-computed from the weights file, embedding, and decryption key.
+
+```
+soma model update-commit <MODEL_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+| `--weights-file` | `path` | Yes | Path to the new encrypted weights file |
+| `--weights-url` | `string` | Yes | URL where the new encrypted weights are hosted |
+| `--embedding` | `string` | Yes | Comma-separated floats for the updated embedding |
+| `--decryption-key` | `hex (32 bytes)` | Yes | Hex AES-256 decryption key (commitment auto-computed) |
+
+```
+soma model update-commit 0xMODEL... \
+  --weights-file ./model-v2.bin \
+  --weights-url https://storage.example.com/weights-v2.bin \
+  --embedding 0.5,0.6,0.7,0.8 \
+  --decryption-key 0xNEW...KEY
+```
+
+### update-reveal
+
+Reveal updated weights for an active model. Must be called in the epoch following update-commit. The weights URL and file were already provided during commit. Only the decryption key and embedding are needed here.
+
+```
+soma model update-reveal <MODEL_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+| `--decryption-key` | `hex (32 bytes)` | Yes | Hex AES-256 decryption key |
+| `--embedding` | `string` | Yes | Comma-separated floats for the updated embedding |
+
+```
+soma model update-reveal 0xMODEL... \
+  --decryption-key 0xNEW...KEY \
+  --embedding 0.5,0.6,0.7,0.8
+```
+
+### deactivate
+
+Deactivate a model. Only the model owner can deactivate.
+
+```
+soma model deactivate <MODEL_ID>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+
+```
+soma model deactivate 0xMODEL...
+```
+
+### info
+
+Display model information.
+
+```
+soma model info <MODEL_ID>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+
+```
+soma model info 0xMODEL...
+```
+
+### list
+
+List all registered models.
+
+```
+soma model list
+```
+
+### set-commission-rate
+
+Set the commission rate for a model.
+
+```
+soma model set-commission-rate <MODEL_ID> --commission-rate <RATE>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+| `--commission-rate` | `u16` | Yes | Commission rate in basis points (max `10000`) |
+
+```
+soma model set-commission-rate 0xMODEL... --commission-rate 500
+```
+
+### download
+
+Download model weights via the proxy network.
+
+```
+soma model download <MODEL_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `model_id` | `ObjectID` | Yes | Model object ID |
+| `-o`, `--output` | `path` | No | Output file path (default: `./<model_id>.weights`) |
+
+```
+soma model download 0xMODEL...
+```
+
+```
+soma model download 0xMODEL... -o ./my-model.weights
+```
+
+## target
+
+List targets, submit data, and claim rewards.
+
+<Aside>
+State-modifying subcommands accept [transaction processing arguments](/reference/cli/overview/#transaction-processing-arguments).
+</Aside>
+
+### list
+
+List targets with optional filters.
+
+```
+soma target list [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `-s`, `--status` | `string` | No | Filter by status: `open`, `filled`, `claimed` |
+| `-e`, `--epoch` | `u64` | No | Filter by epoch |
+| `--limit` | `u64` | No | Max number of results (default `50`) |
+
+```
+soma target list
+```
+
+```
+soma target list --status open --epoch 5 --limit 20
+```
+
+### info
+
+Show target information.
+
+```
+soma target info <TARGET_ID>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `target_id` | `ObjectID` | Yes | Target object ID |
+
+```
+soma target info 0xTARGET...
+```
+
+### submit
+
+Submit data to fill a target. Commitment, checksum, and size are auto-computed from the data file. Bond coin is auto-selected.
+
+```
+soma target submit [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--target-id` | `ObjectID` | Yes | Target to fill |
+| `--data-file` | `path` | Yes | Path to the data file (commitment, checksum, size auto-computed) |
+| `--data-url` | `string` | Yes | URL where data is hosted |
+| `--model-id` | `ObjectID` | Yes | Model used for the submission (must be in target's model_ids) |
+| `--embedding` | `string` | Yes | Comma-separated floats for the data embedding |
+| `--distance-score` | `f32` | Yes | Distance score (must be ≤ target threshold) |
+| `--loss-score` | `string` | Yes | Float for the loss score from model inference |
+
+```
+soma target submit \
+  --target-id 0xTARGET... \
+  --data-file ./data.bin \
+  --data-url https://storage.example.com/data.bin \
+  --model-id 0xMODEL... \
+  --embedding 0.1,0.2,0.3 \
+  --distance-score 0.5 \
+  --loss-score 0.1
+```
+
+### claim
+
+Claim rewards from a filled target. The challenge window must be closed.
+
+```
+soma target claim <TARGET_ID>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `target_id` | `ObjectID` | Yes | Target object ID |
+
+```
+soma target claim 0xTARGET...
+```
+
+### download
+
+Download submission data for a target.
+
+```
+soma target download <TARGET_ID> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `target_id` | `ObjectID` | Yes | Target object ID |
+| `-o`, `--output` | `path` | No | Output file path |
+
+```
+soma target download 0xTARGET...
+```
+
+```
+soma target download 0xTARGET... -o ./submission-data.bin
+```
+

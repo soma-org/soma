@@ -1,0 +1,55 @@
+---
+title: Join the Network
+description: Stake and join the active validator committee.
+---
+import { Aside } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
+
+Once your node is fully synced, you can register as a validator and join the committee.
+
+<Aside title="Prerequisites">
+- Validator identity generated and node running and synced ([Node Setup](/guides/validator/node-setup/))
+- A funded address with enough SOMA to meet the minimum stake
+</Aside>
+
+## Secure Stake
+
+Validators must hold ≥0.12% of total voting power to join the committee. This threshold scales with total staked. With the current 3-validator testnet (~60,000 SOMA staked), that's roughly 72 SOMA. Check your balance with:
+
+```bash
+soma balance
+```
+
+<Aside>
+On testnet, the required stake exceeds what the faucet provides. Reach out on [Discord](https://discord.gg/soma) to express interest in running a validator.
+</Aside>
+
+## Join the Committee
+
+Joining is a two-step process: first register your validator info, then stake. Both must happen before the next epoch boundary for your validator to be activated.
+
+<Steps>
+
+1. Submit your validator info to register:
+
+    ```bash
+    soma validator join-committee <path-to-validator.info>
+    ```
+
+2. Stake SOMA with your validator address:
+
+    ```bash
+    soma stake --validator <your-validator-address> --amount <amount>
+    ```
+
+3. Verify your validator appears in the committee list:
+
+    ```bash
+    soma validator list
+    ```
+
+    Your validator should appear with a pending status.
+
+4. Wait for activation. Your validator becomes active at the start of the next epoch if it meets the minimum voting power requirement. Until then, it remains in pending status and does not participate in consensus.
+
+</Steps>

@@ -1,0 +1,161 @@
+---
+title: Management Commands
+description: Manage wallets, addresses, and network environments.
+---
+
+## wallet
+
+Manage addresses and keypairs.
+
+### active
+
+Show the current active address.
+
+```
+soma wallet active
+```
+
+### list
+
+List all addresses in the keystore.
+
+```
+soma wallet list [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--sort-by-alias` | flag | No | Sort output by alias |
+
+```
+soma wallet list
+```
+
+```
+soma wallet list --sort-by-alias
+```
+
+### new
+
+Generate a new address and keypair.
+
+```
+soma wallet new [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--alias` | `string` | No | Human-readable alias for the address |
+| `--key-scheme` | `string` | No | Signing scheme (default: `ed25519`) |
+| `--word-length` | `string` | No | Mnemonic word count (default: `word12`) |
+| `--derivation-path` | `string` | No | BIP-44 derivation path |
+
+```
+soma wallet new
+```
+
+```
+soma wallet new --alias my-wallet --key-scheme ed25519
+```
+
+### remove
+
+Remove an address from the keystore.
+
+```
+soma wallet remove <ALIAS_OR_ADDRESS>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `alias_or_address` | `string` | Yes | Alias or address to remove |
+
+```
+soma wallet remove my-wallet
+```
+
+### switch
+
+Switch the active address.
+
+```
+soma wallet switch <ADDRESS>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `address` | `KeyIdentity` | Yes | Address or alias to switch to |
+
+```
+soma wallet switch 0x1234...5678
+```
+
+```
+soma wallet switch my-wallet
+```
+
+## env
+
+Manage network environments.
+
+### active
+
+Show the current active environment.
+
+```
+soma env active
+```
+
+### list
+
+List all configured environments.
+
+```
+soma env list
+```
+
+### new
+
+Add a new environment.
+
+```
+soma env new --alias <ALIAS> --rpc <URL> [OPTIONS]
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `--alias` | `string` | Yes | Name for this environment |
+| `--rpc` | `string` | Yes | RPC endpoint URL |
+| `--basic-auth` | `string` | No | Basic auth credentials (`username:password`) |
+
+```
+soma env new --alias mainnet --rpc https://rpc.soma.network
+```
+
+```
+soma env new --alias private --rpc https://rpc.example.com --basic-auth user:pass
+```
+
+### switch
+
+Switch the active environment.
+
+```
+soma env switch <ALIAS>
+```
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `alias` | `string` | Yes | Environment alias to switch to |
+
+```
+soma env switch mainnet
+```
+
+### chain-id
+
+Get the chain identifier from the current environment.
+
+```
+soma env chain-id
+```

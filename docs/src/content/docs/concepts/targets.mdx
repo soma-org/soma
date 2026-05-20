@@ -1,0 +1,47 @@
+---
+title: Targets
+description: How the network represents data as embeddings, generates work, and routes models.
+---
+
+Targets are how the network benchmarks itself. Each target is a point in embedding space representing a domain (text, images, audio, code, or anything expressible as bytes). Validators randomly generate new targets each [epoch](/concepts/network/#epochs). The network [assigns models](/concepts/targets/#model-assignment) to each target, and [data submitters](/concepts/submitting) race to hit them.
+
+How well the assigned models perform reveals where the network is strong and where it needs to improve. When a target is hit, a new one spawns. The embedding space is vast, so the network is always being tested on domains it hasn't mastered.
+
+## Embeddings
+
+An embedding is a list of numbers that captures what data means.
+
+Any piece of data (text, images, audio, code) can be converted into an embedding. The key property: similar meanings produce similar numbers, measurable as distance.
+
+| Comparison                                            | Distance          |
+|-------------------------------------------------------|-------------------|
+| "Dogs love fetch" vs "puppies enjoy catching balls"   | 0.08 (close)      |
+| "Dogs love fetch" vs "the stock market collapsed"     | 0.94 (far)        |
+
+SOMA uses embeddings in two ways.
+
+**Model embeddings**: Each registered model has an embedding representing its specialization, the domains it understands best. The network uses these model embeddings to assign models to targets.
+
+**Data embeddings**: When a submitter runs a [model](/concepts/models/) on their data, the model produces an embedding, a vector representing that data's content. The distance between this embedding and a target determines whether the [submission](/concepts/submitting/) is valid; it must fall within a [threshold](/concepts/targets/#distance-threshold) around the target.
+
+## Generation
+
+At the start of each [epoch](/concepts/network/#epochs), the network generates random targets across embedding space. As targets are hit during the epoch, new ones spawn immediately, keeping the network always active. The goal is coverage: targets spread across domains so the network acquires diverse data.
+
+## Model Assignment
+
+Each target is assigned *k* models via stake-weighted K-nearest neighbors over [model embeddings](/concepts/targets/#embeddings). The network computes a score for each model relative to the target:
+
+```
+score = distance² / voting_power
+```
+
+where `voting_power` is a model's [stake](/concepts/models/#stake) relative to total stake. The *k* models with the lowest scores are assigned. Models that are both close in embedding space and highly staked get priority. The target stores its assigned `model_ids` on the network.
+
+Submitters targeting a given target must run their data on each of the selected models to determine which has the lowest [loss](/concepts/models/#architecture).
+
+## Distance Threshold
+
+Each target has a radius, a maximum distance in embedding space. Submissions must land within this threshold to be valid. The first submission within the target's threshold wins.
+
+This threshold auto-adjusts epoch after epoch, based on a rolling average of targets hit per epoch. This is analogous to [difficulty](https://en.bitcoin.it/wiki/Difficulty) in proof-of-work networks.

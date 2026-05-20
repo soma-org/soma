@@ -1,0 +1,124 @@
+---
+title: Further Reading
+description: Inspiration for our work.
+---
+
+The following papers and works have shaped SOMA's design. Each represents a piece of the foundation.
+
+## Foundations
+
+**[Claude Shannon, "A Mathematical Theory of Communication" (1948)](https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf)**
+
+The origin of information theory. Shannon proved that information can be quantified through entropy, a measure of surprise or uncertainty reduction. Every message has a compressible core; noise is what remains unpredictable. 
+
+*SOMA inherits this framing: data is valuable to the extent that it reduces uncertainty in a model's representation of the world.*
+
+**[Claude Shannon, "Communication in the Presence of Noise" (1949)](https://webusers.imj-prg.fr/~antoine.chambert-loir/enseignement/2020-21/shannon/shannon1949.pdf)**
+
+Signals are points in high-dimensional space. Noise is a distribution around each point. Recovering a signal means sampling from that distribution.
+
+*This geometric view, where distance encodes meaning, is the foundation of embeddings. Generative modeling is fundamentally sampling from noise back to signal.*
+
+**[Jürgen Schmidhuber, "Driven by Compression Progress" (2008)](https://arxiv.org/pdf/0812.4360)**
+
+Curiosity is the reward for finding patterns that make data easier to predict. Not random noise (incompressible), not what you already know (no improvement), but **novel** regularities that reveal structure.
+
+*SOMA operationalizes this at network scale: models compete to find data that improves their representations.*
+
+**[Laurent Orseau, Tor Lattimore, and Marcus Hutter, "Universal Knowledge-Seeking Agents for Stochastic Environments" (2013)](https://www.hutter1.net/publ/ksaprob.pdf)**
+
+Defines an optimal agent whose goal is not to maximize arbitrary rewards, but to reduce uncertainty about the world. No external teacher defines what matters. The agent is driven purely by knowledge-seeking.
+
+*SOMA is a network of knowledge-seeking agents, together exploring the space of knowledge.*
+
+## Data Curation
+
+**[Mindermann et al., "Prioritized Training on Points that are Learnable, Worth Learning, and Not Yet Learnt" (2022)](https://arxiv.org/pdf/2206.07137)**
+
+Most training compute is wasted on data that's redundant or noise. Select only what's learnable, worth learning, and not yet learnt, and you get 18x speedup with higher accuracy.
+
+*SOMA's targets leverage this insight: models define their gaps, and the network fills them.*
+
+**[Sorscher et al., "Beyond Neural Scaling Laws: Beating Power Law Scaling via Data Pruning" (2022)](https://arxiv.org/pdf/2206.14486)**
+
+Strategic data pruning can break power law scaling, achieving exponential improvement instead. The right metrics dramatically reduce the data needed.
+
+*SOMA's core thesis: the bottleneck isn't more data, it's identifying the right data.*
+
+## Flow Matching
+
+**[Lipman et al., "Flow Matching for Generative Modeling" (2022)](https://arxiv.org/pdf/2210.02747)**
+
+Learn to transform noise into data along continuous paths. Simpler than diffusion, faster training, better generalization.
+
+*SOMA uses flow matching to generate targets, learning where valuable data should exist in representation space.*
+
+**[Liu et al., "Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow" (2022)](https://arxiv.org/pdf/2209.03003)**
+
+Straight paths between distributions are optimal. They can be simulated exactly in a single step. Rectified flow learns to straighten paths iteratively.
+
+*SOMA's probe models use rectified flow: starting from noise and flowing toward where valuable data should exist.*
+
+
+## Consensus
+
+**[Blackshear et al., "Sui Lutris: A Blockchain Combining Broadcast and Consensus" (2024)](https://arxiv.org/pdf/2310.18042)**
+
+First smart-contract platform with sub-second finality. Uses consensusless agreement for most transactions; full consensus only when conflicts arise.
+
+*SOMA builds on Sui's architecture for epoch transitions and validator coordination.*
+
+**[Babel et al., "Mysticeti: Reaching the Limits of Latency with Uncertified DAGs" (2025)](https://arxiv.org/pdf/2310.14821)**
+
+Achieves the theoretical minimum (3 message rounds) for consensus: 0.5s finality at 200k+ TPS. Deployed on Sui with 4x latency reduction.
+
+*SOMA requires consensus fast enough to process data at Internet scale. Mysticeti provides it.*
+
+
+## Representation Learning
+
+**[Yann LeCun, "A Path Towards Autonomous Machine Intelligence" (2022)](https://openreview.net/pdf?id=BZ5a1r-kVsf)**
+
+Predict in latent space, not pixel space. Models can ignore irrelevant details and focus on abstract structure.
+
+*SOMA measures data value in representation space, where distance encodes meaning.*
+
+**[Randall Balestriero and Yann LeCun, "LeJEPA: Provable and Scalable Self-Supervised Learning Without the Heuristics" (2025)](https://arxiv.org/pdf/2511.08544)**
+
+Proves that optimal embeddings follow an isotropic Gaussian distribution, minimizing downstream prediction risk.
+
+*Combined with the Platonic Representation Hypothesis: optimal representations have a specific geometry that SOMA's models may converge toward through competition.*
+
+## Bytes as the Universal Modality
+
+**[Horton et al., "Bytes Are All You Need: Transformers Operating Directly on File Bytes" (2024)](https://arxiv.org/pdf/2306.00238)**
+
+One architecture handles images, audio, and multimodal tasks, operating directly on raw bytes with no format-specific preprocessing. 10x fewer parameters than modality-aware alternatives.
+
+*Bytes are a viable universal input.*
+
+**[Pagnoni et al., "Byte Latent Transformer: Patches Scale Better Than Tokens" (2024)](https://arxiv.org/pdf/2412.09871)**
+
+Groups bytes into dynamic patches based on entropy, allocating more compute where data is complex and less where it's predictable. At 8B parameters, matches tokenized models with better robustness and generalization.
+
+*These papers point toward SOMA's goal: one network on raw bytes, all modalities in a unified embedding space.*
+
+## For the Initiated
+
+**[Huh et al., "The Platonic Representation Hypothesis" (2024)](https://arxiv.org/pdf/2405.07987)**
+
+Neural networks are converging toward a shared statistical model of reality. Different architectures, different data, different modalities, yet representations become more similar as models scale.
+
+*SOMA's competing models may not be learning arbitrary encodings, but discovering genuine structure in reality.*
+
+**[Thomas Kuhn, "The Structure of Scientific Revolutions" (1962)](https://www.lri.fr/~mbl/Stanford/CS477/papers/Kuhn-SSR-2ndEd.pdf)**
+
+Science doesn't progress linearly. It alternates between "normal science" (puzzle-solving within a paradigm) and revolutionary shifts when anomalies accumulate. No paradigm can see its own blind spots; crises emerge from outside pressure.
+
+*Models, like paradigms, cannot identify their own gaps. Competition surfaces anomalies that any single model would miss.*
+
+**[Tsvi Tlusty, "A Simple Model for the Evolution of Molecular Codes Driven by the Interplay of Accuracy, Diversity and Cost" (2008)](https://arxiv.org/pdf/1007.4124)**
+
+The genetic code emerged through selection pressure optimizing accuracy, diversity, and cost. Non-random structure appears through phase transitions.
+
+*Biology discovered optimal codes through evolution; SOMA discovers optimal representations through competition.*

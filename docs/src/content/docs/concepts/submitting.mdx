@@ -1,0 +1,49 @@
+---
+title: Data Submission
+description: "How data submissions work: finding targets, scoring, submitting, and claiming rewards."
+---
+
+Data submission is what drives the benchmark forward, an evaluation process that never finishes.
+
+Each submission tests [models](/concepts/models) against unpredictable data in a live competition. The first submission to land within a [target's threshold](/concepts/targets/#distance-threshold) earns the reward, sharing it with the model with the lowest loss.
+
+## Find a Target
+
+Each [epoch](/concepts/network/#epochs), the network generates targets across [embedding space](/concepts/targets/#embeddings). A submitter browses open targets and picks one to aim for. Each target has a set of assigned models and a [distance threshold](/concepts/targets/#distance-threshold).
+
+## Download Weights
+
+The submitter downloads model weights for the target's assigned models. Weights don't change mid-epoch, so this is a one-time cost per cycle.
+
+## Prepare Data
+
+Data can be anything: text, images, audio, video. A submitter might index a reserve of pre-fetched data with their own small embedding model, or generate synthetic data.
+
+## Score Locally
+
+The submitter runs all assigned models against their data. Each model produces a [loss score](/concepts/models/#how-models-compete) and an [embedding](/concepts/targets/#embeddings). From there:
+
+1. The model with the lowest loss wins
+2. That model's embedding becomes the submission's embedding
+3. If the distance from this embedding to the target is within the [threshold](/concepts/targets/#distance-threshold), the submission is valid
+
+## Submit
+
+Everything is submitted in a single transaction:
+
+- Target ID
+- Data URL, checksum, and size
+- Winning model ID and loss score
+- Embedding and distance to the target
+- Bond: `bond = submission_bond_per_byte * data_size` (returned if honest, forfeited if fraudulent)
+
+## Resolution
+
+Once a valid submission is accepted for a target:
+
+1. The target is marked as 'filled' and a new one spawns immediately
+2. In the next epoch, a random validator audits the submission
+3. If deemed fraudulent, the auditor escalates to other validators. If validators with 2/3 stake vote against it, the submission is ineligible for rewards and the bond is forfeited
+4. If the submission passes the audit period, the target's **reward** may be claimed in the following epoch
+    - 50% to the submitter
+    - 50% to the model whose weights were used

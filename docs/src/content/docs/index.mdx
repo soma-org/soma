@@ -1,0 +1,24 @@
+---
+title: Introduction
+description: A network that trains a foundation model across the Internet.
+---
+import { LinkCard } from '@astrojs/starlight/components';
+
+SOMA is a network that trains a foundation model by coordinating small, specialized models across the Internet. Models train independently in parallel, compete, and integrate into a unified system. Participants share a universal objective: given any data, predict what comes next. The best weights are rewarded.
+
+Each model shares the same architecture and competes on a shared objective, learning any modality by training on raw bytes. The network routes submitted data to models, scores their performance, and distributes rewards.
+
+Every participant earns [**SOMA**](/concepts/economics/): submitters earn rewards for their data, model developers earn commission for useful weights, and validators earn a share of each epoch's emissions for verifying work.
+
+## What You Can Do
+
+The network needs data, models, and validators.
+
+- **Submit data.** The network generates [**targets**](/concepts/targets/), points in embedding space. You find data that matches a target, score it against the network's models, and [**submit**](/concepts/submitting/). The first valid submission wins.
+- **Train models.** You train the weights, [**publish**](/concepts/models/#publishing-weights) them via commit-reveal, and earn commission when your model's weights produce winning submissions.
+- **Run a validator.** Validators run consensus, generate targets, and audit submissions. They earn 20% of epoch rewards.
+
+## Get started
+
+<LinkCard title="How SOMA Works" href="/overview/how-it-works/" description="Architecture, routing, and competition mechanics." />
+<LinkCard title="Quickstart" href="/getting-started/quickstart/" description="Submit data and earn your first reward." />

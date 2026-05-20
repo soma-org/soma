@@ -1,0 +1,36 @@
+---
+import type { Props } from "@astrojs/starlight/props";
+import StarlightHead from "@astrojs/starlight/components/Head.astro";
+import { ClientRouter } from "astro:transitions";
+---
+
+<StarlightHead {...Astro.props}><slot /></StarlightHead>
+<ClientRouter />
+
+{import.meta.env.PROD && (
+  <>
+    <script is:inline src="https://www.googletagmanager.com/gtag/js?id=G-YSZFHSVM6V" async></script>
+    <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-YSZFHSVM6V');
+
+      document.addEventListener('astro:after-swap', function() {
+        if (typeof gtag === 'function') {
+          gtag('event', 'page_view', {
+            page_title: document.title,
+            page_location: window.location.href,
+          });
+        }
+      });
+    </script>
+  </>
+)}
+
+<style is:global>
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+</style>

@@ -1,0 +1,290 @@
+---
+title: Types
+description: API reference for all return types and data classes in the SOMA Python SDK.
+---
+
+All types are returned as `SimpleNamespace` objects with attribute access. They are not importable classes at runtime. They exist only for documentation and IDE type checking.
+
+## Core Types
+
+### ObjectRef
+
+Reference to a network object.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Object ID |
+| `version` | `int` | Object version |
+| `digest` | `str` | Object digest |
+
+### OwnedObjectRef
+
+Object reference with owner information.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Object ID |
+| `version` | `int` | Object version |
+| `digest` | `str` | Object digest |
+| `owner` | `str` | Owner address |
+
+### TransactionEffects
+
+Result of transaction execution.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `str` | Execution status (`"success"` or error) |
+| `gas_used` | `GasUsed` | Gas usage breakdown |
+| `transaction_digest` | `str` | Transaction digest |
+| `created` | `list[OwnedObjectRef]` | Objects created |
+| `mutated` | `list[OwnedObjectRef]` | Objects mutated |
+| `deleted` | `list[str]` | Object IDs deleted |
+
+### GasUsed
+
+Gas usage breakdown.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `computation_cost` | `int` | Computation gas cost |
+| `storage_cost` | `int` | Storage gas cost |
+| `storage_rebate` | `int` | Storage rebate |
+| `non_refundable_storage_fee` | `int` | Non-refundable portion |
+
+## Epoch & System
+
+### EpochInfo
+
+Information about an epoch.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `epoch` | `int` | Epoch number |
+| `first_checkpoint_id` | `int` | First checkpoint in this epoch |
+| `epoch_start_timestamp_ms` | `int` | Epoch start time (ms since Unix epoch) |
+| `end_of_epoch_info` | `EndOfEpochInfo?` | Present only for completed epochs |
+
+### EndOfEpochInfo
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `last_checkpoint_id` | `int` | Last checkpoint in the epoch |
+| `epoch_end_timestamp_ms` | `int?` | Epoch end time |
+
+### SystemState
+
+Full system state for the current epoch.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `epoch` | `int` | Current epoch |
+| `protocol_version` | `int` | Protocol version |
+| `validators` | `ValidatorSet` | Active and pending validators |
+| `parameters` | `SystemParameters` | Network protocol parameters |
+| `epoch_start_timestamp_ms` | `int` | Epoch start time |
+| `validator_report_records` | `dict[str, list[str]]` | Validator report records |
+| `model_registry` | `object` | Model registry state |
+| `emission_pool` | `EmissionPool` | Emission pool state |
+| `target_state` | `TargetState` | Target generation state |
+| `safe_mode` | `bool` | Whether safe mode is active |
+| `safe_mode_accumulated_fees` | `int` | Fees accumulated during safe mode |
+| `safe_mode_accumulated_emissions` | `int` | Emissions accumulated during safe mode |
+
+### SystemParameters
+
+Network protocol configuration.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `epoch_duration_ms` | `int` | Epoch duration in milliseconds |
+| `validator_reward_emissions_bps` | `int` | Validator reward share (basis points) |
+| `model_min_stake` | `int` | Minimum model stake (shannons) |
+| `model_architecture_version` | `int` | Required model architecture version |
+| `model_reveal_slash_rate_bps` | `int` | Slash rate for missed reveals |
+| `model_tally_slash_rate_bps` | `int` | Slash rate for tally failures |
+| `target_epoch_fee_collection` | `int` | Fee collection per epoch for targets |
+| `target_models_per_target` | `int` | Models assigned per target |
+| `target_embedding_dim` | `int` | Required embedding dimension |
+| `target_initial_distance_threshold` | `object` | Initial distance threshold |
+| `target_reward_emissions_bps` | `int` | Target reward share |
+| `target_hits_per_epoch` | `int` | Target hits per epoch |
+| `target_hits_ema_decay_bps` | `int` | EMA decay rate for hits |
+| `target_difficulty_adjustment_rate_bps` | `int` | Difficulty adjustment rate |
+| `target_max_distance_threshold` | `object` | Maximum distance threshold |
+| `target_min_distance_threshold` | `object` | Minimum distance threshold |
+| `target_initial_targets_per_epoch` | `int` | Initial targets generated per epoch |
+| `target_submitter_reward_share_bps` | `int` | Submitter's reward share |
+| `target_model_reward_share_bps` | `int` | Model owner's reward share |
+| `target_claimer_incentive_bps` | `int` | Claimer incentive |
+| `submission_bond_per_byte` | `int` | Submission bond per byte |
+| `max_submission_data_size` | `int` | Maximum data size |
+| `base_fee` | `int` | Base transaction fee |
+| `write_object_fee` | `int` | Fee per object write |
+| `value_fee_bps` | `int` | Value fee in basis points |
+| `min_value_fee_bps` | `int` | Minimum value fee |
+| `max_value_fee_bps` | `int` | Maximum value fee |
+| `fee_adjustment_rate_bps` | `int` | Fee adjustment rate |
+
+### EmissionPool
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `balance` | `int` | Remaining emission balance |
+| `emission_per_epoch` | `int` | Emissions distributed per epoch |
+
+## Validators
+
+### Validator
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `metadata` | `ValidatorMetadata` | Validator addresses and keys |
+| `voting_power` | `int` | Voting power |
+| `staking_pool` | `StakingPool` | Staking pool state |
+| `commission_rate` | `int` | Current commission rate (bps) |
+| `next_epoch_stake` | `int` | Projected stake for next epoch |
+| `next_epoch_commission_rate` | `int` | Commission rate for next epoch |
+
+### ValidatorMetadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `soma_address` | `str` | Validator's SOMA address |
+| `protocol_pubkey` | `str` | Protocol public key |
+| `network_pubkey` | `str` | Network public key |
+| `worker_pubkey` | `str` | Worker public key |
+| `net_address` | `str` | Network address |
+| `p2p_address` | `str` | P2P address |
+| `primary_address` | `str` | Primary address |
+| `proxy_address` | `str` | Proxy address |
+| `proof_of_possession` | `str` | Proof of possession |
+
+Pending updates are available as `next_epoch_*` optional fields.
+
+### ValidatorSet
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_stake` | `int` | Total staked across all validators |
+| `validators` | `list[Validator]` | Active validators |
+| `pending_validators` | `list[Validator]` | Pending validators |
+| `pending_removals` | `list[int]` | Indices of validators pending removal |
+| `staking_pool_mappings` | `dict[str, str]` | Pool ID → validator address |
+| `inactive_validators` | `dict[str, Validator]` | Inactive validators |
+| `at_risk_validators` | `dict[str, int]` | Validators at risk of removal |
+
+### StakingPool
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Pool object ID |
+| `activation_epoch` | `int?` | Epoch when pool was activated |
+| `deactivation_epoch` | `int?` | Epoch when pool was deactivated |
+| `soma_balance` | `int` | Total SOMA balance |
+| `rewards_pool` | `int` | Accumulated rewards |
+| `pool_token_balance` | `int` | Pool token supply |
+| `exchange_rates` | `dict[int, PoolTokenExchangeRate]` | Epoch → exchange rate |
+| `pending_stake` | `int` | Stake pending activation |
+| `pending_total_soma_withdraw` | `int` | SOMA pending withdrawal |
+| `pending_pool_token_withdraw` | `int` | Pool tokens pending withdrawal |
+
+### PoolTokenExchangeRate
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `soma_amount` | `int` | SOMA in the rate |
+| `pool_token_amount` | `int` | Pool tokens in the rate |
+
+## Targets & Data
+
+### Target
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Target object ID |
+| `status` | `str` | `"open"`, `"filled"`, or `"claimed"` |
+| `embedding` | `list[float]` | Target embedding vector |
+| `model_ids` | `list[str]` | Assigned model IDs |
+| `distance_threshold` | `float` | Maximum distance for valid submissions |
+| `reward_pool` | `int` | Reward in shannons |
+| `generation_epoch` | `int` | Epoch when target was generated |
+| `bond_amount` | `int` | Required bond amount |
+| `submitter` | `str?` | Submitter address (if filled) |
+| `winning_model_id` | `str?` | Winning model ID (if filled) |
+
+### TargetState
+
+Global target generation state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `distance_threshold` | `object` | Current distance threshold |
+| `targets_generated_this_epoch` | `int` | Targets generated so far |
+| `hits_this_epoch` | `int` | Successful submissions this epoch |
+| `hits_ema` | `int` | Exponential moving average of hits |
+| `reward_per_target` | `int` | Current reward per target |
+
+### ListTargetsResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `targets` | `list[Target]` | Target list |
+| `next_page_token` | `str?` | Pagination token |
+
+### ModelManifest
+
+Model weight manifest returned by `get_model_manifests()`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `url` | `str` | URL of encrypted weights |
+| `checksum` | `str` | Weights file checksum |
+| `size` | `int` | Weights file size in bytes |
+| `decryption_key` | `str?` | AES decryption key (if revealed) |
+
+## Scoring & Faucet
+
+### ScoreResult
+
+Result of scoring a data submission.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `winner` | `int` | Index of the winning model |
+| `loss_score` | `list[float]` | Loss score per model |
+| `embedding` | `list[float]` | Computed data embedding |
+| `distance` | `list[float]` | Distance to target per model |
+
+### FaucetResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `str` | Request status |
+| `coins_sent` | `list[FaucetCoinInfo]` | Coins sent |
+
+### FaucetCoinInfo
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `amount` | `int` | Coin amount in shannons |
+| `id` | `str` | Coin object ID |
+| `transfer_tx_digest` | `str` | Transfer transaction digest |
+
+## Checkpoints
+
+### CheckpointSummary
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data` | `CheckpointData` | Checkpoint data |
+
+### CheckpointData
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sequence_number` | `int` | Checkpoint sequence number |
+| `epoch` | `int` | Epoch this checkpoint belongs to |
+| `network_total_transactions` | `int` | Cumulative transaction count |
+| `content_digest` | `str` | Content digest |
+| `timestamp_ms` | `int` | Checkpoint timestamp |

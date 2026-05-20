@@ -1,0 +1,16 @@
+---
+import Default from '@astrojs/starlight/components/TableOfContents.astro';
+
+const pageTitle = Astro.locals.starlightRoute.entry.data.title;
+const toc = Astro.locals.starlightRoute.toc;
+const hasItems = toc && toc.items.length > 0;
+---
+
+{hasItems && <Default {...Astro.props}><slot /></Default>}
+
+<script is:inline define:vars={{ pageTitle }}>
+	{
+		const heading = document.getElementById('starlight__on-this-page');
+		if (heading) heading.textContent = pageTitle;
+	}
+</script>

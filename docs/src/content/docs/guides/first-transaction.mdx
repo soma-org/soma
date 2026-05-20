@@ -1,0 +1,84 @@
+---
+title: Send a Transaction
+description: Send SOMA between addresses on the network.
+---
+import { Aside } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
+
+<Aside title="Prerequisites">
+1. [Install Soma](/getting-started/install/)
+2. [Set up your account](/getting-started/install/)
+3. [Start a local network](/guides/local-network/)
+</Aside>
+
+## Fund Your Account
+
+Ensure you are connected to your local network:
+
+```
+soma env active
+```
+
+This should show `local`. If not, switch to it:
+
+```
+soma env switch local
+```
+
+Request SOMA from the faucet:
+
+```
+soma faucet
+```
+
+Verify your balance:
+
+```
+soma balance
+```
+
+## Create a Second Address
+
+Create a new address to use as the recipient:
+
+```
+soma wallet new --alias recipient
+```
+
+This creates a new address but does not switch to it. You can verify both addresses exist:
+
+```
+soma wallet list
+```
+
+## Send SOMA
+
+Send 1 SOMA to the recipient:
+
+```
+soma send --to recipient --amount 1
+```
+
+The command returns a transaction digest confirming the transfer.
+
+## Verify the Transfer
+
+Check the sender's balance (your active address):
+
+```
+soma balance
+```
+
+Check the recipient's balance:
+
+```
+soma balance recipient
+```
+
+The recipient should now have the SOMA you sent.
+
+## Next Steps
+
+- [Train a Model](/guides/model-development/): commit and reveal model weights
+- [Data Submission](/guides/submitting-data/): score data against targets and submit
+- [Python SDK Quickstart](/getting-started/quickstart/): interact with SOMA programmatically

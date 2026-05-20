@@ -1,0 +1,127 @@
+---
+title: Installation & Setup
+description: Install the SOMA CLI and create your account.
+---
+import { Aside } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Install the SOMA CLI, create an account, and fund it.
+
+<Aside title="Supported Operating Systems">
+- Linux: Ubuntu 22.04 or newer
+- macOS: Monterey or newer
+- Windows: 10 or 11
+</Aside>
+
+## Install
+
+The SOMA CLI is installed via `sup`, SOMA's version manager (like `rustup`).
+
+<Steps>
+
+1. Install `sup`:
+
+    <Tabs>
+        <TabItem label="Script">
+            ```
+            curl -sSfL https://sup.soma.org | sh
+            ```
+        </TabItem>
+        <TabItem label="Cargo">
+            ```
+            cargo install --git https://github.com/soma-org/sup.git --locked
+            ```
+        </TabItem>
+    </Tabs>
+
+2. Install SOMA:
+
+    ```
+    sup install soma
+    ```
+
+3. Verify:
+
+    ```
+    soma --version
+    ```
+
+</Steps>
+
+If you get "command not found," add the SOMA binaries directory to your PATH.
+
+## Create an Account
+
+```
+soma wallet new --alias my-wallet
+```
+
+This returns your address and a 12-word recovery phrase.
+
+<Aside type="danger">
+Recovery phrases are shown once. Store them securely and do not share them. They control access to all objects and SOMA the address owns.
+</Aside>
+
+Check your active address:
+
+```
+soma wallet active
+```
+
+## Connect to a Network
+
+SOMA has two environments: testnet (the default public test network) and localnet (a local network for development, see [Local Network](/guides/local-network/)).
+
+View available environments:
+
+```
+soma env list
+```
+
+Switch environments:
+
+```
+soma env switch testnet
+```
+
+## Fund Your Account
+
+On testnet or localnet, request SOMA from the faucet:
+
+```
+soma faucet
+```
+
+Check your balance:
+
+```
+soma balance
+```
+
+<Aside>
+Balances are denominated in shannons. 1 SOMA = 1,000,000,000 shannons.
+</Aside>
+
+<Aside type="danger">
+SOMA stores private keys in `~/.soma/soma_config/soma.keystore`. Keep this file secure and do not share it.
+</Aside>
+
+## Python SDK
+
+If you plan to interact with SOMA programmatically, install the Python SDK:
+
+<Tabs>
+    <TabItem label="pip">
+        ```
+        pip install soma-sdk
+        ```
+    </TabItem>
+    <TabItem label="uv">
+        ```
+        uv add soma-sdk
+        ```
+    </TabItem>
+</Tabs>
+
+Next, [run through the Quickstart](/getting-started/quickstart/) to deploy a scoring server, hit a target on testnet, and earn SOMA.

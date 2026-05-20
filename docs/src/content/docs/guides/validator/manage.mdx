@@ -1,0 +1,147 @@
+---
+title: Manage a Validator
+description: Day-to-day operations, updates, commission, staking, and rewards.
+---
+import { Aside } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
+
+Running a validator is an ongoing responsibility. This guide covers monitoring, updates, staking, and governance. Everything you need after your node is live.
+
+## Monitor Your Validator
+
+Check connectivity and sync status:
+
+```bash
+soma status
+```
+
+View your current validator configuration and metadata:
+
+```bash
+soma validator display-metadata
+```
+
+To inspect a specific validator, pass its address:
+
+```bash
+soma validator display-metadata <validator-address>
+```
+
+Key metrics to watch:
+
+- **Sync lag**: how far behind the chain tip
+- **Missed proposals**: sign of instability
+- **Uptime**: validators with poor uptime earn fewer rewards
+
+## Update Metadata
+
+Validator metadata includes network addresses and public keys. Update individual fields with the `update-metadata` subcommand:
+
+```bash
+soma validator update-metadata network-address <multiaddr>
+soma validator update-metadata primary-address <multiaddr>
+soma validator update-metadata p2p-address <multiaddr>
+soma validator update-metadata network-pubkey <path>
+soma validator update-metadata worker-pubkey <path>
+soma validator update-metadata protocol-pubkey <path>
+```
+
+All metadata changes take effect at the start of the next epoch.
+
+## Commission Rate
+
+Set your commission rate in basis points. 100 basis points equals 1%.
+
+```bash
+soma validator set-commission-rate <rate>
+```
+
+Commission determines what percentage of delegator rewards your validator keeps. A rate of `500` means you take 5% of the rewards earned by SOMA delegated to you. The remaining 95% goes to delegators.
+
+## Software Updates
+
+<Steps>
+
+1. Watch for new releases and protocol upgrade announcements from the SOMA team.
+
+2. Install the new version:
+
+    ```bash
+    sup update soma
+    ```
+
+3. Restart your validator node to pick up the new binary.
+
+</Steps>
+
+<Aside type="caution">
+Coordinate update timing with epoch boundaries. Restarting mid-epoch means your validator misses proposals until it comes back online, which affects rewards and reputation.
+</Aside>
+
+## Staking and Rewards
+
+### Delegation
+
+SOMA holders can delegate to your validator:
+
+```bash
+soma stake --validator <address> --amount <amount>
+```
+
+### Self-Stake
+
+Validators stake with themselves using the same command and their own address.
+
+### Unstaking
+
+To withdraw staked SOMA:
+
+```bash
+soma unstake <staked-soma-id>
+```
+
+Unstaked SOMA is subject to an unbonding period before it becomes available for withdrawal.
+
+### Reward Distribution
+
+Each epoch, the rewards pool is distributed as follows:
+
+- **20%** goes to validators, split proportionally by stake
+- **80%** goes to target winners (submitters and models)
+
+Validators take their commission rate from the rewards earned by delegated stake. Self-staked rewards are not subject to commission.
+
+For full details on emissions, fees, and incentive design, see [Economics](/concepts/economics/).
+
+## Reporting and Governance
+
+Validators are responsible for reporting bad actors on the network.
+
+**Report a misbehaving validator:**
+
+```bash
+soma validator report-validator <reportee-address>
+```
+
+**Report a misbehaving model:**
+
+```bash
+soma validator report-model <model-id>
+```
+
+**Undo a report** if the issue is resolved:
+
+```bash
+soma validator report-validator <address> --undo-report
+soma validator report-model <model-id> --undo-report
+```
+
+## Leave the Committee
+
+To stop validating and leave the active committee:
+
+```bash
+soma validator leave-committee
+```
+
+Deactivation takes effect at the start of the next epoch. Your node continues participating in consensus until then. Staked SOMA enters an unbonding period before it can be withdrawn.
