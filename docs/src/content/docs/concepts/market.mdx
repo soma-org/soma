@@ -1,0 +1,48 @@
+---
+title: The market
+description: Providers, offerings, payment channels, and how settlement actually works.
+---
+
+The market has three on-chain objects and one off-chain mechanism. That's it.
+
+## Providers
+
+A **Provider** is a registered seller of inference. One wallet equals one Provider record. It holds the owner address, the HTTPS endpoint the provider serves requests from, and a heartbeat timestamp.
+
+Anyone can register: `soma provider register --endpoint https://my-inference.example.com`. There's no gatekeeping or staking required to be a provider — only to be a *validator*, which is different.
+
+The provider then runs an HTTP service that accepts OpenAI-compatible requests and forwards them to whatever upstream they use (their own GPUs, OpenRouter, Anthropic's API directly, anything). Soma doesn't care how the inference is produced, only that the provider returns valid completions.
+
+## Offerings
+
+An **Offering** is a single (provider, model) pair on chain. It records the prices the provider charges for that model and the latency SLAs they commit to:
+
+- `prompt_micros_per_1k` — micro-USDC per 1000 input tokens
+- `completion_micros_per_1k` — micro-USDC per 1000 output tokens
+- `cache_read_micros_per_1k` / `cache_write_micros_per_1k` — discounted/surcharged tokens for prompt caching
+- `request_micros` — flat per-request fee
+- `ttft_bound_ms` — time-to-first-token cap; exceeding it produces a negative rating
+- `ttot_bound_ms` — time-to-output-token cap (per output token)
+
+A provider has one Offering per model they sell. A buyer's proxy queries the registry, sees every active Offering across every provider for the model it wants, and ranks them.
+
+The set of valid `model_id` values is the **ModelRegistry** — a static, protocol-config-defined table of canonical identifiers like `anthropic/claude-haiku-4.5`. Providers can only register offerings against models in the registry. To add a new model, the protocol has to be upgraded.
+
+## Channels
+
+Paying on chain for every inference call would be impossibly slow and expensive. Instead, a buyer and a seller open a **Channel** — a shared object that holds a USDC deposit from the buyer.
+
+For every call, the proxy signs an **off-chain voucher** that says "I authorize a cumulative spend of N micros against channel X." The voucher is just a signature over a monotonically-increasing total. The provider stores the latest voucher; they don't need to submit anything on chain per call.
+
+The provider settles whenever they want: typically a few times per epoch, or once when closing. Settlement burns the cumulative amount from the channel and credits it to the provider's USDC balance.
+
+When the buyer is done, they call `channel request-close`. After a short grace period (so the provider has a chance to submit any final vouchers), the channel closes and any unused balance returns to the buyer.
+
+## What the chain enforces
+
+- A voucher must be signed by the channel's buyer.
+- A new voucher's cumulative amount must be greater than the last one settled — vouchers are monotonic.
+- A channel can't be drained faster than it was funded.
+- The provider receives funds in their on-chain USDC balance the moment a voucher settles; the buyer can't claw back what was already paid.
+
+What the chain doesn't enforce: that the provider actually returned good completions. That's what the SLA bounds on the Offering are for — they're advisory, recorded on chain, and used by the proxy to penalize providers that miss them via the rating system (lower ratings → less traffic from future proxies).

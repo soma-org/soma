@@ -1,0 +1,127 @@
+---
+title: Use the network
+description: Run the proxy locally and point any OpenAI-compatible client at it.
+---
+
+To buy inference from the network, you run a local proxy (`soma start proxy`) that:
+
+- Discovers all active offerings for the model you want.
+- Picks the cheapest one (or the one that best fits your latency requirements).
+- Opens a payment channel against your USDC balance.
+- Signs vouchers off-chain for each call.
+- Speaks the OpenAI API so any existing tool works unchanged.
+
+## Prerequisites
+
+- The Soma CLI installed.
+- A wallet with USDC. [Bridge USDC in from Base Sepolia](/concepts/bridge/) if you don't have any yet.
+
+## Start the proxy
+
+```sh
+soma start proxy
+```
+
+It binds `127.0.0.1:8088` by default. To pick a different port:
+
+```sh
+soma start proxy --config proxy.toml
+```
+
+`proxy.toml`:
+
+```toml
+[server]
+bind = "127.0.0.1:8088"
+
+[wallet]
+config_path = "~/.soma/client.yaml"
+
+[channel]
+# Cap on a single channel's funding. Lower = more frequent re-opens; higher
+# = more capital locked up at once.
+max_funding_usdc = 10.0
+
+# Auto-close a channel after this many seconds of idle.
+idle_close_seconds = 600
+```
+
+## Make calls
+
+Point any OpenAI-compatible client at it:
+
+### curl
+
+```sh
+curl http://127.0.0.1:8088/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-haiku-4.5",
+    "messages": [{"role": "user", "content": "What is the capital of France?"}]
+  }'
+```
+
+### Python (OpenAI SDK)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8088/v1",
+    api_key="not-used",  # auth is handled by the proxy via on-chain channels
+)
+
+response = client.chat.completions.create(
+    model="anthropic/claude-haiku-4.5",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+print(response.choices[0].message.content)
+```
+
+### Claude Code, Cursor, any other OpenAI client
+
+Set `OPENAI_BASE_URL=http://127.0.0.1:8088/v1` (or whatever your tool's env var is) and they'll route through the proxy unchanged.
+
+## See what's happening
+
+```sh
+soma channel list                    # all your open channels
+soma channel show --channel-id <ID>  # details of one channel
+```
+
+The proxy logs each request, the offering it picked, the channel it used, and the cumulative voucher amount.
+
+## Pick a specific provider
+
+By default the proxy picks the cheapest offering. To pin a specific provider:
+
+```sh
+soma start proxy --pin-provider 0xPROVIDER_ADDRESS
+```
+
+Or in `proxy.toml`:
+
+```toml
+[routing]
+pin_provider = "0xPROVIDER_ADDRESS"
+```
+
+This is useful when you want consistent behavior (same model behind the offering can have different upstream routing across providers) or when you have a relationship with a specific provider.
+
+## Close channels and reclaim USDC
+
+When you stop using a provider:
+
+```sh
+soma channel request-close --channel-id <ID>
+```
+
+After a grace period (a few epochs, so the provider has time to submit any final vouchers), the channel closes. Unused balance returns to your USDC; consumed balance goes to the provider.
+
+To close everything at once:
+
+```sh
+for c in $(soma channel list --json | jq -r '.channels[].id'); do
+  soma channel request-close --channel-id $c
+done
+```

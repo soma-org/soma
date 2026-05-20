@@ -1,0 +1,90 @@
+---
+title: CLI reference
+description: Orientation to the soma command surface. Source of truth is `soma --help`.
+---
+
+The CLI is the only client; everything below sits on top of it. `soma --help` and `soma <command> --help` are the authoritative reference — this page is an orientation.
+
+## Common user actions
+
+| Command | What it does |
+|---|---|
+| `soma balance [ADDRESS]` | Show SOMA and USDC balances. Defaults to active wallet. |
+| `soma transfer soma <AMOUNT> <RECIPIENT>` | Send SOMA. |
+| `soma transfer usdc <AMOUNT> <RECIPIENT>` | Send USDC. |
+| `soma stake add --validator <V> --amount <N>` | Stake SOMA with a validator. |
+| `soma stake remove --pool <P> [--amount <N>]` | Withdraw stake. Omit `--amount` to drain. |
+| `soma stake list [--staker <A>]` | List active delegations. |
+| `soma status` | Show network, active wallet, server reachability. |
+
+## Inspect on-chain state
+
+| Command | What it does |
+|---|---|
+| `soma object get <ID>` | Fetch one object by ID. |
+| `soma object list [OWNER]` | List objects owned by an address. |
+| `soma object transfer <ID> <RECIPIENT>` | Move a single object. |
+| `soma tx info <DIGEST>` | Fetch a transaction by digest. |
+| `soma tx execute-serialized <BYTES>` | Submit pre-built BCS transaction bytes. |
+
+## Bridge
+
+| Command | What it does |
+|---|---|
+| `soma bridge status` | Live BridgeState — committee, USDC supply, pending registrations. |
+| `soma bridge withdraw --amount <USDC> --recipient <ETH_ADDR> --target-chain <CHAIN>` | Burn USDC on Soma, signal the bridge committee. |
+
+Inbound deposits happen on the EVM side — call `SomaBridge.deposit(...)` on Base Sepolia. See [The USDC bridge](/concepts/bridge/).
+
+## Inference market
+
+| Command | What it does |
+|---|---|
+| `soma model {list, show}` | Read the protocol-config ModelRegistry (canonical model IDs). |
+| `soma provider {register, update, show}` | Manage your on-chain provider record. |
+| `soma offering {register, update, deactivate, show}` | Manage per-model offerings. |
+| `soma channel {open, settle, top-up, request-close, withdraw, show, list}` | Payment channel operations. Most users don't run these directly — the proxy and provider daemons drive them automatically. |
+| `soma start proxy` | Run the local OpenAI-compatible proxy. |
+| `soma start provider` | Run the provider-side inference server. |
+
+## Wallet and environment
+
+| Command | What it does |
+|---|---|
+| `soma wallet {active, list, new, switch, remove, export}` | Manage local addresses and keys. |
+| `soma env {active, list, new, switch, chain-id}` | Manage network environments (testnet, localnet, custom). |
+
+## Validator operations
+
+If you're running a validator, see `soma validator --help`. The full subcommand list:
+
+- `make-validator-info`, `join-committee`, `leave-committee`, `register-bridge-key` — operator setup.
+- `list`, `display-metadata`, `update-metadata`, `set-commission-rate`, `report-validator` — ongoing management.
+
+## Node management
+
+- `soma start localnet` — local development network.
+- `soma start validator --config <PATH>` — start a validator node.
+- `soma genesis ceremony` — coordinate a multi-validator genesis.
+- `soma network --dump-addresses` — inspect local network config.
+
+## Low-level
+
+- `soma keytool` — keystore primitives (generate, import, export, multi-sig). Most users never need this.
+
+## Output formats
+
+Almost every command accepts `--json` for machine-readable output. Use it when scripting:
+
+```sh
+soma balance --json | jq '.balances'
+soma channel list --json | jq '.channels[] | select(.status == "open") | .id'
+```
+
+## Shell completions
+
+```sh
+soma completions zsh   > ~/.zfunc/_soma
+soma completions bash  > /usr/local/etc/bash_completion.d/soma
+soma completions fish  > ~/.config/fish/completions/soma.fish
+```

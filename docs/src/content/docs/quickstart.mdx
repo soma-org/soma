@@ -1,0 +1,87 @@
+---
+title: Quickstart
+description: From zero to your first inference call in about ten minutes.
+---
+
+This walks you through installing the CLI, funding a wallet with USDC, running a local proxy, and making one inference call through it.
+
+## 1. Install
+
+The CLI is the entry point for everything — wallet, bridge, market interaction, and running the proxy.
+
+```sh
+# clone and build
+git clone https://github.com/soma-org/soma.git
+cd soma
+cargo build --release --bin soma
+sudo install -m 0755 target/release/soma /usr/local/bin/soma
+```
+
+Verify:
+
+```sh
+soma --version
+soma status
+```
+
+The first call creates `~/.soma/` with a new wallet and points it at the active testnet.
+
+## 2. Fund the wallet with USDC
+
+Soma settlements are in USDC. You bridge USDC from Base Sepolia into Soma; the bridge mints an equal amount on the Soma side, credited to your wallet.
+
+On the Base Sepolia side, send USDC to the SomaBridge contract. The simplest way is to use a wallet (Coinbase Wallet, Rabby) connected to Base Sepolia and call `deposit(destinationChainID=2, somaRecipient, amount)` on `0x5458a14d8a28CAff779f029FA3d60B8F9523C85b`. `somaRecipient` is your Soma address as a 32-byte hex string (`soma wallet active` will show it).
+
+For a fully-sponsored deposit (zero ETH gas, paid by a paymaster), see [the bridge concepts page](/concepts/bridge/).
+
+Within ~30 seconds the bridge nodes pick up the deposit and mint USDC on your Soma address. Check:
+
+```sh
+soma balance
+```
+
+You should see your USDC balance.
+
+## 3. Open a channel and make a call
+
+The proxy speaks OpenAI's API. Run it:
+
+```sh
+soma start proxy
+```
+
+It listens on `127.0.0.1:8088` by default. Point any OpenAI-compatible client at it:
+
+```sh
+curl http://127.0.0.1:8088/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-haiku-4.5",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+What happens under the hood:
+
+- The proxy queries the chain for all active offerings against `anthropic/claude-haiku-4.5`.
+- It picks the cheapest one that meets your latency requirements.
+- It opens a payment channel with that provider, funded from your USDC balance.
+- It signs an off-chain voucher for each call. The provider redeems the voucher on chain when you close the channel or periodically as it grows.
+- The response streams back to you.
+
+## 4. Settle and check your balance
+
+When you're done:
+
+```sh
+soma channel list                  # see your open channels
+soma channel request-close <ID>    # begin settlement
+```
+
+After the grace period (a few epochs), the channel closes and the unused balance returns to your USDC. The provider keeps what you actually consumed.
+
+## Next steps
+
+- [How the market works](/concepts/market/) — the data model behind providers, offerings, and channels.
+- [Become a provider](/guides/become-a-provider/) — sell inference instead of buying it.
+- [CLI reference](/reference/cli/) — the full command surface.

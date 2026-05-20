@@ -1,24 +1,20 @@
 ---
 title: Introduction
-description: A network that trains a foundation model across the Internet.
+description: A federated market for AI inference.
 ---
 import { LinkCard } from '@astrojs/starlight/components';
 
-SOMA is a network that trains a foundation model by coordinating small, specialized models across the Internet. Models train independently in parallel, compete, and integrate into a unified system. Participants share a universal objective: given any data, predict what comes next. The best weights are rewarded.
+Soma is a federated market for AI inference. Providers register the models they serve and the prices they charge; consumers pay per token through on-chain payment channels. Settlement is in USDC, bridged from Base.
 
-Each model shares the same architecture and competes on a shared objective, learning any modality by training on raw bytes. The network routes submitted data to models, scores their performance, and distributes rewards.
+There's no platform in the middle. Providers run their own infrastructure (their own GPUs, their own routing to OpenRouter, Anthropic, or anywhere else), publish their offerings on chain, and earn the full per-call revenue minus a small protocol fee. Consumers see every offering for every model and pick on price, latency, or any other criterion.
 
-Every participant earns [**SOMA**](/concepts/economics/): submitters earn rewards for their data, model developers earn commission for useful weights, and validators earn a share of each epoch's emissions for verifying work.
+The chain underneath is a BFT consensus chain that handles three things and nothing else: a registry of providers and their offerings, payment channels that let consumers stream micropayments without an on-chain tx per call, and a USDC bridge so payments are denominated in something stable.
 
-## What You Can Do
+## What you can do
 
-The network needs data, models, and validators.
+- **Use the network.** Run `soma start proxy` locally, point any OpenAI-compatible client at it, and your requests get routed to the cheapest provider for the model you asked for. Charges are deducted from a payment channel you opened with that provider.
+- **Sell inference.** Register as a provider, publish offerings (one per model you want to sell, with prices and SLAs), run `soma start provider` to accept requests, and withdraw earnings.
+- **Run a validator.** Validators run consensus, hold the chain together, and earn a share of protocol fees.
 
-- **Submit data.** The network generates [**targets**](/concepts/targets/), points in embedding space. You find data that matches a target, score it against the network's models, and [**submit**](/concepts/submitting/). The first valid submission wins.
-- **Train models.** You train the weights, [**publish**](/concepts/models/#publishing-weights) them via commit-reveal, and earn commission when your model's weights produce winning submissions.
-- **Run a validator.** Validators run consensus, generate targets, and audit submissions. They earn 20% of epoch rewards.
-
-## Get started
-
-<LinkCard title="How SOMA Works" href="/overview/how-it-works/" description="Architecture, routing, and competition mechanics." />
-<LinkCard title="Quickstart" href="/getting-started/quickstart/" description="Submit data and earn your first reward." />
+<LinkCard title="Quickstart" href="/quickstart/" description="Make your first inference call in ten minutes." />
+<LinkCard title="The market" href="/concepts/market/" description="How providers, offerings, channels, and settlement fit together." />

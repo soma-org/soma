@@ -52,90 +52,29 @@ export default defineConfig({
                 './src/styles/custom.css',
             ],
             sidebar: [
+                { label: 'Introduction', slug: '' },
+                { label: 'Quickstart', slug: 'quickstart' },
                 {
-                    label: 'Overview',
+                    label: 'Concepts',
                     collapsed: false,
                     items: [
-                        { label: 'Introduction', slug: '' },
-                        { label: 'How SOMA Works', slug: 'overview/how-it-works' },
-                    ],
-                },
-                {
-                    label: 'Getting Started',
-                    collapsed: false,
-                    items: [
-                        { label: 'Installation & Setup', slug: 'getting-started/install' },
-                        { label: 'Quickstart', slug: 'getting-started/quickstart' },
+                        { label: 'The market', slug: 'concepts/market' },
+                        { label: 'The USDC bridge', slug: 'concepts/bridge' },
                     ],
                 },
                 {
                     label: 'Guides',
                     collapsed: false,
                     items: [
-                        { label: 'Train a Model', slug: 'guides/model-development' },
-                        { label: 'Claim Rewards', slug: 'guides/claim-rewards' },
-                        { label: 'Advanced Strategies', slug: 'guides/advanced-strategies' },
-                        {
-                            label: 'Running a Validator',
-                            collapsed: true,
-                            items: [
-                                { label: 'Overview', slug: 'guides/validator' },
-                                { label: 'Node Setup', slug: 'guides/validator/node-setup' },
-                                { label: 'Join the Network', slug: 'guides/validator/join-network' },
-                                { label: 'Manage a Validator', slug: 'guides/validator/manage' },
-                            ],
-                        },
-                    ],
-                },
-                {
-                    label: 'Concepts',
-                    collapsed: false,
-                    items: [
-                        { label: 'Targets', slug: 'concepts/targets' },
-                        { label: 'Data Submission', slug: 'concepts/submitting' },
-                        { label: 'Models', slug: 'concepts/models' },
-                        { label: 'Economics', slug: 'concepts/economics' },
-                        { label: 'Network', slug: 'concepts/network' },
+                        { label: 'Use the network', slug: 'guides/use-the-network' },
+                        { label: 'Become a provider', slug: 'guides/become-a-provider' },
                     ],
                 },
                 {
                     label: 'Reference',
                     collapsed: false,
                     items: [
-                        {
-                            label: 'CLI',
-                            collapsed: true,
-                            items: [
-                                { label: 'Overview', slug: 'reference/cli/overview' },
-                                { label: 'Common Commands', slug: 'reference/cli/common' },
-                                { label: 'Management', slug: 'reference/cli/management' },
-                                { label: 'Submissions', slug: 'reference/cli/submissions' },
-                                { label: 'Operators & Nodes', slug: 'reference/cli/operators' },
-                                { label: 'Query Commands', slug: 'reference/cli/queries' },
-                            ],
-                        },
-                        {
-                            label: 'Python SDK',
-                            collapsed: true,
-                            items: [
-                                { label: 'Overview', slug: 'reference/sdk/overview' },
-                                { label: 'Keypair', slug: 'reference/sdk/keypair' },
-                                { label: 'Chain & State', slug: 'reference/sdk/chain-state' },
-                                { label: 'Targets', slug: 'reference/sdk/targets-challenges' },
-                                { label: 'Transactions', slug: 'reference/sdk/transactions' },
-                                { label: 'Scoring, Admin & Convenience', slug: 'reference/sdk/scoring-admin' },
-                                { label: 'Types', slug: 'reference/sdk/types' },
-                            ],
-                        },
-                        {
-                            label: 'Models',
-                            collapsed: true,
-                            items: [
-                                { label: 'Overview', slug: 'reference/models/overview' },
-                            ],
-                        },
-                        // { label: 'Further Reading', slug: 'reference/reading' },
-                        { label: 'Community', slug: 'reference/community' },
+                        { label: 'CLI', slug: 'reference/cli' },
                     ],
                 },
             ],

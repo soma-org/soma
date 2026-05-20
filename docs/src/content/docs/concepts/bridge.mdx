@@ -1,0 +1,53 @@
+---
+title: The USDC bridge
+description: How USDC moves between Soma and Base Sepolia.
+---
+
+Soma uses USDC as the settlement token. USDC doesn't natively live on Soma — it's bridged from Base. The bridge is a quorum-signed lockup-and-mint pattern, similar to Sui's bridge.
+
+## Deposit (Base → Soma)
+
+On Base Sepolia:
+
+1. The user (or a paymaster, sponsoring the gas) calls `SomaBridge.deposit(destinationChainID=2, somaRecipient, amount)` on the bridge proxy `0x5458a14d8a28CAff779f029FA3d60B8F9523C85b`.
+2. The contract pulls `amount` USDC from the caller via `transferFrom` and locks it in the BridgeVault.
+3. The contract emits `TokensDeposited(nonce, sender, destChainId, somaRecipient, tokenType, amount, timestampMs)`.
+
+On Soma:
+
+1. Each validator's **bridge node** watches Base Sepolia for `TokensDeposited` events.
+2. When seen, the node signs the event with its dedicated secp256k1 bridge key.
+3. Nodes exchange signatures via a peer-broadcast HTTP server. Once a quorum (>50% of voting stake) has signed, any node can submit the aggregated cert on chain.
+4. The Soma-side bridge executor verifies the cert, mints `amount` USDC to `somaRecipient`, and records the nonce as processed so it can't be replayed.
+
+End-to-end latency is roughly 30-60 seconds, dominated by Base finalization and validator gossip.
+
+## Withdraw (Soma → Base)
+
+On Soma:
+
+```sh
+soma bridge withdraw --amount 1.0 \
+    --recipient 0x7B42d2B6F94fDF3c2Fe62e0aAf451487FA2DAB6e \
+    --target-chain base-sepolia
+```
+
+This burns the requested USDC from your Soma balance and creates a `PendingWithdrawal` shared object on chain.
+
+The bridge nodes then:
+
+1. Sign the withdrawal with their bridge keys.
+2. Once quorum is reached, attach the cert to the PendingWithdrawal.
+3. The outbound relayer (one of the validator-operators' wallets) submits an Eth-side tx to `SomaBridge.executeWithdrawal(...)`, which releases USDC from the BridgeVault to the recipient.
+
+Same ~30-60 second end-to-end latency.
+
+## Why a bridge rather than native USDC
+
+Stablecoin liquidity already lives where the people are: Ethereum L1 and the L2s. Native USDC on Soma would require Circle to issue against a Soma reserve account, which they only do for chains with significant existing adoption. Bridging from Base is the pragmatic answer for testnet and likely for a long time after — you keep the same dollar, redeemable back to its original chain, without forcing Circle to integrate with every new L1.
+
+## The committee
+
+The set of validators authorized to sign bridge events is the **bridge committee**. It's rebuilt at each epoch boundary from active Soma validators who have registered a bridge pubkey via `soma validator register-bridge-key`. Validators that don't register simply don't get bridge signing power; they still earn from consensus.
+
+The bridge committee's voting weights are proportional to validator stake, with a 50.01% quorum threshold (matching the standard BFT 2f+1 model). Misbehavior (signing fraudulent events) would be slashable, but the bridge itself doesn't include slashing logic yet — validator-level reporting handles bad actors today.
