@@ -60,7 +60,9 @@ pub async fn run(
         let r = inner_router.clone();
         match tokio::time::timeout(Duration::from_secs(3), r.refresh_providers()).await {
             Ok(Ok(())) => tracing::info!("discovery cache warm"),
-            Ok(Err(e)) => tracing::warn!(err = %e, "initial discovery refresh failed; will retry lazily"),
+            Ok(Err(e)) => {
+                tracing::warn!(err = %e, "initial discovery refresh failed; will retry lazily")
+            }
             Err(_) => tracing::warn!("initial discovery refresh timed out; will retry lazily"),
         }
     }

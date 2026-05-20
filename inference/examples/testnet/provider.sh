@@ -2,7 +2,7 @@
 # TERMINAL 1 — run a soma inference provider against testnet.
 #
 # Writes the provider TOML for you, creates + funds a provider wallet
-# on first run, then runs `soma inference serve` in the foreground.
+# on first run, then runs `soma start provider` in the foreground.
 # `serve` registers the provider AND its offering on-chain at boot and
 # heartbeats while it runs. Ctrl-C to stop (it settles open channels).
 set -euo pipefail
@@ -46,5 +46,5 @@ echo "→ serving http://127.0.0.1:${PROVIDER_PORT}  ·  model ${MODEL}  ·  con
 echo "  Ctrl-C to stop (settles open channels)."
 echo
 exec env RUST_LOG="${RUST_LOG:-inference=info,sdk=info}" \
-  "$SOMA" inference serve \
+  "$SOMA" start provider \
     --config "$PROVIDER_TOML" --address "$PROVIDER" --soma-home "$PROVIDER_HOME"

@@ -100,11 +100,7 @@ impl StakeCommand {
     }
 }
 
-async fn list_stakes(
-    context: &mut WalletContext,
-    staker: SomaAddress,
-    json: bool,
-) -> Result<()> {
+async fn list_stakes(context: &mut WalletContext, staker: SomaAddress, json: bool) -> Result<()> {
     let client = context.get_client().await?;
 
     let request =

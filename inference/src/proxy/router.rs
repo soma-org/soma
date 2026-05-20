@@ -264,9 +264,8 @@ impl Router {
             let bigint = |k: &str| -> Option<i64> {
                 node.get(k).and_then(|x| x.as_str()).and_then(|s| s.parse().ok())
             };
-            let int32 = |k: &str| -> Option<i32> {
-                node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32)
-            };
+            let int32 =
+                |k: &str| -> Option<i32> { node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32) };
             let prompt_m = bigint("promptMicrosPer1k")? as u64;
             let completion_m = bigint("completionMicrosPer1k")? as u64;
             let cache_r_m = bigint("cacheReadMicrosPer1k").unwrap_or(0) as u64;
@@ -574,7 +573,13 @@ impl Router {
             }
             let slot = self
                 .store
-                .install_slot(id, provider.address, provider.endpoint.clone(), chan.deposit(), floor)
+                .install_slot(
+                    id,
+                    provider.address,
+                    provider.endpoint.clone(),
+                    chan.deposit(),
+                    floor,
+                )
                 .await;
             tracing::info!(channel = %id, "rehydrated open channel from indexer");
             return Some(slot);
