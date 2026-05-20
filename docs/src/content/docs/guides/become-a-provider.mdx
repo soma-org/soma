@@ -5,105 +5,39 @@ description: Register, publish offerings, run the daemon, withdraw earnings.
 
 A provider sells inference. You decide which models you serve, what you charge, and what infrastructure you use to serve them. Soma handles registration, payment, and discovery.
 
-## Prerequisites
+## The path
 
-- The Soma CLI installed (`cargo install --path cli` from the monorepo, or pull a release binary).
-- A wallet with a small amount of SOMA for gas-equivalent ops (most transactions are gasless; you only need stake-related interactions if you're also running a validator).
-- A public HTTPS endpoint where you'll serve `/v1/chat/completions` and similar OpenAI-compatible routes. A subdomain pointed at your server is fine; a cloud LB is fine; an ngrok tunnel is fine for testing.
-- Whichever upstream you're using: your own GPU cluster, an OpenRouter API key, an Anthropic API key, etc.
+1. **Register your provider record.** One transaction; binds your wallet address to a public HTTPS endpoint that buyers' proxies will hit.
 
-## 1. Register your provider record
+    ```sh
+    soma provider register --endpoint https://my-inference.example.com
+    ```
 
-```sh
-soma provider register --endpoint https://my-inference.example.com
-```
+2. **Publish an offering for each model you sell.** Prices are in micro-USDC per 1000 tokens. The `--model-id` must be one of the canonical IDs in the protocol's [ModelRegistry](/reference/cli/) — list them with `soma model list`.
 
-This creates a `Provider` shared object on chain bound to your wallet address. The endpoint is what buyers' proxies will hit.
+    ```sh
+    soma offering register \
+        --model-id anthropic/claude-haiku-4.5 \
+        --prompt-micros-per-1k 1000 \
+        --completion-micros-per-1k 5000
+    ```
 
-To change it later:
+3. **Run the daemon.** It accepts OpenAI-compatible requests at your endpoint, verifies each one carries a valid voucher, forwards to your upstream (your own GPUs, OpenRouter, Anthropic — anything), streams responses back, and stores vouchers.
 
-```sh
-soma provider update --endpoint https://new-endpoint.example.com
-```
+    ```sh
+    soma start provider --config provider.toml
+    ```
 
-## 2. Publish an offering for each model you sell
+    Config schema is in `soma start provider --help`.
 
-For every model you want to serve, register an offering. Prices are in micro-USDC per 1000 tokens:
+4. **Withdraw earnings.** Voucher settlement happens automatically while the daemon runs. To move USDC back to Base:
 
-```sh
-soma offering register \
-    --model-id anthropic/claude-haiku-4.5 \
-    --prompt-micros-per-1k 1000 \
-    --completion-micros-per-1k 5000 \
-    --ttft-bound-ms 500
-```
-
-The `--model-id` must be one of the canonical IDs in the protocol's ModelRegistry. List them with `soma model list`.
-
-Cache prices and request-level fees are optional; defaults are zero. The SLA fields (`--ttft-bound-ms`, `--ttot-bound-ms`) are advisory — exceeding them produces negative ratings that suppress your traffic, so set them honestly.
-
-Update or deactivate later:
-
-```sh
-soma offering update --model-id anthropic/claude-haiku-4.5 --prompt-micros-per-1k 800 ...
-soma offering deactivate --model-id anthropic/claude-haiku-4.5
-```
-
-A deactivated offering stays on chain for audit but isn't shown to proxies until you `update` it again.
-
-## 3. Run the daemon
-
-```sh
-soma start provider --config provider.toml
-```
-
-The provider daemon:
-
-- Accepts OpenAI-compatible requests at your endpoint.
-- Verifies each request carries a valid voucher signed against an open channel.
-- Forwards the request to your configured upstream (OpenRouter / Vast / your own inference server).
-- Streams the response back to the buyer.
-- Stores the latest voucher per channel in memory and on disk.
-
-A minimal `provider.toml`:
-
-```toml
-[server]
-bind = "0.0.0.0:8443"
-tls_cert = "/etc/letsencrypt/live/my-inference.example.com/fullchain.pem"
-tls_key  = "/etc/letsencrypt/live/my-inference.example.com/privkey.pem"
-
-[wallet]
-config_path = "/home/operator/.soma/client.yaml"
-
-[upstream.openrouter]
-api_key_env = "OPENROUTER_API_KEY"
-```
-
-(Exact config schema is in the [CLI reference](/reference/cli/) and the inference crate's README; substitute `vast`, `your-own-vllm-cluster`, etc., for OpenRouter as needed.)
-
-## 4. Settle vouchers and withdraw
-
-Provider revenue accumulates as off-chain vouchers. You settle them on chain:
-
-```sh
-soma channel settle --channel-id <ID> --voucher <BASE64>
-```
-
-The auto-settle ticker in `soma start provider` does this periodically, so for most providers there's nothing manual to do here.
-
-When you want USDC back on Base:
-
-```sh
-soma bridge withdraw --amount <USDC> \
-    --recipient 0xYOUR_ETH_ADDRESS \
-    --target-chain base-sepolia
-```
-
-The bridge committee signs the withdrawal, and the outbound relayer submits the release tx on Base. ~30-60 seconds end-to-end.
+    ```sh
+    soma bridge withdraw --amount <USDC> --recipient <ETH_ADDR> --target-chain base-sepolia
+    ```
 
 ## What you don't have to do
 
 - **Stake.** Providers don't stake anything. Staking is for validators.
-- **Run a validator.** You can if you want to, but they're independent roles. Most providers won't.
-- **Maintain availability proofs.** There's no on-chain availability oracle. If your endpoint is down when a buyer's proxy queries it, the proxy just routes to a different offering. Lower ratings will reduce your traffic over time, which is the implicit availability incentive.
+- **Run a validator.** Independent role. Most providers won't.
+- **Prove availability.** There's no on-chain liveness oracle. If your endpoint is down, the proxy routes elsewhere; your rating drops over time and traffic falls. That's the incentive.
