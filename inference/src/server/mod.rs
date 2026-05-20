@@ -292,6 +292,14 @@ async fn shutdown_signal(
 
     let snapshot = ledger.snapshot().await;
     for (id, state) in snapshot {
+        // Same guard as `run_settle_pass`: if the auto-settle ticker
+        // already drained the channel, replaying the same cumulative
+        // would trip `ChannelVoucherNotMonotonic` (the executor rejects
+        // equal-or-lower vouchers). Skip cleanly instead of logging a
+        // false-failure warn.
+        if state.cumulative_authorized_micros <= state.last_settled_at_amount {
+            continue;
+        }
         let pair = channel.final_settlement(&state);
         let Some((voucher, sig)) = pair else {
             tracing::info!(channel = %id, "no signature held; skipping settle");
