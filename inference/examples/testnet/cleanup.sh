@@ -11,7 +11,7 @@ set -euo pipefail
 PAYER="$(payer_address)"
 
 echo "── stopping processes ──"
-pkill -f 'soma start proxy' 2>/dev/null && echo "proxy stopped"            || echo "proxy not running"
+pkill -f 'soma proxy' 2>/dev/null && echo "proxy stopped"            || echo "proxy not running"
 pkill -f 'soma start provider' 2>/dev/null && echo "provider stopping (settling open channels)…" || echo "provider not running"
 for _ in $(seq 1 10); do pgrep -f 'soma start provider' >/dev/null 2>&1 || break; sleep 1; done
 

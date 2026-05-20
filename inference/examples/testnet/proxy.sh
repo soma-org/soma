@@ -15,7 +15,7 @@ echo "→ proxy  http://127.0.0.1:${PROXY_PORT}"
 echo "  Ctrl-C to stop."
 echo
 exec env RUST_LOG="${RUST_LOG:-inference=info,sdk=info}" \
-  "$SOMA" start proxy \
+  "$SOMA" proxy \
     --address "$PAYER" \
     --listen "127.0.0.1:${PROXY_PORT}" \
     --indexer-url "$INDEXER_URL" \
