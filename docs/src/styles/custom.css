@@ -3,17 +3,21 @@
 /* Inter Variable      — loaded via @fontsource-variable/inter      in astro.config.mjs */
 /* Newsreader Variable — loaded via @fontsource-variable/newsreader in astro.config.mjs */
 
-/* ========== THEME: monochrome, light-only — matches soma.org home-markets ========== */
+/* ========== THEME: monochrome, light + dark — neutrals only, no chromatic accent ========== */
 
-:root,
-:root[data-theme='dark'],
-:root[data-theme='light'] {
-  color-scheme: light;
+:root {
+  color-scheme: light dark;
 
-  --sl-font: 'Newsreader Variable', 'Newsreader', 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, ui-serif, serif;
+  /* Inter body for legibility on long docs; Newsreader headings for the editorial feel that
+     ties the docs to soma.org. Mono uses the OS stack — no webfont download for code blocks. */
+  --sl-font: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --sl-font-headings: 'Newsreader Variable', 'Newsreader', 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, ui-serif, serif;
   --sl-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
 
+/* Light palette: bare :root is the default; data-theme='light' selects when user toggles. */
+:root,
+:root[data-theme='light'] {
   /* In Starlight's scale: --sl-color-white = text, --sl-color-black = bg,
      gray-1 (closest to text) → gray-6 (closest to bg). */
   --sl-color-white: #171717;
@@ -25,7 +29,7 @@
   --sl-color-gray-6: #f5f5f5;
   --sl-color-black: #fafafa;
 
-  /* Monochrome: accent = foreground. No chromatic highlight. */
+  /* Monochrome: accent = foreground. */
   --sl-color-accent-high: #0a0a0a;
   --sl-color-accent: #171717;
   --sl-color-accent-low: #ededed;
@@ -36,8 +40,36 @@
   --sl-color-text-accent: var(--sl-color-white);
 }
 
-/* Editorial old-style figures + tighter rendering, matches home-markets. */
-html {
+/* Dark palette: inverted with hand-tuned mid-tones — direct inversion produces gray-3 that's
+   too dim and a gray-4 hairline that disappears, so the mid-greys lean a stop brighter. */
+:root[data-theme='dark'] {
+  --sl-color-white: #fafafa;
+  --sl-color-gray-1: #ededed;
+  --sl-color-gray-2: #d4d4d4;
+  --sl-color-gray-3: #a3a3a3;
+  --sl-color-gray-4: #404040;
+  --sl-color-gray-5: #1f1f1f;
+  --sl-color-gray-6: #171717;
+  --sl-color-black: #0a0a0a;
+
+  --sl-color-accent-high: #ffffff;
+  --sl-color-accent: #fafafa;
+  --sl-color-accent-low: #1f1f1f;
+
+  --sl-color-bg-nav: var(--sl-color-bg);
+  --sl-color-hairline-shade: var(--sl-color-gray-4);
+  --sl-color-hairline: transparent;
+  --sl-color-text-accent: var(--sl-color-white);
+}
+
+/* Old-style figures on serif headings only — lining figures in Inter body are easier to read
+   in technical contexts (transactions, ports, version numbers). */
+.content-panel h1,
+.content-panel h2,
+.content-panel h3,
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
   font-feature-settings: 'kern', 'liga', 'onum';
   font-variant-numeric: oldstyle-nums;
 }

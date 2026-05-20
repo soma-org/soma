@@ -40,7 +40,6 @@ export default defineConfig({
                 Head: './src/components/Head.astro',
                 Pagination: './src/components/Pagination.astro',
                 TableOfContents: './src/components/TableOfContents.astro',
-                ThemeSelect: './src/components/EmptyThemeSelect.astro',
             },
             tableOfContents: { minHeadingLevel: 1, maxHeadingLevel: 2 },
             social: [
