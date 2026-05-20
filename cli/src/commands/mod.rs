@@ -22,7 +22,7 @@ pub mod wallet;
 pub use bridge::BridgeCommand;
 pub use channel::ChannelCommand;
 pub use env::EnvCommand;
-pub use inference::InferenceCommand;
+pub use inference::{ProviderArgs, ProxyArgs};
 pub use model::ModelCommand;
 pub use objects::ObjectCommand;
 pub use offering::OfferingCommand;

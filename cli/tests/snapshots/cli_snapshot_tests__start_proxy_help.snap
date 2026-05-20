@@ -2,11 +2,11 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Run the local agent-facing proxy on `127.0.0.1:<port>`.
+Run the local agent-facing inference proxy (formerly `soma inference proxy`)
 
-Agent CLIs point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks the cheapest one for each model, and signs each request via two-tier vouchers.
+Listens on `127.0.0.1:<port>`. Agent CLIs point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks one per model, and signs vouchers per request.
 
-Usage: soma inference proxy [OPTIONS] --indexer-url <INDEXER_URL>
+Usage: soma start proxy [OPTIONS] --indexer-url <INDEXER_URL>
 
 Options:
       --address <ADDRESS>
@@ -52,8 +52,11 @@ Options:
       --include-untrusted
           Disable the trusted-providers filter entirely. Routes through every provider that satisfies the price / SLA filters regardless of authorization status. Use this in localnet, in tests, and when running with a custom `--indexer-url` whose providers aren't on the public points list
 
+      --prewarm-model <PREWARM_MODEL>
+          On boot, after discovery surfaces a provider for this model, pre-open a payment channel against it — so the first user request doesn't pay the ~3–5 s channel-open latency. Omit to keep the lazy-on-first-request behaviour
+
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLE:
-    soma inference proxy --listen 127.0.0.1:11434
+    soma start proxy --listen 127.0.0.1:11434 --indexer-url ...

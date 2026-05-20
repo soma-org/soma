@@ -67,36 +67,25 @@ fn test_balance_help() {
 }
 
 #[test]
-fn test_inference_help() {
+fn test_start_provider_help() {
     let output = soma_cmd()
-        .args(["inference", "--help"])
+        .args(["start", "provider", "--help"])
         .output()
-        .expect("failed to run soma inference --help");
+        .expect("failed to run soma start provider --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("inference_help", stdout);
+    insta::assert_snapshot!("start_provider_help", stdout);
 }
 
 #[test]
-fn test_inference_serve_help() {
+fn test_start_proxy_help() {
     let output = soma_cmd()
-        .args(["inference", "serve", "--help"])
+        .args(["start", "proxy", "--help"])
         .output()
-        .expect("failed to run soma inference serve --help");
+        .expect("failed to run soma start proxy --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("inference_serve_help", stdout);
-}
-
-#[test]
-fn test_inference_proxy_help() {
-    let output = soma_cmd()
-        .args(["inference", "proxy", "--help"])
-        .output()
-        .expect("failed to run soma inference proxy --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("inference_proxy_help", stdout);
+    insta::assert_snapshot!("start_proxy_help", stdout);
 }
 
 #[test]

@@ -44,8 +44,8 @@ use url::Url;
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
 use crate::commands::{
-    ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectCommand, OfferingCommand,
-    ProviderCommand, SomaValidatorCommand, StakeCommand, TransferCommand, WalletCommand,
+    ChannelCommand, EnvCommand, ModelCommand, ObjectCommand, OfferingCommand, ProviderArgs,
+    ProviderCommand, ProxyArgs, SomaValidatorCommand, StakeCommand, TransferCommand, WalletCommand,
 };
 use crate::keytool::KeyToolCommand;
 
@@ -260,19 +260,6 @@ EXAMPLES:
     // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
-    /// Run the inference proxy or provider server
-    #[clap(
-        name = "inference",
-        after_help = "\
-EXAMPLES:
-    soma inference serve --config provider.toml
-    soma inference proxy --config client.toml"
-    )]
-    Inference {
-        #[clap(subcommand)]
-        cmd: InferenceCommand,
-    },
-
     /// Manage on-chain payment channels (open, settle, top-up, close).
     #[clap(
         name = "channel",
@@ -367,13 +354,15 @@ EXAMPLES:
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a long-running service (localnet, validator)
+    /// Start a long-running service (localnet, validator, provider, proxy)
     #[clap(
         name = "start",
         after_help = "\
 EXAMPLES:
     soma start localnet --force-regenesis
-    soma start validator --config validator.yaml"
+    soma start validator --config validator.yaml
+    soma start provider --config provider.toml
+    soma start proxy --indexer-url ..."
     )]
     Start {
         #[clap(subcommand)]
@@ -494,6 +483,27 @@ EXAMPLES:
         #[clap(long = "config", short = 'c')]
         config: PathBuf,
     },
+
+    /// Run the provider-side inference daemon (formerly `soma inference serve`)
+    ///
+    /// Fronts an OpenAI-compatible upstream behind SomaPay-authorized
+    /// `/v1/chat/completions`. Backends today: openrouter, vast.
+    #[clap(
+        name = "provider",
+        after_help = "EXAMPLE:\n    soma start provider --config provider.toml"
+    )]
+    Provider(ProviderArgs),
+
+    /// Run the local agent-facing inference proxy (formerly `soma inference proxy`)
+    ///
+    /// Listens on `127.0.0.1:<port>`. Agent CLIs point at it via
+    /// `OPENAI_BASE_URL`. The proxy discovers providers, picks one per
+    /// model, and signs vouchers per request.
+    #[clap(
+        name = "proxy",
+        after_help = "EXAMPLE:\n    soma start proxy --listen 127.0.0.1:11434 --indexer-url ..."
+    )]
+    Proxy(ProxyArgs),
 }
 
 /// Subcommands for `soma tx` — transaction queries and raw execution.
@@ -560,7 +570,9 @@ impl SomaCommand {
                 StartCommand::Localnet { log_level, .. } => {
                     log_level.parse().unwrap_or(tracing::Level::INFO)
                 }
-                StartCommand::Validator { .. } => tracing::Level::INFO,
+                StartCommand::Validator { .. }
+                | StartCommand::Provider(_)
+                | StartCommand::Proxy(_) => tracing::Level::INFO,
             },
             _ => tracing::Level::ERROR,
         }
@@ -760,8 +772,6 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Inference { cmd } => cmd.execute().await,
-
             SomaCommand::Channel { cmd } => cmd.execute().await,
 
             SomaCommand::Bridge { cmd } => {
@@ -855,6 +865,12 @@ impl SomaCommand {
                     }
                     StartCommand::Validator { config } => {
                         commands::validator::start_validator_node(config).await?;
+                    }
+                    StartCommand::Provider(args) => {
+                        commands::inference::run_provider(args).await?;
+                    }
+                    StartCommand::Proxy(args) => {
+                        commands::inference::run_proxy(args).await?;
                     }
                 }
                 Ok(())

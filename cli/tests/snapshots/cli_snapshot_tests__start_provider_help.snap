@@ -2,11 +2,11 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Run the provider-side server.
+Run the provider-side inference daemon (formerly `soma inference serve`)
 
 Fronts an OpenAI-compatible upstream behind SomaPay-authorized `/v1/chat/completions`. Backends today: openrouter, vast.
 
-Usage: soma inference serve [OPTIONS] --config <CONFIG>
+Usage: soma start provider [OPTIONS] --config <CONFIG>
 
 Options:
       --config <CONFIG>
@@ -25,4 +25,4 @@ Options:
           Print help (see a summary with '-h')
 
 EXAMPLE:
-    soma inference serve --config provider.toml
+    soma start provider --config provider.toml
