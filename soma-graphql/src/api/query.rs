@@ -20,6 +20,7 @@ use crate::api::types::epoch::Epoch;
 use crate::api::types::epoch_state::EpochState;
 use crate::api::types::network_metrics::NetworkMetrics;
 use crate::api::types::object::Object as GqlObject;
+use crate::api::types::offering::Offering as GqlOffering;
 use crate::api::types::provider::Provider as GqlProvider;
 use crate::api::types::service_config::ServiceConfig;
 use crate::api::types::staked_soma::StakedSoma;
@@ -1321,6 +1322,102 @@ impl Query {
             connection.edges.push(Edge::new(
                 cursor,
                 GqlProvider { address: r.0, endpoint: r.1, last_update_cp: r.2 },
+            ));
+        }
+        Ok(connection)
+    }
+
+    // ---------------------------------------------------------------
+    // Offerings (per-(provider, model_id) price + SLA menu)
+    // ---------------------------------------------------------------
+
+    /// Active (and, optionally, inactive) `(provider, model_id)`
+    /// offerings — the price + SLA menu each provider publishes for
+    /// each model. The proxy uses this as a single bulk read in place
+    /// of the per-provider HTTP `/v1/models` fan-out.
+    ///
+    /// Filters: pass `provider` for one provider's menu, `modelId`
+    /// for the cheapest-active offerings of a model across providers,
+    /// or both for an exact lookup. `active` defaults to true; pass
+    /// `false` to include deactivated rows (e.g. audit views).
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn offerings(
+        &self,
+        ctx: &Context<'_>,
+        provider: Option<String>,
+        model_id: Option<String>,
+        active: Option<bool>,
+        first: Option<i32>,
+    ) -> Result<Connection<String, GqlOffering>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_offerings;
+
+        type Row = (Vec<u8>, String, i64, i64, i64, i64, i64, i32, i32, bool, i64, i64);
+
+        let mut query = soma_offerings::table
+            .select((
+                soma_offerings::provider,
+                soma_offerings::model_id,
+                soma_offerings::prompt_micros_per_1k,
+                soma_offerings::completion_micros_per_1k,
+                soma_offerings::cache_read_micros_per_1k,
+                soma_offerings::cache_write_micros_per_1k,
+                soma_offerings::request_micros,
+                soma_offerings::ttft_bound_ms,
+                soma_offerings::ttot_bound_ms,
+                soma_offerings::active,
+                soma_offerings::updated_at_cp,
+                soma_offerings::updated_at_ms,
+            ))
+            // Cheapest active offering first when filtering by model;
+            // otherwise alphabetical by (provider, model_id) via PK
+            // ordering. `prompt_micros_per_1k` ascending matches the
+            // (model_id, active, prompt_micros_per_1k) index.
+            .order((soma_offerings::prompt_micros_per_1k.asc(), soma_offerings::provider.asc()))
+            .limit(limit + 1)
+            .into_boxed();
+
+        // Default to active-only — matches the proxy's discovery path.
+        query = query.filter(soma_offerings::active.eq(active.unwrap_or(true)));
+
+        if let Some(p) = provider.as_deref() {
+            let bytes = hex::decode(p.strip_prefix("0x").unwrap_or(p))
+                .map_err(|e| Error::new(format!("Invalid provider: {e}")))?;
+            query = query.filter(soma_offerings::provider.eq(bytes));
+        }
+        if let Some(m) = model_id.as_deref() {
+            query = query.filter(soma_offerings::model_id.eq(m.to_string()));
+        }
+
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+        let has_next = rows.len() as i64 > limit;
+        let nodes: Vec<_> = rows.into_iter().take(limit as usize).collect();
+
+        let mut connection = Connection::new(false, has_next);
+        for r in nodes {
+            // Composite cursor: "0x{provider_hex}/{model_id}".
+            let cursor = format!("0x{}/{}", hex::encode(&r.0), r.1);
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlOffering {
+                    provider: r.0,
+                    model_id: r.1,
+                    prompt_micros_per_1k: r.2,
+                    completion_micros_per_1k: r.3,
+                    cache_read_micros_per_1k: r.4,
+                    cache_write_micros_per_1k: r.5,
+                    request_micros: r.6,
+                    ttft_bound_ms: r.7,
+                    ttot_bound_ms: r.8,
+                    active: r.9,
+                    updated_at_cp: r.10,
+                    updated_at_ms: r.11,
+                },
             ));
         }
         Ok(connection)

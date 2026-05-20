@@ -11,7 +11,7 @@ use anyhow::Context as _;
 use reqwest::Client;
 use tokio::sync::RwLock;
 
-use crate::catalog::{ModelCard, ModelsResponse};
+use crate::catalog::{Architecture, ModelCard, ModelsResponse, Pricing, TopProvider};
 use crate::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
 use crate::proxy::config::{Config, RoutingMode, RoutingWeights};
 use crate::proxy::state::{ChannelSlot, ClientStore};
@@ -55,6 +55,64 @@ fn weighted_score(w: &RoutingWeights, card: &ModelCard, rep: Option<ProviderRepu
         }
     }
     score
+}
+
+/// Build a `ModelCard` from a row of the `soma_offerings` indexer
+/// table — used by the GraphQL-based discovery path to synthesize the
+/// per-provider catalog without an HTTP `/v1/models` call. Fields the
+/// proxy actually consumes (id + pricing + ttft/ttot + a default
+/// `max_completion_tokens`) are filled in; the rest get sensible
+/// defaults. Per-1k prices convert as `micros_per_1k → USD/token =
+/// micros / 1e9`; `request_micros` converts as `micros → USD =
+/// micros / 1e6`.
+fn modelcard_from_offering_micros(
+    model_id: &str,
+    prompt_micros_per_1k: u64,
+    completion_micros_per_1k: u64,
+    cache_read_micros_per_1k: u64,
+    cache_write_micros_per_1k: u64,
+    request_micros: u64,
+    ttft_bound_ms: u32,
+    ttot_bound_ms: u32,
+) -> ModelCard {
+    let per_token = |m: u64| format!("{:.12}", m as f64 / 1e9);
+    let per_request = |m: u64| format!("{:.12}", m as f64 / 1e6);
+    ModelCard {
+        id: model_id.to_string(),
+        canonical_slug: None,
+        hugging_face_id: None,
+        name: model_id.to_string(),
+        created: 0,
+        description: None,
+        context_length: 0,
+        architecture: Architecture {
+            input_modalities: vec!["text".into()],
+            output_modalities: vec!["text".into()],
+            tokenizer: String::new(),
+            instruct_type: None,
+        },
+        top_provider: TopProvider {
+            context_length: 0,
+            // `worst_case_for_request` falls back to this when the
+            // ChatRequest omits `max_tokens` — give it a sane default.
+            max_completion_tokens: Some(4096),
+            is_moderated: false,
+        },
+        supported_parameters: vec!["max_tokens".into(), "temperature".into()],
+        default_parameters: None,
+        expiration_date: None,
+        ttft_bound_ms: Some(ttft_bound_ms),
+        ttot_bound_ms: Some(ttot_bound_ms),
+        pricing: Pricing {
+            prompt: per_token(prompt_micros_per_1k),
+            completion: per_token(completion_micros_per_1k),
+            request: per_request(request_micros),
+            image: "0".into(),
+            input_cache_read: per_token(cache_read_micros_per_1k),
+            input_cache_write: per_token(cache_write_micros_per_1k),
+        },
+        soma: None,
+    }
 }
 
 #[derive(Clone)]
@@ -127,26 +185,127 @@ impl Router {
 
     pub async fn refresh_providers(&self) -> anyhow::Result<()> {
         let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
-        let mut providers = Vec::new();
-        // TODO (Step 5): once soma-graphql exposes
-        // `provider_model_offerings_ranked` as a top-level query, replace
-        // this per-provider HTTP `/v1/models` fan-out with one GraphQL
-        // call that returns `(provider_address, endpoint, model_id,
-        // prompt_micros_per_1k, completion_micros_per_1k, ...)` rows for
-        // every active offering. The `/v1/models` HTTP endpoint stays
-        // useful as a liveness probe only — skip providers whose probe
-        // fails. The chain-side Offering objects are already on-chain
-        // authoritative, so the indexer view is just a fast bulk read.
-        for rec in recs {
-            match self.fetch_provider_catalog(rec.address, &rec.endpoint).await {
-                Ok(info) => providers.push(info),
-                Err(e) => tracing::warn!(addr = %rec.address, err = %e, "provider unreachable"),
+
+        // Prefer the indexer-only path: one GraphQL `offerings()` call
+        // bulk-reads every active (provider, model_id) row from the
+        // chain mirror. Falls back to the legacy per-provider HTTP
+        // `/v1/models` fan-out if `soma-graphql` doesn't expose the
+        // field yet (pre-redeploy) — the fallback can be deleted once
+        // the indexer rollout is universal.
+        let providers = match self.try_refresh_via_offerings(&recs).await {
+            Some(p) => p,
+            None => {
+                let mut providers = Vec::new();
+                for rec in &recs {
+                    match self.fetch_provider_catalog(rec.address, &rec.endpoint).await {
+                        Ok(info) => providers.push(info),
+                        Err(e) => {
+                            tracing::warn!(addr = %rec.address, err = %e, "provider unreachable")
+                        }
+                    }
+                }
+                providers
             }
-        }
+        };
+
         let mut g = self.cache.write().await;
         g.providers = providers;
         g.last_refresh = Some(Instant::now());
         Ok(())
+    }
+
+    /// Bulk-read every active `(provider, model_id)` offering from the
+    /// indexer in one GraphQL call, then assemble each provider's
+    /// catalog from those rows. Returns `None` if `soma-graphql`
+    /// doesn't expose the `offerings()` query (pre-redeploy) — the
+    /// caller then falls back to the per-provider HTTP `/v1/models`
+    /// fan-out.
+    async fn try_refresh_via_offerings(
+        &self,
+        recs: &[ProviderRecord],
+    ) -> Option<Vec<ProviderInfo>> {
+        let indexer_url = self.registry.indexer_url()?;
+        let query = r#"query Offerings {
+            offerings(active: true, first: 500) {
+                edges { node {
+                    provider modelId
+                    promptMicrosPer1k completionMicrosPer1k
+                    cacheReadMicrosPer1k cacheWriteMicrosPer1k
+                    requestMicros
+                    ttftBoundMs ttotBoundMs
+                } }
+            }
+        }"#;
+        let body = serde_json::json!({ "query": query });
+        let resp = self.http.post(indexer_url).json(&body).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let v: serde_json::Value = resp.json().await.ok()?;
+        // Any GraphQL errors (e.g. "Unknown field offerings" pre-redeploy)
+        // → fall back. A successful query with zero offerings is fine.
+        if v.get("errors").is_some() {
+            return None;
+        }
+        let edges = v.pointer("/data/offerings/edges").and_then(|x| x.as_array())?;
+
+        // Group offerings by provider address.
+        let mut by_provider: HashMap<SomaAddress, Vec<ModelCard>> = HashMap::new();
+        for edge in edges {
+            let Some(node) = edge.get("node") else { continue };
+            let Some(provider_str) = node.get("provider").and_then(|x| x.as_str()) else {
+                continue;
+            };
+            let Some(model_id) = node.get("modelId").and_then(|x| x.as_str()).map(String::from)
+            else {
+                continue;
+            };
+            // BigInt scalars come back as JSON strings.
+            let bigint = |k: &str| -> Option<i64> {
+                node.get(k).and_then(|x| x.as_str()).and_then(|s| s.parse().ok())
+            };
+            let int32 = |k: &str| -> Option<i32> {
+                node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32)
+            };
+            let prompt_m = bigint("promptMicrosPer1k")? as u64;
+            let completion_m = bigint("completionMicrosPer1k")? as u64;
+            let cache_r_m = bigint("cacheReadMicrosPer1k").unwrap_or(0) as u64;
+            let cache_w_m = bigint("cacheWriteMicrosPer1k").unwrap_or(0) as u64;
+            let request_m = bigint("requestMicros").unwrap_or(0) as u64;
+            let ttft = int32("ttftBoundMs").unwrap_or(0) as u32;
+            let ttot = int32("ttotBoundMs").unwrap_or(0) as u32;
+            let addr_hex = provider_str.strip_prefix("0x").unwrap_or(provider_str);
+            let addr_bytes = hex::decode(addr_hex).ok()?;
+            let address = SomaAddress::try_from(addr_bytes.as_slice()).ok()?;
+            by_provider.entry(address).or_default().push(modelcard_from_offering_micros(
+                &model_id,
+                prompt_m,
+                completion_m,
+                cache_r_m,
+                cache_w_m,
+                request_m,
+                ttft,
+                ttot,
+            ));
+        }
+
+        // For each provider record from the indexer, attach the
+        // catalog we built from its offerings. Skip providers with no
+        // offerings — they have nothing to route.
+        let mut out = Vec::with_capacity(recs.len());
+        for rec in recs {
+            let catalog = by_provider.remove(&rec.address).unwrap_or_default();
+            if catalog.is_empty() {
+                continue;
+            }
+            out.push(ProviderInfo {
+                address: rec.address,
+                pubkey_hex: String::new(),
+                endpoint: rec.endpoint.clone(),
+                catalog,
+            });
+        }
+        Some(out)
     }
 
     /// Build a `ProviderInfo` for `(address, endpoint)`. `address` and
