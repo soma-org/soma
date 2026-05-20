@@ -2,92 +2,75 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow, ensure};
+//! `soma transfer {soma, usdc}` — fungible balance transfers.
+//!
+//! Object transfers (the non-fungible kind) live under `soma object
+//! transfer` instead, since the object is the primary subject of the
+//! action.
+
+use anyhow::Result;
+use clap::Parser;
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
-use types::object::{CoinType, ObjectID};
+use types::object::CoinType;
 use types::transaction::{BalanceTransferArgs, TransactionKind};
 
-use crate::client_commands::TxProcessingArgs;
+use crate::client_commands::{TxProcessingArgs, execute_or_serialize};
 use crate::response::ClientCommandResponse;
+use crate::soma_amount::SomaAmount;
+use crate::usdc_amount::UsdcAmount;
 
-/// Unified balance transfer — sends SOMA or USDC to one or more recipients.
-///
-/// Stage 13b: balance-mode only. The sender's accumulator is debited
-/// directly; no coin object inputs.
-pub async fn execute(
-    context: &mut WalletContext,
-    amount: u64,
-    recipients: Vec<KeyIdentity>,
-    amounts: Option<Vec<u64>>,
-    usdc: bool,
-    tx_args: TxProcessingArgs,
-) -> Result<ClientCommandResponse> {
-    ensure!(!recipients.is_empty(), "At least one recipient is required");
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
+pub enum TransferCommand {
+    /// Transfer SOMA to a recipient.
+    #[clap(after_help = "\
+EXAMPLES:
+    soma transfer soma 10 0x1234...5678
+    soma transfer soma 0.5 alice")]
+    Soma {
+        /// Amount in SOMA (e.g. `10`, `0.5`).
+        amount: SomaAmount,
+        /// Recipient address or alias.
+        recipient: KeyIdentity,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
 
-    let sender = context.active_address()?;
-
-    // Resolve recipient addresses
-    let recipient_addresses: Vec<types::base::SomaAddress> = recipients
-        .into_iter()
-        .map(|r| context.get_identity_address(Some(r)))
-        .collect::<Result<Vec<_>>>()?;
-
-    // Build per-recipient amounts
-    let send_amounts = match amounts {
-        Some(per_recipient) => {
-            ensure!(
-                per_recipient.len() == recipient_addresses.len(),
-                "Number of --amounts ({}) must match number of recipients ({})",
-                per_recipient.len(),
-                recipient_addresses.len()
-            );
-            per_recipient
-        }
-        None => {
-            if recipient_addresses.len() == 1 {
-                vec![amount]
-            } else {
-                let per_each = amount / recipient_addresses.len() as u64;
-                ensure!(
-                    per_each > 0,
-                    "Amount too small to split among {} recipients",
-                    recipient_addresses.len()
-                );
-                let mut amts = vec![per_each; recipient_addresses.len()];
-                let remainder = amount - per_each * recipient_addresses.len() as u64;
-                if remainder > 0 {
-                    *amts.last_mut().unwrap() += remainder;
-                }
-                amts
-            }
-        }
-    };
-
-    let coin_type = if usdc { CoinType::Usdc } else { CoinType::Soma };
-    let transfers: Vec<_> = recipient_addresses.into_iter().zip(send_amounts.into_iter()).collect();
-
-    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs { coin_type, transfers });
-
-    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
+    /// Transfer USDC to a recipient.
+    #[clap(after_help = "\
+EXAMPLES:
+    soma transfer usdc 1.50 0x1234...5678
+    soma transfer usdc 100 alice")]
+    Usdc {
+        /// Amount in USDC (e.g. `1.50`).
+        amount: UsdcAmount,
+        /// Recipient address or alias.
+        recipient: KeyIdentity,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
 }
 
-/// Transfer an arbitrary object to a recipient (non-coin transfer).
-pub async fn execute_transfer_object(
-    context: &mut WalletContext,
-    to: KeyIdentity,
-    object_id: ObjectID,
-    tx_args: TxProcessingArgs,
-) -> Result<ClientCommandResponse> {
-    let sender = context.get_object_owner(&object_id).await?;
-    let recipient = context.get_identity_address(Some(to))?;
-    let client = context.get_client().await?;
+impl TransferCommand {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<ClientCommandResponse> {
+        let (coin_type, amount_base_units, recipient, tx_args) = match self {
+            Self::Soma { amount, recipient, tx_args } => {
+                (CoinType::Soma, amount.shannons(), recipient, tx_args)
+            }
+            Self::Usdc { amount, recipient, tx_args } => {
+                (CoinType::Usdc, amount.microdollars(), recipient, tx_args)
+            }
+        };
 
-    let object =
-        client.get_object(object_id).await.map_err(|e| anyhow!("Failed to get object: {}", e))?;
-    let object_ref = object.compute_object_reference();
+        let sender = context.active_address()?;
+        let recipient_address = context.get_identity_address(Some(recipient))?;
 
-    let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
+        let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type,
+            transfers: vec![(recipient_address, amount_base_units)],
+        });
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
+        execute_or_serialize(context, sender, kind, tx_args).await
+    }
 }

@@ -2,26 +2,21 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Transfer SOMA or USDC to one or more recipients
+Transfer SOMA or USDC to a recipient
 
-Usage: soma transfer [OPTIONS] <AMOUNT> <RECIPIENTS>...
+Usage: soma transfer [OPTIONS] <COMMAND>
 
-Arguments:
-  <AMOUNT>         Amount to send (in SOMA by default, or USDC with --usdc)
-  <RECIPIENTS>...  Recipient address(es) or alias(es)
+Commands:
+  soma  Transfer SOMA to a recipient
+  usdc  Transfer USDC to a recipient
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
-      --usdc                            Send USDC instead of SOMA
-      --amounts <AMOUNTS>               Per-recipient amounts (comma-separated). Overrides the positional amount
-      --tx-digest                       Compute the transaction digest and print it out, but do not execute
-      --simulate                        Perform a dry run (simulation) of the transaction, without executing it
-      --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
-      --serialize-signed-transaction    Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
-      --json                            Output as JSON
-  -h, --help                            Print help
+      --json  Output as JSON
+  -h, --help  Print help
 
 EXAMPLES:
-    soma transfer 10 0x1234...5678              # send 10 SOMA
-    soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
-    soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
-    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
+    soma transfer soma 10 0x1234...5678
+    soma transfer usdc 1.50 alice
+
+For non-fungible transfers (objects), use `soma object transfer`.

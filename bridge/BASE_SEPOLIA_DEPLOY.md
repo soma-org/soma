@@ -571,8 +571,8 @@ moving on every node.
 5. Verify the Soma-side `BridgeRecord` materialized:
 
    ```sh
-   soma objects list 0x<recipient> | grep BridgeRecord
-   soma objects get <bridge-record-id>
+   soma object list 0x<recipient> | grep BridgeRecord
+   soma object get <bridge-record-id>
    ```
 
 Expected timing end-to-end: ~60-90 seconds from `bridgeERC20` tx

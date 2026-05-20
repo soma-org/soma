@@ -44,12 +44,10 @@ use url::Url;
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
 use crate::commands::{
-    ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectsCommand, OfferingCommand,
-    ProviderCommand, SomaValidatorCommand, WalletCommand,
+    ChannelCommand, EnvCommand, InferenceCommand, ModelCommand, ObjectCommand, OfferingCommand,
+    ProviderCommand, SomaValidatorCommand, StakeCommand, TransferCommand, WalletCommand,
 };
 use crate::keytool::KeyToolCommand;
-use crate::soma_amount::SomaAmount;
-use crate::usdc_amount::UsdcAmount;
 
 const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 
@@ -141,107 +139,35 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Transfer SOMA or USDC to one or more recipients
+    /// Transfer SOMA or USDC to a recipient
     #[clap(
         name = "transfer",
         after_help = "\
 EXAMPLES:
-    soma transfer 10 0x1234...5678              # send 10 SOMA
-    soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
-    soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
-    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second"
+    soma transfer soma 10 0x1234...5678
+    soma transfer usdc 1.50 alice
+
+For non-fungible transfers (objects), use `soma object transfer`."
     )]
     Transfer {
-        /// Amount to send (in SOMA by default, or USDC with --usdc)
-        amount: String,
-        /// Recipient address(es) or alias(es)
-        #[clap(required = true, num_args(1..))]
-        recipients: Vec<KeyIdentity>,
-        /// Send USDC instead of SOMA
-        #[clap(long)]
-        usdc: bool,
-        /// Per-recipient amounts (comma-separated). Overrides the positional amount.
-        #[clap(long, value_delimiter = ',')]
-        amounts: Option<Vec<String>>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
+        #[clap(subcommand)]
+        cmd: TransferCommand,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
-    /// Transfer an object to a recipient
-    #[clap(
-        name = "transfer-object",
-        after_help = "\
-EXAMPLES:
-    soma transfer-object --to 0x1234...5678 --object-id 0xABCD..."
-    )]
-    TransferObject {
-        /// Recipient address or alias
-        #[clap(long)]
-        to: KeyIdentity,
-        /// Object ID to transfer
-        #[clap(long)]
-        object_id: ObjectID,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Stake SOMA with a validator
+    /// Stake SOMA with a validator: add, remove, or list delegations
     #[clap(
         name = "stake",
         after_help = "\
 EXAMPLES:
-    soma stake --validator 0xVAL... --amount 10"
+    soma stake add --validator 0xVAL... --amount 10
+    soma stake remove --pool 0xPOOL_ID
+    soma stake list"
     )]
     Stake {
-        /// Validator address to stake with
-        #[clap(long)]
-        validator: SomaAddress,
-        /// Amount to stake in SOMA, debited from your SOMA balance.
-        #[clap(long)]
-        amount: SomaAmount,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Withdraw staked SOMA
-    #[clap(
-        name = "unstake",
-        after_help = "\
-EXAMPLES:
-    soma unstake --pool 0xPOOL_ID
-    soma unstake --pool 0xPOOL_ID --amount 5"
-    )]
-    Unstake {
-        /// StakingPool ObjectID. Use `soma stakes` to list yours.
-        #[clap(long)]
-        pool: ObjectID,
-        /// Amount to withdraw in SOMA. Omit to withdraw your full stake.
-        #[clap(long)]
-        amount: Option<SomaAmount>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// List active stakes for an address
-    #[clap(
-        name = "stakes",
-        after_help = "\
-EXAMPLES:
-    soma stakes
-    soma stakes --staker 0xADDR..."
-    )]
-    Stakes {
-        /// Staker address (defaults to the active wallet address)
-        #[clap(long)]
-        staker: Option<SomaAddress>,
+        #[clap(subcommand)]
+        cmd: StakeCommand,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -262,17 +188,18 @@ EXAMPLES:
     // =========================================================================
     // QUERY COMMANDS
     // =========================================================================
-    /// Query on-chain objects by owner or ID
+    /// Query on-chain objects by owner or ID, or transfer one to a recipient
     #[clap(
-        name = "objects",
+        name = "object",
         after_help = "\
 EXAMPLES:
-    soma objects list
-    soma objects get 0xOBJECT_ID"
+    soma object list
+    soma object get 0xOBJECT_ID
+    soma object transfer 0xOBJECT_ID 0xRECIPIENT"
     )]
-    Objects {
+    Object {
         #[clap(subcommand)]
-        cmd: ObjectsCommand,
+        cmd: ObjectCommand,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -651,44 +578,9 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Transfer { amount, recipients, usdc, amounts, tx_args, json } => {
+            SomaCommand::Transfer { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-
-                // Parse the positional amount based on token type
-                let base_amount: u64 = if usdc {
-                    amount.parse::<UsdcAmount>().map_err(|e| anyhow!("{}", e))?.microdollars()
-                } else {
-                    amount.parse::<SomaAmount>().map_err(|e| anyhow!("{}", e))?.shannons()
-                };
-
-                // Parse per-recipient amounts if provided
-                let per_recipient_amounts: Option<Vec<u64>> = amounts
-                    .map(|strs| {
-                        strs.into_iter()
-                            .map(|s| {
-                                if usdc {
-                                    s.parse::<UsdcAmount>()
-                                        .map(|a| a.microdollars())
-                                        .map_err(|e| anyhow!("{}", e))
-                                } else {
-                                    s.parse::<SomaAmount>()
-                                        .map(|a| a.shannons())
-                                        .map_err(|e| anyhow!("{}", e))
-                                }
-                            })
-                            .collect::<Result<Vec<u64>, _>>()
-                    })
-                    .transpose()?;
-
-                let result = commands::transfer::execute(
-                    &mut context,
-                    base_amount,
-                    recipients,
-                    per_recipient_amounts,
-                    usdc,
-                    tx_args,
-                )
-                .await?;
+                let result = cmd.execute(&mut context).await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -696,61 +588,14 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::TransferObject { to, object_id, tx_args, json } => {
+            SomaCommand::Stake { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::transfer::execute_transfer_object(
-                    &mut context,
-                    to,
-                    object_id,
-                    tx_args,
-                )
-                .await?;
+                let result = cmd.execute(&mut context, json).await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
                 }
                 Ok(())
-            }
-
-            SomaCommand::Stake { validator, amount, tx_args, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::stake::execute_stake(
-                    &mut context,
-                    validator,
-                    amount.shannons(),
-                    tx_args,
-                )
-                .await?;
-                result.print(json);
-                if result.has_failed_transaction() {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-
-            SomaCommand::Unstake { pool, amount, tx_args, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::stake::execute_unstake(
-                    &mut context,
-                    pool,
-                    amount.map(|a| a.shannons()),
-                    tx_args,
-                )
-                .await?;
-                result.print(json);
-                if result.has_failed_transaction() {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-
-            SomaCommand::Stakes { staker, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let staker = match staker {
-                    Some(addr) => addr,
-                    None => context.active_address()?,
-                };
-                commands::stake::execute_list_stakes(&mut context, staker, json).await
             }
 
             SomaCommand::Status { json } => {
@@ -836,10 +681,13 @@ impl SomaCommand {
             // =================================================================
             // QUERY COMMANDS
             // =================================================================
-            SomaCommand::Objects { cmd, json } => {
+            SomaCommand::Object { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::objects::execute(&mut context, cmd).await?;
                 result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
                 Ok(())
             }
 

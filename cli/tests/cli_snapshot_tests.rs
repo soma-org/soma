@@ -158,21 +158,12 @@ fn test_transfer_help() {
 }
 
 #[test]
-fn test_unstake_help() {
+fn test_object_help() {
     let output =
-        soma_cmd().args(["unstake", "--help"]).output().expect("failed to run soma unstake --help");
+        soma_cmd().args(["object", "--help"]).output().expect("failed to run soma object --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("unstake_help", stdout);
-}
-
-#[test]
-fn test_objects_help() {
-    let output =
-        soma_cmd().args(["objects", "--help"]).output().expect("failed to run soma objects --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("objects_help", stdout);
+    insta::assert_snapshot!("object_help", stdout);
 }
 
 #[test]

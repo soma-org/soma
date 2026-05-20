@@ -2,19 +2,21 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Stake SOMA with a validator
+Stake SOMA with a validator: add, remove, or list delegations
 
-Usage: soma stake [OPTIONS] --validator <VALIDATOR> --amount <AMOUNT>
+Usage: soma stake [OPTIONS] <COMMAND>
+
+Commands:
+  add     Stake SOMA with a validator
+  remove  Withdraw staked SOMA from a pool. Omit `--amount` to withdraw the full stake
+  list    List active stakes for an address (defaults to the active wallet)
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
-      --validator <VALIDATOR>           Validator address to stake with
-      --amount <AMOUNT>                 Amount to stake in SOMA, debited from your SOMA balance
-      --tx-digest                       Compute the transaction digest and print it out, but do not execute
-      --simulate                        Perform a dry run (simulation) of the transaction, without executing it
-      --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
-      --serialize-signed-transaction    Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
-      --json                            Output as JSON
-  -h, --help                            Print help
+      --json  Output as JSON
+  -h, --help  Print help
 
 EXAMPLES:
-    soma stake --validator 0xVAL... --amount 10
+    soma stake add --validator 0xVAL... --amount 10
+    soma stake remove --pool 0xPOOL_ID
+    soma stake list
