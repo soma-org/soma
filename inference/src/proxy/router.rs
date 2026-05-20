@@ -326,6 +326,13 @@ impl Router {
                 }
             }
         }
+        // Cold-start / proxy-restart fallback: the in-memory pointer is
+        // empty, but an OPEN channel for (payer, payee) might still live
+        // on chain (the proxy is stateless on disk). Check the indexer
+        // before paying for a fresh OpenChannel.
+        if let Some(slot) = self.try_rehydrate_from_indexer(provider).await {
+            return Ok(slot);
+        }
         // Lazy on-chain open — bind to the requested model_id so the
         // chain executor snapshots the provider's offering for this
         // model onto the new channel.
@@ -351,6 +358,61 @@ impl Router {
             )
             .await;
         Ok(slot)
+    }
+
+    /// Look up an existing OPEN channel for (`client_address`, `payee`)
+    /// from the indexer and install a slot for it — so a proxy restart
+    /// doesn't pay a fresh `OpenChannel` when one already lives on chain.
+    /// Returns `None` on any indexer/chain failure or when no usable
+    /// channel is found; the caller falls through to the lazy-open path.
+    async fn try_rehydrate_from_indexer(
+        &self,
+        provider: &ProviderInfo,
+    ) -> Option<Arc<tokio::sync::Mutex<ChannelSlot>>> {
+        let indexer_url = self.registry.indexer_url()?;
+        let payer_hex = format!("0x{}", hex::encode(self.client_address.to_vec()));
+        let payee_hex = format!("0x{}", hex::encode(provider.address.to_vec()));
+        let query = r#"query OpenChans($p: String!, $e: String!) {
+            channels(payer: $p, payee: $e, status: OPEN, first: 5) {
+                edges { node { id } }
+            }
+        }"#;
+        let body = serde_json::json!({
+            "query": query,
+            "variables": { "p": payer_hex, "e": payee_hex },
+        });
+        let resp = self.http.post(indexer_url).json(&body).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let v: serde_json::Value = resp.json().await.ok()?;
+        let edges = v.pointer("/data/channels/edges").and_then(|x| x.as_array())?;
+        for edge in edges {
+            let Some(id_str) = edge.get("node").and_then(|n| n.get("id")).and_then(|x| x.as_str())
+            else {
+                continue;
+            };
+            let Ok(id) = id_str.parse::<ObjectID>() else { continue };
+            let Ok(chan) = self.chain.get(id).await else { continue };
+            if chan.close_requested_at_ms().is_some() {
+                continue;
+            }
+            let cumulative = self
+                .fetch_provider_last_cumulative(&provider.endpoint, id)
+                .await
+                .unwrap_or(chan.settled_amount());
+            let floor = cumulative.max(chan.settled_amount());
+            if chan.deposit().saturating_sub(floor) <= 40_000 {
+                continue;
+            }
+            let slot = self
+                .store
+                .install_slot(id, provider.address, provider.endpoint.clone(), chan.deposit(), floor)
+                .await;
+            tracing::info!(channel = %id, "rehydrated open channel from indexer");
+            return Some(slot);
+        }
+        None
     }
 
     /// Ask the provider's `/soma/channel/{id}` endpoint for the

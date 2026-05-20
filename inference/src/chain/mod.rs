@@ -31,6 +31,12 @@ pub use self::types::*;
 pub trait ProviderRegistry: Send + Sync + 'static {
     async fn list_providers(&self) -> Result<Vec<ProviderRecord>, ChainError>;
     async fn register_provider(&self, record: ProviderRecord) -> Result<(), ChainError>;
+    /// Indexer URL for direct GraphQL queries (e.g. channel rehydration
+    /// across proxy restarts). `None` for in-memory / non-indexer-backed
+    /// implementations.
+    fn indexer_url(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// On-chain payment-channel surface. Wraps the SDK's `sdk::channel`

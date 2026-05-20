@@ -200,6 +200,7 @@ async fn openrouter_full_stack_round_trip() {
         trusted_providers_only: false,
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
+        prewarm_model: None,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({

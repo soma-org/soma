@@ -21,6 +21,11 @@ pub struct Config {
     pub trusted_providers_url: Option<String>,
     /// Refresh cadence for the trusted-providers fetch.
     pub trusted_providers_refresh_secs: u64,
+    /// On boot, after discovery surfaces a provider for this model,
+    /// pre-open a payment channel against it — so the user's first
+    /// chat doesn't pay the ~3–5 s channel-open latency. `None` keeps
+    /// the lazy-on-first-request behaviour.
+    pub prewarm_model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +94,7 @@ impl Default for Config {
             trusted_providers_only: true,
             trusted_providers_url: None,
             trusted_providers_refresh_secs: 600,
+            prewarm_model: None,
         }
     }
 }

@@ -107,6 +107,12 @@ pub enum InferenceCommand {
         /// points list.
         #[clap(long)]
         include_untrusted: bool,
+        /// On boot, after discovery surfaces a provider for this
+        /// model, pre-open a payment channel against it — so the
+        /// first user request doesn't pay the ~3–5 s channel-open
+        /// latency. Omit to keep the lazy-on-first-request behaviour.
+        #[clap(long)]
+        prewarm_model: Option<String>,
     },
 }
 
@@ -132,6 +138,7 @@ impl InferenceCommand {
                 trusted_providers_url,
                 trusted_providers_refresh_secs,
                 include_untrusted,
+                prewarm_model,
             } => {
                 let (wallet, signer) = build_wallet(client, address).await?;
                 let soma_home = soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
@@ -157,6 +164,7 @@ impl InferenceCommand {
                     trusted_providers_only: !include_untrusted,
                     trusted_providers_url,
                     trusted_providers_refresh_secs,
+                    prewarm_model,
                 };
                 inference::proxy::run(cfg, wallet, signer, registry, soma_home).await
             }

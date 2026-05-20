@@ -109,6 +109,10 @@ impl ProviderRegistry for IndexerProviderRegistry {
         // into `soma_providers` automatically.
         Ok(())
     }
+
+    fn indexer_url(&self) -> Option<&str> {
+        Some(&self.url)
+    }
 }
 
 #[derive(Deserialize)]

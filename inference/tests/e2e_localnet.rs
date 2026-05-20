@@ -223,6 +223,7 @@ async fn proxy_provider_full_stack_against_real_chain() {
         trusted_providers_only: false,
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
+        prewarm_model: None,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({
@@ -486,6 +487,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_only: false,
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
+        prewarm_model: None,
     };
     let proxy_v1_home = TempDir::new().unwrap();
     let proxy_v1_handle = tokio::spawn({
@@ -564,6 +566,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_only: false,
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
+        prewarm_model: None,
     };
     let proxy_v2_home = TempDir::new().unwrap();
     let proxy_v2_handle = tokio::spawn({

@@ -50,17 +50,66 @@ pub async fn run(
     let inner_router =
         Arc::new(router::Router::new(registry.clone(), chain.clone(), store, cfg.clone(), address));
 
-    // Initial discovery refresh — best-effort.
+    // D. Warm the discovery cache + per-provider HTTP/2 connections
+    // before serving, so the user's first chat doesn't pay for the
+    // indexer query + endpoint probes. Best-effort with a short
+    // timeout — if the indexer is slow or no providers are registered
+    // yet, fall through; `ensure_cache` will refresh lazily on the
+    // first request.
     {
         let r = inner_router.clone();
+        match tokio::time::timeout(Duration::from_secs(3), r.refresh_providers()).await {
+            Ok(Ok(())) => tracing::info!("discovery cache warm"),
+            Ok(Err(e)) => tracing::warn!(err = %e, "initial discovery refresh failed; will retry lazily"),
+            Err(_) => tracing::warn!("initial discovery refresh timed out; will retry lazily"),
+        }
+    }
+
+    // A. Pre-open a payment channel for the configured model so the
+    // user's first chat doesn't pay the ~3–5 s channel-open latency.
+    // Runs in the background — the listener binds immediately; if a
+    // chat arrives before prewarm completes, the regular `ensure_channel`
+    // path handles it (and the chain enforces single-open-per-tx-digest
+    // so a race opens at most one extra channel).
+    if let Some(model) = cfg.prewarm_model.clone() {
+        let r = inner_router.clone();
         tokio::spawn(async move {
-            for _ in 0..30 {
-                match r.refresh_providers().await {
-                    Ok(()) => return,
-                    Err(e) => tracing::debug!(err = %e, "discovery refresh failed; retry"),
+            // Retry until a channel for the model is ready, with a hard
+            // cap so a fundamentally misconfigured proxy doesn't loop
+            // forever. Two failure modes are routine and want a retry:
+            //   - discovery hasn't surfaced a provider yet (provider
+            //     still booting, indexer lagging)
+            //   - ensure_channel failed (transient chain blip; the next
+            //     attempt will pick up the channel via the indexer
+            //     rehydrate path if the failed `OpenChannel` actually
+            //     executed on chain)
+            for attempt in 0u32..600 {
+                let pick = match r.pick_provider_for_model(&model).await {
+                    Ok(Some(p)) => p,
+                    _ => {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+                let addr = pick.0.address;
+                match r.ensure_channel(&pick.0, &model).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            model = %model, provider = %addr,
+                            "prewarm: channel ready"
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            attempt, err = %e,
+                            "prewarm: ensure_channel failed; will retry"
+                        );
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
             }
+            tracing::warn!(model = %model, "prewarm: gave up after retries");
         });
     }
 

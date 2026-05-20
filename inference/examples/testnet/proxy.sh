@@ -19,4 +19,5 @@ exec env RUST_LOG="${RUST_LOG:-inference=info,sdk=info}" \
     --address "$PAYER" \
     --listen "127.0.0.1:${PROXY_PORT}" \
     --indexer-url "$INDEXER_URL" \
-    --soma-home "$PROXY_HOME"
+    --soma-home "$PROXY_HOME" \
+    --prewarm-model "$MODEL"
