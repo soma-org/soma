@@ -209,12 +209,20 @@ impl Router {
             .registry
             .indexer_url()
             .ok_or_else(|| anyhow::anyhow!("registry has no indexer_url; cannot run discovery"))?;
+        // Note: async-graphql's default camelCaser renders
+        // `prompt_micros_per_1k` as `promptMicrosPer1K` (capital K at
+        // the tail). Match what the schema actually exposes.
+        // `first` matches the schema's `max_page_size` (50). The complexity
+        // limiter charges against the requested `first` regardless of the
+        // server clamp, so requesting more would be rejected as "too
+        // complex." For higher provider counts we'd need cursor-based
+        // pagination here.
         let query = r#"query Offerings {
-            offerings(active: true, first: 500) {
+            offerings(active: true, first: 50) {
                 edges { node {
                     provider modelId
-                    promptMicrosPer1k completionMicrosPer1k
-                    cacheReadMicrosPer1k cacheWriteMicrosPer1k
+                    promptMicrosPer1K completionMicrosPer1K
+                    cacheReadMicrosPer1K cacheWriteMicrosPer1K
                     requestMicros
                     ttftBoundMs ttotBoundMs
                 } }
@@ -256,10 +264,10 @@ impl Router {
             };
             let int32 =
                 |k: &str| -> Option<i32> { node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32) };
-            let Some(prompt_m) = bigint("promptMicrosPer1k") else { continue };
-            let Some(completion_m) = bigint("completionMicrosPer1k") else { continue };
-            let cache_r_m = bigint("cacheReadMicrosPer1k").unwrap_or(0) as u64;
-            let cache_w_m = bigint("cacheWriteMicrosPer1k").unwrap_or(0) as u64;
+            let Some(prompt_m) = bigint("promptMicrosPer1K") else { continue };
+            let Some(completion_m) = bigint("completionMicrosPer1K") else { continue };
+            let cache_r_m = bigint("cacheReadMicrosPer1K").unwrap_or(0) as u64;
+            let cache_w_m = bigint("cacheWriteMicrosPer1K").unwrap_or(0) as u64;
             let request_m = bigint("requestMicros").unwrap_or(0) as u64;
             let ttft = int32("ttftBoundMs").unwrap_or(0) as u32;
             let ttot = int32("ttotBoundMs").unwrap_or(0) as u32;
