@@ -37,12 +37,6 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     tracing::info!(address = %address, "loaded provider identity");
 
-    // Pubkey hex is provider metadata only; clients don't need it for
-    // signature verification any more (the on-chain Channel carries
-    // the authorized_signer address and signatures verify against it).
-    // Kept for the /soma/info endpoint.
-    let pubkey_hex = String::new();
-
     let backend: Arc<dyn backend::Backend> = match cfg.backend.kind.as_str() {
         "openrouter" => backend::openrouter::OpenRouterBackend::new(&cfg)?,
         "vast" => backend::vast::VastBackend::new(&cfg)?,
@@ -51,7 +45,6 @@ pub async fn run(
 
     let mut catalog: Vec<crate::catalog::ModelCard> =
         backend.list_models().await.context("backend list_models on boot")?.data;
-    backend::fill_soma_info(&mut catalog, &address.to_string());
     if !cfg.offerings.is_empty() {
         catalog = cfg.offerings.clone();
     }
@@ -122,9 +115,6 @@ pub async fn run(
         channel: channel.clone(),
         ledger: ledger.clone(),
         catalog,
-        provider_address: address.to_string(),
-        provider_pubkey_hex: pubkey_hex,
-        public_endpoint: cfg.server.public_endpoint.clone(),
     });
 
     let app = handler::build_router(state);

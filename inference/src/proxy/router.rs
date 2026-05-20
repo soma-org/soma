@@ -11,7 +11,7 @@ use anyhow::Context as _;
 use reqwest::Client;
 use tokio::sync::RwLock;
 
-use crate::catalog::{Architecture, ModelCard, ModelsResponse, Pricing, TopProvider};
+use crate::catalog::{Architecture, ModelCard, Pricing, TopProvider};
 use crate::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
 use crate::proxy::config::{Config, RoutingMode, RoutingWeights};
 use crate::proxy::state::{ChannelSlot, ClientStore};
@@ -185,29 +185,10 @@ impl Router {
 
     pub async fn refresh_providers(&self) -> anyhow::Result<()> {
         let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
-
-        // Prefer the indexer-only path: one GraphQL `offerings()` call
-        // bulk-reads every active (provider, model_id) row from the
-        // chain mirror. Falls back to the legacy per-provider HTTP
-        // `/v1/models` fan-out if `soma-graphql` doesn't expose the
-        // field yet (pre-redeploy) — the fallback can be deleted once
-        // the indexer rollout is universal.
-        let providers = match self.try_refresh_via_offerings(&recs).await {
-            Some(p) => p,
-            None => {
-                let mut providers = Vec::new();
-                for rec in &recs {
-                    match self.fetch_provider_catalog(rec.address, &rec.endpoint).await {
-                        Ok(info) => providers.push(info),
-                        Err(e) => {
-                            tracing::warn!(addr = %rec.address, err = %e, "provider unreachable")
-                        }
-                    }
-                }
-                providers
-            }
-        };
-
+        let providers = self
+            .refresh_via_offerings(&recs)
+            .await
+            .context("refresh_via_offerings (indexer-driven discovery)")?;
         let mut g = self.cache.write().await;
         g.providers = providers;
         g.last_refresh = Some(Instant::now());
@@ -215,16 +196,19 @@ impl Router {
     }
 
     /// Bulk-read every active `(provider, model_id)` offering from the
-    /// indexer in one GraphQL call, then assemble each provider's
-    /// catalog from those rows. Returns `None` if `soma-graphql`
-    /// doesn't expose the `offerings()` query (pre-redeploy) — the
-    /// caller then falls back to the per-provider HTTP `/v1/models`
-    /// fan-out.
-    async fn try_refresh_via_offerings(
+    /// indexer in one GraphQL call, group by provider, and assemble
+    /// each `ProviderInfo.catalog`. The proxy used to fall back to a
+    /// per-provider HTTP `/v1/models` fan-out when `soma-graphql`
+    /// didn't expose `offerings()`; with v0.1.28 on testnet that
+    /// fallback is gone — the chain mirror is the only source.
+    async fn refresh_via_offerings(
         &self,
         recs: &[ProviderRecord],
-    ) -> Option<Vec<ProviderInfo>> {
-        let indexer_url = self.registry.indexer_url()?;
+    ) -> anyhow::Result<Vec<ProviderInfo>> {
+        let indexer_url = self
+            .registry
+            .indexer_url()
+            .ok_or_else(|| anyhow::anyhow!("registry has no indexer_url; cannot run discovery"))?;
         let query = r#"query Offerings {
             offerings(active: true, first: 500) {
                 edges { node {
@@ -237,49 +221,55 @@ impl Router {
             }
         }"#;
         let body = serde_json::json!({ "query": query });
-        let resp = self.http.post(indexer_url).json(&body).send().await.ok()?;
+        let resp = self
+            .http
+            .post(indexer_url)
+            .json(&body)
+            .send()
+            .await
+            .context("posting offerings query")?;
         if !resp.status().is_success() {
-            return None;
+            anyhow::bail!("indexer returned status {}", resp.status());
         }
-        let v: serde_json::Value = resp.json().await.ok()?;
-        // Any GraphQL errors (e.g. "Unknown field offerings" pre-redeploy)
-        // → fall back. A successful query with zero offerings is fine.
-        if v.get("errors").is_some() {
-            return None;
+        let v: serde_json::Value = resp.json().await.context("decoding offerings response body")?;
+        if let Some(errs) = v.get("errors") {
+            anyhow::bail!("indexer offerings query returned errors: {errs}");
         }
-        let edges = v.pointer("/data/offerings/edges").and_then(|x| x.as_array())?;
+        let edges = v
+            .pointer("/data/offerings/edges")
+            .and_then(|x| x.as_array())
+            .ok_or_else(|| anyhow::anyhow!("missing data.offerings.edges in response"))?;
 
-        // Group offerings by provider address.
+        // Group offerings by provider address. Per-row parse failures
+        // are skipped (not fatal): a malformed row shouldn't take the
+        // whole refresh down.
         let mut by_provider: HashMap<SomaAddress, Vec<ModelCard>> = HashMap::new();
         for edge in edges {
             let Some(node) = edge.get("node") else { continue };
             let Some(provider_str) = node.get("provider").and_then(|x| x.as_str()) else {
                 continue;
             };
-            let Some(model_id) = node.get("modelId").and_then(|x| x.as_str()).map(String::from)
-            else {
-                continue;
-            };
+            let Some(model_id) = node.get("modelId").and_then(|x| x.as_str()) else { continue };
             // BigInt scalars come back as JSON strings.
             let bigint = |k: &str| -> Option<i64> {
                 node.get(k).and_then(|x| x.as_str()).and_then(|s| s.parse().ok())
             };
             let int32 =
                 |k: &str| -> Option<i32> { node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32) };
-            let prompt_m = bigint("promptMicrosPer1k")? as u64;
-            let completion_m = bigint("completionMicrosPer1k")? as u64;
+            let Some(prompt_m) = bigint("promptMicrosPer1k") else { continue };
+            let Some(completion_m) = bigint("completionMicrosPer1k") else { continue };
             let cache_r_m = bigint("cacheReadMicrosPer1k").unwrap_or(0) as u64;
             let cache_w_m = bigint("cacheWriteMicrosPer1k").unwrap_or(0) as u64;
             let request_m = bigint("requestMicros").unwrap_or(0) as u64;
             let ttft = int32("ttftBoundMs").unwrap_or(0) as u32;
             let ttot = int32("ttotBoundMs").unwrap_or(0) as u32;
             let addr_hex = provider_str.strip_prefix("0x").unwrap_or(provider_str);
-            let addr_bytes = hex::decode(addr_hex).ok()?;
-            let address = SomaAddress::try_from(addr_bytes.as_slice()).ok()?;
+            let Ok(addr_bytes) = hex::decode(addr_hex) else { continue };
+            let Ok(address) = SomaAddress::try_from(addr_bytes.as_slice()) else { continue };
             by_provider.entry(address).or_default().push(modelcard_from_offering_micros(
-                &model_id,
-                prompt_m,
-                completion_m,
+                model_id,
+                prompt_m as u64,
+                completion_m as u64,
                 cache_r_m,
                 cache_w_m,
                 request_m,
@@ -288,9 +278,9 @@ impl Router {
             ));
         }
 
-        // For each provider record from the indexer, attach the
-        // catalog we built from its offerings. Skip providers with no
-        // offerings — they have nothing to route.
+        // For each provider record from the indexer, attach the catalog
+        // we built from its offerings. Skip providers with no offerings
+        // — they have nothing to route.
         let mut out = Vec::with_capacity(recs.len());
         for rec in recs {
             let catalog = by_provider.remove(&rec.address).unwrap_or_default();
@@ -304,29 +294,7 @@ impl Router {
                 catalog,
             });
         }
-        Some(out)
-    }
-
-    /// Build a `ProviderInfo` for `(address, endpoint)`. `address` and
-    /// `endpoint` come straight from the indexer's `providers()` row, so
-    /// there is no need to re-fetch them from the provider's `/soma/info`
-    /// — the only thing still pulled over HTTP here is the served model
-    /// catalog. Once `soma-graphql` exposes offerings (Step 5 TODO at
-    /// the call site), this becomes a pure indexer read and `/v1/models`
-    /// can be removed from the provider entirely.
-    async fn fetch_provider_catalog(
-        &self,
-        address: SomaAddress,
-        endpoint: &str,
-    ) -> anyhow::Result<ProviderInfo> {
-        let models_url = format!("{}/v1/models", endpoint.trim_end_matches('/'));
-        let mr: ModelsResponse = self.http.get(models_url).send().await?.json().await?;
-        Ok(ProviderInfo {
-            address,
-            pubkey_hex: String::new(),
-            endpoint: endpoint.to_string(),
-            catalog: mr.data,
-        })
+        Ok(out)
     }
 
     pub async fn ensure_cache(&self) -> anyhow::Result<()> {
@@ -469,12 +437,12 @@ impl Router {
                         }
                     } else {
                         // Pointer exists, slot doesn't — cold-start
-                        // path. Hydrate from chain + provider.
-                        let cumulative = self
-                            .fetch_provider_last_cumulative(&provider.endpoint, id)
-                            .await
-                            .unwrap_or(chan.settled_amount());
-                        let floor = cumulative.max(chan.settled_amount());
+                        // path. Floor at the chain's `settled_amount`;
+                        // the provider's auto-settle (5min) keeps
+                        // its running cumulative within one window of
+                        // settled, so this is safe outside that small
+                        // post-restart drift.
+                        let floor = chan.settled_amount();
                         if chan.deposit().saturating_sub(floor) > 40_000 {
                             let slot = self
                                 .store
@@ -563,11 +531,12 @@ impl Router {
             if chan.close_requested_at_ms().is_some() {
                 continue;
             }
-            let cumulative = self
-                .fetch_provider_last_cumulative(&provider.endpoint, id)
-                .await
-                .unwrap_or(chan.settled_amount());
-            let floor = cumulative.max(chan.settled_amount());
+            // Floor at the chain's `settled_amount`. The provider's
+            // running cumulative may be above this between auto-settle
+            // ticks (every 5 min), but the next chat after restart
+            // bumps things forward; the rare post-restart-drift case
+            // is a single retry away from healing.
+            let floor = chan.settled_amount();
             if chan.deposit().saturating_sub(floor) <= 40_000 {
                 continue;
             }
@@ -585,25 +554,6 @@ impl Router {
             return Some(slot);
         }
         None
-    }
-
-    /// Ask the provider's `/soma/channel/{id}` endpoint for the
-    /// highest cumulative voucher they hold. Returns `None` if the
-    /// provider doesn't expose the endpoint, the channel is unknown
-    /// to them, or any HTTP error — callers fall back to the chain's
-    /// `settled_amount`.
-    async fn fetch_provider_last_cumulative(
-        &self,
-        endpoint: &str,
-        channel_id: ObjectID,
-    ) -> Option<u64> {
-        let url = format!("{}/soma/channel/{}", endpoint.trim_end_matches('/'), channel_id);
-        let resp = self.http.get(url).send().await.ok()?;
-        if !resp.status().is_success() {
-            return None;
-        }
-        let v: serde_json::Value = resp.json().await.ok()?;
-        v.get("last_cumulative_micros").and_then(|x| x.as_u64())
     }
 }
 

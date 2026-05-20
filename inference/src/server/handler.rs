@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use ::types::object::ObjectID;
 use axum::body::Body;
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -31,67 +30,31 @@ pub struct ProviderState {
     pub backend: Arc<dyn Backend>,
     pub channel: Arc<RunningTab>,
     pub ledger: Ledger,
+    /// In-memory copy of the operator's TOML `[[offerings]]`. The auth
+    /// middleware looks up the matching card by model id to validate
+    /// the request against its pricing + SLA; `chat_completions` uses
+    /// the same card for realized-cost calculation. The proxy no
+    /// longer reads this over HTTP — it gets the same data from the
+    /// indexer's `offerings()` query.
     pub catalog: Vec<ModelCard>,
-    pub provider_address: String,
-    pub provider_pubkey_hex: String,
-    pub public_endpoint: String,
 }
 
 pub fn build_router(state: Arc<ProviderState>) -> Router {
+    // Only two HTTP surfaces remain: the SomaPay-authorized chat
+    // endpoint, and a liveness probe. Discovery (provider record,
+    // model catalog, channel state) is indexer-only — `/soma/info`,
+    // `/v1/models`, and `/soma/channel/{id}` are gone.
     let auth_state = state.clone();
     let v1 = Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .layer(axum::middleware::from_fn_with_state(auth_state, auth_middleware));
 
-    Router::new()
-        .route("/health", get(health))
-        .route("/soma/info", get(soma_info))
-        .route("/soma/channel/{id}", get(soma_channel))
-        .route("/v1/models", get(models))
-        .merge(v1)
-        .with_state(state)
-}
-
-/// Per-channel state from the provider's perspective. Lets a buyer
-/// who lost their local proxy state recover the highest cumulative
-/// they've already authorized — the floor for their next voucher.
-/// Returns 404 if the provider has never seen this channel.
-async fn soma_channel(State(state): State<Arc<ProviderState>>, Path(id): Path<String>) -> Response {
-    let Ok(channel_id) = id.parse::<ObjectID>() else {
-        return error(StatusCode::BAD_REQUEST, "invalid_channel_id", "expected hex");
-    };
-    let Some(slot) = state.ledger.slot(&channel_id).await else {
-        return error(StatusCode::NOT_FOUND, "channel_unknown", "no ledger entry");
-    };
-    let s = slot.lock().await;
-    let body = json!({
-        "channel_id": channel_id.to_string(),
-        "last_cumulative_micros": s.state.cumulative_authorized_micros,
-        "total_consumed_micros": s.state.total_consumed_micros,
-        "deposit_micros": s.state.deposit_micros,
-        "has_signature": s.state.last_onchain_sig.is_some(),
-    });
-    (StatusCode::OK, Json(body)).into_response()
+    Router::new().route("/health", get(health)).merge(v1).with_state(state)
 }
 
 async fn health(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
     let healthy = state.backend.health().await;
     Json(json!({"status": "ok", "backend_healthy": healthy}))
-}
-
-async fn soma_info(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
-    let models: Vec<&str> = state.catalog.iter().map(|c| c.id.as_str()).collect();
-    Json(json!({
-        "address": state.provider_address,
-        "pubkey_hex": state.provider_pubkey_hex,
-        "endpoint": state.public_endpoint,
-        "channel_auth": "SomaPay/v1",
-        "models": models,
-    }))
-}
-
-async fn models(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
-    Json(json!({"data": state.catalog.clone()}))
 }
 
 async fn chat_completions(
