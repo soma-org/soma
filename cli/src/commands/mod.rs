@@ -4,6 +4,7 @@
 
 // Command modules for top-level CLI commands
 pub mod balance;
+pub mod bridge;
 pub mod channel;
 pub mod env;
 pub mod inference;
@@ -18,6 +19,7 @@ pub mod validator;
 pub mod wallet;
 
 // Re-export subcommand enums for use in soma_commands.rs
+pub use bridge::BridgeCommand;
 pub use channel::ChannelCommand;
 pub use env::EnvCommand;
 pub use inference::InferenceCommand;

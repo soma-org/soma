@@ -359,6 +359,24 @@ EXAMPLES:
         cmd: ChannelCommand,
     },
 
+    /// Soma ↔ Eth USDC bridge: initiate withdrawals, inspect the live
+    /// `BridgeState`. Inbound deposits go through the Eth-side
+    /// `SomaBridge.deposit(...)` call — there's no Soma-side
+    /// command for that direction.
+    #[clap(
+        name = "bridge",
+        after_help = "\
+EXAMPLES:
+    soma bridge status
+    soma bridge withdraw --amount 1.0 \\
+        --recipient 0x7B42d2B6F94fDF3c2Fe62e0aAf451487FA2DAB6e \\
+        --target-chain base-sepolia"
+    )]
+    Bridge {
+        #[clap(subcommand)]
+        cmd: crate::commands::BridgeCommand,
+    },
+
     /// Manage on-chain provider registry (register, update, show).
     #[clap(
         name = "provider",
@@ -897,6 +915,24 @@ impl SomaCommand {
             SomaCommand::Inference { cmd } => cmd.execute().await,
 
             SomaCommand::Channel { cmd } => cmd.execute().await,
+
+            SomaCommand::Bridge { cmd } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                // The `json` flag lives inside each subcommand; pull it
+                // back out for `print()`. Withdraw + Status set it via
+                // a global `--json`; default is the human-readable view.
+                let json_flag = matches!(
+                    &cmd,
+                    crate::commands::BridgeCommand::Withdraw { json: true, .. }
+                        | crate::commands::BridgeCommand::Status { json: true }
+                );
+                let result = cmd.execute(&mut context).await?;
+                result.print(json_flag);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
 
             SomaCommand::Provider { cmd } => cmd.execute().await,
 

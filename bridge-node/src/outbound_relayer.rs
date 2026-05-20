@@ -255,11 +255,19 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
                 continue;
             };
 
-            // Compose the action bytes the cert was signed over.
+            // Compose the action bytes the cert was signed over. The
+            // committee signed against the *exact* `target_chain` stored
+            // on the `PendingWithdrawal` (it's part of the message
+            // payload — see `encode_withdraw_payload`), so reconstructing
+            // with a hardcoded chain produces a different keccak256 digest
+            // than what was signed, ecrecover returns junk addresses, and
+            // the EVM contract reverts with
+            // `BridgeCommittee: Signer has no stake` on every release
+            // attempt. Always pull from `pw.target_chain`.
             let action = crate::types::BridgeAction::Withdrawal {
                 nonce: pw.nonce,
                 sender: pw.sender,
-                target_chain: types::bridge::BridgeChainId::EthCustom,
+                target_chain: pw.target_chain,
                 recipient_eth_address: pw.recipient_eth_address,
                 token_type: types::bridge::USDC_TOKEN_TYPE,
                 amount: pw.amount,

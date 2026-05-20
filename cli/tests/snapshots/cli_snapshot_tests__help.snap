@@ -20,6 +20,7 @@ Commands:
   env              Manage network environments (switch, add, list)
   inference        Run the inference proxy or provider server
   channel          Manage on-chain payment channels (open, settle, top-up, close)
+  bridge           Soma ↔ Eth USDC bridge: initiate withdrawals, inspect the live `BridgeState`. Inbound deposits go through the Eth-side `SomaBridge.deposit(...)` call — there's no Soma-side command for that direction
   provider         Manage on-chain provider registry (register, update, show)
   offering         Manage per-(provider, model) on-chain offerings
   model            Read the protocol-config `ModelRegistry`
