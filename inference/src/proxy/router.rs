@@ -421,10 +421,17 @@ impl Router {
 
     /// Return an open channel to `provider` — reuse an existing one
     /// if it has meaningful headroom, otherwise lazily open a new
-    /// on-chain channel. On a cache miss, also asks the provider's
-    /// `/soma/channel/{id}` endpoint for the highest cumulative they
-    /// hold so the proxy never issues a non-monotonic voucher after a
-    /// restart.
+    /// on-chain channel.
+    ///
+    /// After a proxy restart, the cumulative floor we install here is
+    /// the chain's `settled_amount`, which lags the provider's in-memory
+    /// `cumulative_authorized_micros` by up to one auto-settle window
+    /// (~5 min). The first chat after restart may have its voucher land
+    /// below the provider's floor; the provider returns `402
+    /// PaymentRequired` with `x-soma-required-authorization: <floor>`,
+    /// and `relay.rs:151` resyncs + retries transparently. Discovery is
+    /// indexer-only — there is no provider-side `/soma/channel/{id}`
+    /// endpoint to query for the floor up-front.
     pub async fn ensure_channel(
         &self,
         provider: &ProviderInfo,
@@ -559,9 +566,11 @@ impl Router {
             }
             // Floor at the chain's `settled_amount`. The provider's
             // running cumulative may be above this between auto-settle
-            // ticks (every 5 min), but the next chat after restart
-            // bumps things forward; the rare post-restart-drift case
-            // is a single retry away from healing.
+            // ticks (every 5 min). On the first chat after restart, the
+            // proxy signs at `settled_amount + worst_case`, the provider
+            // returns `PaymentRequired { need_micros: <its own floor> }`
+            // via `pre_flight`, and `relay.rs:151` re-signs at that
+            // floor — single retry, transparent to the caller.
             let floor = chan.settled_amount();
             if chan.deposit().saturating_sub(floor) <= 40_000 {
                 continue;

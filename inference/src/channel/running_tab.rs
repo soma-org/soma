@@ -458,24 +458,44 @@ impl PaymentChannel for RunningTab {
         sdk::channel::verify_voucher(&channel, *header.http_voucher.voucher(), onchain_sig)
             .map_err(|_| ChannelError::BadSignature)?;
 
-        // Monotonic: same request id may re-present same cum;
-        // otherwise must strictly increase.
+        // Monotonic + payment-required check. A voucher whose
+        // `cumulative_amount()` is below what this provider has already
+        // authorized for the channel is *not* a replay attack — the
+        // signature, body sha, request_id, and method/path were all
+        // verified above, so the payer signed *this exact request*. The
+        // realistic cause is a payer-side proxy restart where the proxy
+        // rehydrated state from the indexer (`settled_amount`), which lags
+        // the provider's in-memory `cumulative_authorized_micros` between
+        // auto-settle ticks. Return `PaymentRequired` with `need_micros`
+        // pointing at the floor so the proxy's `relay.rs:151` retry path
+        // bumps and re-signs — instead of `auth_invalid`, which the proxy
+        // has no recovery path for and which surfaces as a hard 401 to the
+        // user.
+        //
+        // The `total_consumed + worst_case` floor still applies; we take
+        // the max so a stale-rehydrate proxy is told the *higher* of "you
+        // owe me what I've already authorized" and "you need to cover
+        // worst case for this request."
         let voucher = header.http_voucher.voucher();
         let same_request =
             state.last_request_id.as_deref().map(|r| r == meta.request_id).unwrap_or(false);
         let cum = voucher.cumulative_amount();
-        if cum < state.cumulative_authorized_micros {
-            return Err(ChannelError::NonMonotonic);
-        }
-        if cum == state.cumulative_authorized_micros && !same_request {
-            return Err(ChannelError::NonMonotonic);
-        }
-        // Deposit cap.
+        // Deposit cap is the one genuinely-unrecoverable case: the
+        // channel can never authorize beyond its deposit, so a voucher
+        // asking for more is malformed. The proxy's retry path can't fix
+        // this — only a `TopUp` (or fresh channel) can.
         if cum > state.deposit_micros {
             return Err(ChannelError::OverDeposit);
         }
-        // Payment required: the new authorization must cover already-consumed + worst-case.
-        let need = state.total_consumed_micros.saturating_add(worst_case_cost_micros);
+        let monotonic_floor = if same_request {
+            state.cumulative_authorized_micros
+        } else {
+            state.cumulative_authorized_micros.saturating_add(1)
+        };
+        let need = state
+            .total_consumed_micros
+            .saturating_add(worst_case_cost_micros)
+            .max(monotonic_floor);
         if cum < need {
             return Err(ChannelError::PaymentRequired { need_micros: need });
         }
@@ -593,4 +613,216 @@ pub fn split_combined_header(value: &str) -> Result<(String, GenericSignature), 
     let onchain_b64 = parts.next().ok_or(ChannelError::Malformed)?;
     let sig = decode_onchain_sig(onchain_b64)?;
     Ok((header, sig))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channel::PaymentChannel;
+    use soma_keys::keystore::{AccountKeystore, InMemKeystore, Keystore};
+    use std::sync::Arc;
+
+    /// Construct a (RunningTab client, signer address) backed by an
+    /// in-memory keystore so the test can sign vouchers without touching
+    /// a filesystem keystore.
+    fn ephemeral_client() -> (RunningTab, SomaAddress, Arc<WalletContext>) {
+        let keystore = Keystore::InMem(InMemKeystore::new_insecure_for_tests(1));
+        let signer = *keystore.addresses().first().expect("one key");
+        let ctx = Arc::new(WalletContext::new_for_tests(keystore, None, None));
+        (RunningTab::for_client(ctx.clone(), signer), signer, ctx)
+    }
+
+    fn make_client_state(
+        channel_id: ObjectID,
+        signer: SomaAddress,
+        cumulative_authorized_micros: u64,
+        deposit_micros: u64,
+    ) -> TabClientState {
+        let mut s = TabClientState::new(
+            channel_id,
+            signer,
+            "http://example.invalid".to_string(),
+            "anthropic/claude-haiku-4.5".to_string(),
+            deposit_micros,
+        );
+        s.cumulative_authorized_micros = cumulative_authorized_micros;
+        s
+    }
+
+    fn make_provider_state(
+        channel_id: ObjectID,
+        signer: SomaAddress,
+        cumulative_authorized_micros: u64,
+        deposit_micros: u64,
+    ) -> TabProviderState {
+        TabProviderState {
+            channel_id,
+            authorized_signer: signer,
+            deposit_micros,
+            cumulative_authorized_micros,
+            total_consumed_micros: cumulative_authorized_micros,
+            last_request_id: None,
+            last_onchain_sig: None,
+            last_settled_at_amount: cumulative_authorized_micros,
+            cumulative_prompt_tokens: 0,
+            cumulative_completion_tokens: 0,
+            cumulative_cache_read_tokens: 0,
+            cumulative_cache_write_tokens: 0,
+            cumulative_requests: 0,
+            last_signed_cumulative_amount: cumulative_authorized_micros,
+            last_signed_prompt_tokens: 0,
+            last_signed_completion_tokens: 0,
+            last_signed_cache_read_tokens: 0,
+            last_signed_cache_write_tokens: 0,
+            last_signed_requests: 0,
+            model_id: "anthropic/claude-haiku-4.5".to_string(),
+        }
+    }
+
+    /// Reproduces the production bug we hit on testnet: the payer-side
+    /// proxy rehydrates `cumulative_authorized_micros` from the indexer's
+    /// stale `settled_amount`, then signs a voucher whose `cum` is below
+    /// the provider's in-memory floor. Before the fix this returned
+    /// `NonMonotonic` → relay surfaces it as `401 auth_invalid` → no
+    /// retry path → user sees a hard failure. After the fix the provider
+    /// returns `PaymentRequired { need_micros }` so the proxy's `relay.rs`
+    /// retry path can resync.
+    #[tokio::test]
+    async fn stale_proxy_rehydrate_returns_payment_required_not_non_monotonic() {
+        let (tab, signer, _ctx) = ephemeral_client();
+        let channel_id = ObjectID::random();
+        let body = b"{\"model\":\"anthropic/claude-haiku-4.5\"}";
+        let body_sha = Sha256::digest(body);
+        let body_sha_hex = hex::encode(body_sha);
+        let request_id = "req-stale-rehydrate";
+        let meta = RequestMeta {
+            method: "POST",
+            path: "/v1/chat/completions",
+            body_sha256_hex: &body_sha_hex,
+            timestamp_ms: now_ms(),
+            request_id,
+            model_id: "anthropic/claude-haiku-4.5",
+        };
+        let worst_case = 500u64;
+        let deposit = 5_000_000u64;
+
+        // Client (proxy after restart) thinks the channel is at
+        // settled=10_000 — what the indexer reported.
+        let mut client_state = make_client_state(channel_id, signer, 10_000, deposit);
+        let combined = tab.authorize(&mut client_state, &meta, worst_case).await.expect("sign ok");
+        let (header_str, onchain_sig) = split_combined_header(&combined).expect("split ok");
+
+        // Provider's in-memory state is ahead of indexer — it has
+        // authorized up to 200_000 already and hasn't called Settle yet.
+        let mut provider_state = make_provider_state(channel_id, signer, 200_000, deposit);
+
+        let result = tab
+            .pre_flight(&mut provider_state, &header_str, &onchain_sig, &meta, worst_case)
+            .await;
+
+        match result {
+            Err(ChannelError::PaymentRequired { need_micros }) => {
+                assert!(
+                    need_micros >= 200_001,
+                    "need_micros should signal the provider's floor (got {need_micros})",
+                );
+            }
+            Err(ChannelError::NonMonotonic) => {
+                panic!(
+                    "regression: stale-rehydrate returned NonMonotonic — \
+                     the proxy's relay.rs:151 only retries on 402 PaymentRequired"
+                );
+            }
+            other => panic!("expected PaymentRequired, got {other:?}"),
+        }
+    }
+
+    /// Happy path: client and provider agree on the floor; first request
+    /// after a fresh open succeeds.
+    #[tokio::test]
+    async fn fresh_channel_authorize_then_pre_flight_succeeds() {
+        let (tab, signer, _ctx) = ephemeral_client();
+        let channel_id = ObjectID::random();
+        let body = b"{\"model\":\"anthropic/claude-haiku-4.5\"}";
+        let body_sha = Sha256::digest(body);
+        let body_sha_hex = hex::encode(body_sha);
+        let meta = RequestMeta {
+            method: "POST",
+            path: "/v1/chat/completions",
+            body_sha256_hex: &body_sha_hex,
+            timestamp_ms: now_ms(),
+            request_id: "req-fresh-1",
+            model_id: "anthropic/claude-haiku-4.5",
+        };
+        let worst_case = 500u64;
+        let deposit = 5_000_000u64;
+
+        let mut client_state = make_client_state(channel_id, signer, 0, deposit);
+        let combined = tab.authorize(&mut client_state, &meta, worst_case).await.expect("sign ok");
+        let (header_str, onchain_sig) = split_combined_header(&combined).expect("split ok");
+
+        let mut provider_state = make_provider_state(channel_id, signer, 0, deposit);
+        tab.pre_flight(&mut provider_state, &header_str, &onchain_sig, &meta, worst_case)
+            .await
+            .expect("first request after fresh open should pre_flight cleanly");
+    }
+
+    /// End-to-end integration of the production fix: mirrors what
+    /// `relay.rs:151` does when the provider returns 402 after the proxy
+    /// rehydrates stale state. Validates that, after a single bump, the
+    /// re-signed voucher passes `pre_flight` — i.e., the user's chat
+    /// succeeds transparently instead of failing with `auth_invalid`.
+    #[tokio::test]
+    async fn stale_proxy_then_402_retry_succeeds_end_to_end() {
+        let (tab, signer, _ctx) = ephemeral_client();
+        let channel_id = ObjectID::random();
+        let body = b"{\"model\":\"anthropic/claude-haiku-4.5\"}";
+        let body_sha_hex = hex::encode(Sha256::digest(body));
+        let request_id = "req-e2e-retry";
+        let meta = RequestMeta {
+            method: "POST",
+            path: "/v1/chat/completions",
+            body_sha256_hex: &body_sha_hex,
+            timestamp_ms: now_ms(),
+            request_id,
+            model_id: "anthropic/claude-haiku-4.5",
+        };
+        let worst_case = 500u64;
+        let deposit = 5_000_000u64;
+
+        // Proxy rehydrates from indexer's stale settled_amount.
+        let mut client_state = make_client_state(channel_id, signer, 10_000, deposit);
+        // Provider has authorized further in memory.
+        let mut provider_state = make_provider_state(channel_id, signer, 200_000, deposit);
+
+        // === ROUND 1: stale voucher ===
+        let combined1 = tab.authorize(&mut client_state, &meta, worst_case).await.unwrap();
+        let (header1, sig1) = split_combined_header(&combined1).unwrap();
+        let need = match tab.pre_flight(&mut provider_state, &header1, &sig1, &meta, worst_case).await
+        {
+            Err(ChannelError::PaymentRequired { need_micros }) => need_micros,
+            other => panic!("expected PaymentRequired on stale voucher, got {other:?}"),
+        };
+        assert!(need >= 200_001, "need_micros must signal the provider's floor");
+
+        // === ROUND 2: relay.rs:151 resync — set cum_authorized to need - worst_case,
+        // clear last_authorized, re-call authorize. This is exactly what production
+        // does on 402. ===
+        client_state.cumulative_authorized_micros = need.saturating_sub(worst_case);
+        client_state.last_authorized = None;
+        let combined2 = tab.authorize(&mut client_state, &meta, worst_case).await.unwrap();
+        let (header2, sig2) = split_combined_header(&combined2).unwrap();
+        tab.pre_flight(&mut provider_state, &header2, &sig2, &meta, worst_case)
+            .await
+            .expect(
+                "after one 402 round-trip + resync, the re-signed voucher must pass — \
+                 this is the chat path that previously surfaced as auth_invalid",
+            );
+
+        // Provider's state advanced to exactly the new authorization.
+        assert!(
+            provider_state.cumulative_authorized_micros >= 200_001,
+            "provider state should be at or above the previous floor after retry",
+        );
+    }
 }
