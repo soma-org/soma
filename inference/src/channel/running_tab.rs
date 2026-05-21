@@ -492,10 +492,8 @@ impl PaymentChannel for RunningTab {
         } else {
             state.cumulative_authorized_micros.saturating_add(1)
         };
-        let need = state
-            .total_consumed_micros
-            .saturating_add(worst_case_cost_micros)
-            .max(monotonic_floor);
+        let need =
+            state.total_consumed_micros.saturating_add(worst_case_cost_micros).max(monotonic_floor);
         if cum < need {
             return Err(ChannelError::PaymentRequired { need_micros: need });
         }
@@ -716,9 +714,8 @@ mod tests {
         // authorized up to 200_000 already and hasn't called Settle yet.
         let mut provider_state = make_provider_state(channel_id, signer, 200_000, deposit);
 
-        let result = tab
-            .pre_flight(&mut provider_state, &header_str, &onchain_sig, &meta, worst_case)
-            .await;
+        let result =
+            tab.pre_flight(&mut provider_state, &header_str, &onchain_sig, &meta, worst_case).await;
 
         match result {
             Err(ChannelError::PaymentRequired { need_micros }) => {
@@ -798,11 +795,11 @@ mod tests {
         // === ROUND 1: stale voucher ===
         let combined1 = tab.authorize(&mut client_state, &meta, worst_case).await.unwrap();
         let (header1, sig1) = split_combined_header(&combined1).unwrap();
-        let need = match tab.pre_flight(&mut provider_state, &header1, &sig1, &meta, worst_case).await
-        {
-            Err(ChannelError::PaymentRequired { need_micros }) => need_micros,
-            other => panic!("expected PaymentRequired on stale voucher, got {other:?}"),
-        };
+        let need =
+            match tab.pre_flight(&mut provider_state, &header1, &sig1, &meta, worst_case).await {
+                Err(ChannelError::PaymentRequired { need_micros }) => need_micros,
+                other => panic!("expected PaymentRequired on stale voucher, got {other:?}"),
+            };
         assert!(need >= 200_001, "need_micros must signal the provider's floor");
 
         // === ROUND 2: relay.rs:151 resync — set cum_authorized to need - worst_case,
@@ -812,12 +809,10 @@ mod tests {
         client_state.last_authorized = None;
         let combined2 = tab.authorize(&mut client_state, &meta, worst_case).await.unwrap();
         let (header2, sig2) = split_combined_header(&combined2).unwrap();
-        tab.pre_flight(&mut provider_state, &header2, &sig2, &meta, worst_case)
-            .await
-            .expect(
-                "after one 402 round-trip + resync, the re-signed voucher must pass — \
+        tab.pre_flight(&mut provider_state, &header2, &sig2, &meta, worst_case).await.expect(
+            "after one 402 round-trip + resync, the re-signed voucher must pass — \
                  this is the chat path that previously surfaced as auth_invalid",
-            );
+        );
 
         // Provider's state advanced to exactly the new authorization.
         assert!(
