@@ -14,6 +14,7 @@ use diesel_async::RunQueryDsl;
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
 use crate::api::types::available_range::AvailableRange;
+use crate::api::types::bridge_deposit::BridgeDeposit;
 use crate::api::types::channel::{Channel as GqlChannel, ChannelStatus};
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
@@ -637,6 +638,70 @@ impl Query {
         let total: i128 = deltas.iter().map(|d| *d as i128).sum();
         let total_i64 = total.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         Ok(BigInt(total_i64))
+    }
+
+    /// Catch-up query for bridge deposits to a Soma recipient.
+    ///
+    /// Pairs with `subscription { newBridgeDeposit(recipient) }` — clients
+    /// open the subscription first, then call this to pick up any deposits
+    /// they missed before connecting. Returns deposits with
+    /// `nonce > after_nonce` ordered ascending so a client can resume from
+    /// `max(nonce)` it has already seen.
+    ///
+    /// `after_nonce` defaults to -1 (return everything for this recipient).
+    /// `limit` is clamped to `[1, max_page_size]`.
+    async fn bridge_deposits(
+        &self,
+        ctx: &Context<'_>,
+        recipient: String,
+        after_nonce: Option<i64>,
+        limit: Option<i32>,
+    ) -> Result<Vec<BridgeDeposit>> {
+        let addr_hex = recipient.strip_prefix("0x").unwrap_or(&recipient);
+        let addr_bytes =
+            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid recipient: {e}")))?;
+
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let lim = limit.unwrap_or(config.default_page_size).clamp(1, config.max_page_size) as i64;
+        let after = after_nonce.unwrap_or(-1);
+
+        use indexer_alt_schema::schema::soma_bridge_deposits;
+
+        type Row = (i64, i64, Vec<u8>, i64, i64, Vec<u8>, i64);
+
+        let rows: Vec<Row> = soma_bridge_deposits::table
+            .filter(soma_bridge_deposits::recipient.eq(&addr_bytes))
+            .filter(soma_bridge_deposits::nonce.gt(after))
+            .order(soma_bridge_deposits::nonce.asc())
+            .limit(lim)
+            .select((
+                soma_bridge_deposits::tx_sequence_number,
+                soma_bridge_deposits::cp_sequence_number,
+                soma_bridge_deposits::recipient,
+                soma_bridge_deposits::amount,
+                soma_bridge_deposits::nonce,
+                soma_bridge_deposits::eth_tx_hash,
+                soma_bridge_deposits::timestamp_ms,
+            ))
+            .load::<Row>(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| BridgeDeposit {
+                tx_sequence_number: r.0,
+                cp_sequence_number: r.1,
+                recipient: r.2,
+                amount: r.3,
+                nonce: r.4,
+                eth_tx_hash: r.5,
+                timestamp_ms: r.6,
+            })
+            .collect())
     }
 
     /// Look up the epoch state for a given epoch (or latest).

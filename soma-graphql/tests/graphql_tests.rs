@@ -23,7 +23,7 @@ use serde_json::Value;
 use indexer_alt_schema::checkpoints::StoredCheckpoint;
 use indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
 use indexer_alt_schema::epochs::{StoredEpochEnd, StoredEpochStart};
-use indexer_alt_schema::soma::{StoredEpochState, StoredStakedSoma};
+use indexer_alt_schema::soma::{StoredBridgeDeposit, StoredEpochState, StoredStakedSoma};
 use indexer_alt_schema::transactions::{StoredTransaction, StoredTxDigest};
 use indexer_pg_db::DbArgs;
 
@@ -715,4 +715,99 @@ async fn test_query_depth_limit_rejected() {
         err_msg.contains("nested") || err_msg.contains("depth"),
         "error should mention depth limit, got: {err_msg}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// bridgeDeposits query
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_bridge_deposits_query() {
+    let ctx = setup().await;
+
+    let recipient = vec![0xAB; 32];
+    let recipient_hex = format!("0x{}", hex::encode(&recipient));
+
+    let mut conn = ctx.db.connect().await.unwrap();
+    use indexer_alt_schema::schema::soma_bridge_deposits;
+
+    // Three deposits to the same recipient, plus one to someone else
+    // (must be filtered out).
+    let rows = vec![
+        StoredBridgeDeposit {
+            tx_sequence_number: 1,
+            cp_sequence_number: 1,
+            recipient: recipient.clone(),
+            amount: 100,
+            nonce: 5,
+            eth_tx_hash: vec![0x11; 32],
+            timestamp_ms: 1000,
+        },
+        StoredBridgeDeposit {
+            tx_sequence_number: 2,
+            cp_sequence_number: 2,
+            recipient: recipient.clone(),
+            amount: 200,
+            nonce: 7,
+            eth_tx_hash: vec![0x22; 32],
+            timestamp_ms: 2000,
+        },
+        StoredBridgeDeposit {
+            tx_sequence_number: 3,
+            cp_sequence_number: 3,
+            recipient: recipient.clone(),
+            amount: 300,
+            nonce: 9,
+            eth_tx_hash: vec![0x33; 32],
+            timestamp_ms: 3000,
+        },
+        StoredBridgeDeposit {
+            tx_sequence_number: 4,
+            cp_sequence_number: 4,
+            recipient: vec![0xCD; 32],
+            amount: 999,
+            nonce: 11,
+            eth_tx_hash: vec![0x44; 32],
+            timestamp_ms: 4000,
+        },
+    ];
+    diesel::insert_into(soma_bridge_deposits::table)
+        .values(&rows)
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // No afterNonce — should return all three for our recipient, ascending by nonce.
+    let query = format!(
+        r#"{{ bridgeDeposits(recipient: "{}") {{ nonce amount ethTxHash }} }}"#,
+        recipient_hex
+    );
+    let json = execute(&ctx.schema, &query).await;
+    let deposits = json["data"]["bridgeDeposits"].as_array().unwrap();
+    assert_eq!(deposits.len(), 3);
+    assert_eq!(deposits[0]["nonce"], "5");
+    assert_eq!(deposits[1]["nonce"], "7");
+    assert_eq!(deposits[2]["nonce"], "9");
+    assert_eq!(deposits[0]["amount"], "100");
+    assert_eq!(deposits[0]["ethTxHash"], format!("0x{}", "11".repeat(32)));
+
+    // afterNonce=5 should skip the first.
+    let query = format!(
+        r#"{{ bridgeDeposits(recipient: "{}", afterNonce: 5) {{ nonce }} }}"#,
+        recipient_hex
+    );
+    let json = execute(&ctx.schema, &query).await;
+    let deposits = json["data"]["bridgeDeposits"].as_array().unwrap();
+    assert_eq!(deposits.len(), 2);
+    assert_eq!(deposits[0]["nonce"], "7");
+    assert_eq!(deposits[1]["nonce"], "9");
+
+    // Other recipient must not leak.
+    let other_hex = format!("0x{}", hex::encode(vec![0xCD; 32]));
+    let query = format!(r#"{{ bridgeDeposits(recipient: "{}") {{ nonce }} }}"#, other_hex);
+    let json = execute(&ctx.schema, &query).await;
+    let deposits = json["data"]["bridgeDeposits"].as_array().unwrap();
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(deposits[0]["nonce"], "11");
 }

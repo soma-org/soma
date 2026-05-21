@@ -4,6 +4,7 @@
 pub mod address;
 pub mod available_range;
 pub mod balance_change;
+pub mod bridge_deposit;
 pub mod channel;
 pub mod checkpoint;
 pub mod epoch;

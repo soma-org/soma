@@ -69,6 +69,51 @@ impl CheckpointEvent {
     }
 }
 
+/// A new bridge deposit (Eth → Soma) was minted on Soma.
+///
+/// Emitted by the `notify_new_bridge_deposit` trigger on inserts to
+/// `soma_bridge_deposits`. This is the canonical "bridging succeeded"
+/// signal — it fires only after the bridge committee has quorum-signed
+/// the Base-side deposit AND the Soma-side mint tx has been included
+/// in a committed checkpoint.
+pub struct BridgeDepositEvent {
+    pub tx_sequence_number: i64,
+    pub cp_sequence_number: i64,
+    /// 32-byte Soma recipient, hex-encoded without `0x` prefix at construction
+    /// time; the GraphQL resolver re-prefixes for output.
+    pub recipient_hex: String,
+    pub amount: i64,
+    pub nonce: i64,
+    /// Base-side tx hash that originated this deposit; hex-encoded.
+    pub eth_tx_hash_hex: String,
+    pub timestamp_ms: i64,
+}
+
+#[Object]
+impl BridgeDepositEvent {
+    async fn tx_sequence_number(&self) -> crate::api::scalars::BigInt {
+        crate::api::scalars::BigInt(self.tx_sequence_number)
+    }
+    async fn cp_sequence_number(&self) -> crate::api::scalars::BigInt {
+        crate::api::scalars::BigInt(self.cp_sequence_number)
+    }
+    async fn recipient(&self) -> String {
+        format!("0x{}", self.recipient_hex)
+    }
+    async fn amount(&self) -> crate::api::scalars::BigInt {
+        crate::api::scalars::BigInt(self.amount)
+    }
+    async fn nonce(&self) -> crate::api::scalars::BigInt {
+        crate::api::scalars::BigInt(self.nonce)
+    }
+    async fn eth_tx_hash(&self) -> String {
+        format!("0x{}", self.eth_tx_hash_hex)
+    }
+    async fn timestamp(&self) -> crate::api::scalars::DateTime {
+        crate::api::scalars::DateTime(self.timestamp_ms)
+    }
+}
+
 /// A new epoch started.
 pub struct EpochEvent {
     pub epoch: i64,
@@ -99,6 +144,7 @@ pub struct SubscriptionChannels {
     pub new_transaction: broadcast::Sender<Arc<TransactionEvent>>,
     pub new_checkpoint: broadcast::Sender<Arc<CheckpointEvent>>,
     pub new_epoch: broadcast::Sender<Arc<EpochEvent>>,
+    pub new_bridge_deposit: broadcast::Sender<Arc<BridgeDepositEvent>>,
 }
 
 impl SubscriptionChannels {
@@ -107,6 +153,7 @@ impl SubscriptionChannels {
             new_transaction: broadcast::channel(capacity).0,
             new_checkpoint: broadcast::channel(capacity).0,
             new_epoch: broadcast::channel(capacity).0,
+            new_bridge_deposit: broadcast::channel(capacity).0,
         }
     }
 }
@@ -168,10 +215,12 @@ async fn run_listener(
     });
 
     // Subscribe to channels
-    for ch in &["new_transaction", "new_checkpoint", "new_epoch"] {
+    for ch in &["new_transaction", "new_checkpoint", "new_epoch", "new_bridge_deposit"] {
         client.execute(&format!("LISTEN {ch}"), &[]).await?;
     }
-    info!("Postgres LISTEN active on: new_transaction, new_checkpoint, new_epoch");
+    info!(
+        "Postgres LISTEN active on: new_transaction, new_checkpoint, new_epoch, new_bridge_deposit"
+    );
 
     // Process incoming notifications
     while let Some(notification) = ntf_rx.recv().await {
@@ -223,6 +272,18 @@ fn dispatch_notification(
                 protocol_version: json["protocol_version"].as_i64().unwrap_or(0),
             });
             let _ = channels.new_epoch.send(event);
+        }
+        "new_bridge_deposit" => {
+            let event = Arc::new(BridgeDepositEvent {
+                tx_sequence_number: json["tx_sequence_number"].as_i64().unwrap_or(0),
+                cp_sequence_number: json["cp_sequence_number"].as_i64().unwrap_or(0),
+                recipient_hex: json["recipient"].as_str().unwrap_or("").to_string(),
+                amount: json["amount"].as_i64().unwrap_or(0),
+                nonce: json["nonce"].as_i64().unwrap_or(0),
+                eth_tx_hash_hex: json["eth_tx_hash"].as_str().unwrap_or("").to_string(),
+                timestamp_ms: json["timestamp_ms"].as_i64().unwrap_or(0),
+            });
+            let _ = channels.new_bridge_deposit.send(event);
         }
         other => {
             warn!("Unknown notification channel: {other}");
@@ -285,6 +346,51 @@ impl Subscription {
                         };
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
+    }
+
+    /// Stream of bridge deposits as they're minted on Soma.
+    ///
+    /// `recipient` is the 32-byte Soma address (`0x`-prefixed, 66 chars).
+    /// If supplied, the stream is filtered server-side to that address only;
+    /// pass `null` / omit to receive every deposit (useful for backend
+    /// dashboards / ops tooling — clients should always filter).
+    async fn new_bridge_deposit(
+        &self,
+        ctx: &Context<'_>,
+        recipient: Option<String>,
+    ) -> impl futures::Stream<Item = BridgeDepositEvent> {
+        let channels = ctx.data_unchecked::<SubscriptionChannels>();
+        let mut rx = channels.new_bridge_deposit.subscribe();
+        // Normalize the filter once so per-event matches are a single string compare.
+        let want =
+            recipient.as_deref().map(|s| s.strip_prefix("0x").unwrap_or(s).to_ascii_lowercase());
+        async_stream::stream! {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => {
+                        if let Some(ref w) = want {
+                            if &event.recipient_hex != w {
+                                continue;
+                            }
+                        }
+                        yield BridgeDepositEvent {
+                            tx_sequence_number: event.tx_sequence_number,
+                            cp_sequence_number: event.cp_sequence_number,
+                            recipient_hex: event.recipient_hex.clone(),
+                            amount: event.amount,
+                            nonce: event.nonce,
+                            eth_tx_hash_hex: event.eth_tx_hash_hex.clone(),
+                            timestamp_ms: event.timestamp_ms,
+                        };
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("newBridgeDeposit subscription lagged, skipped {n} events");
+                        continue;
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
