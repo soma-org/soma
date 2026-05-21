@@ -116,6 +116,7 @@ pub async fn forward_chat_completion(
             body_sha256_hex: &body_sha,
             timestamp_ms: now_ms(),
             request_id: &request_id,
+            model_id: &card.id,
         };
 
         let combined = {

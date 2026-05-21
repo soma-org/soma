@@ -430,7 +430,7 @@ impl Router {
         provider: &ProviderInfo,
         model_id: &str,
     ) -> anyhow::Result<Arc<tokio::sync::Mutex<ChannelSlot>>> {
-        if let Some(id) = self.store.read_pointer(&provider.address).await {
+        if let Some(id) = self.store.read_pointer(&provider.address, model_id).await {
             if let Ok(chan) = self.chain.get(id).await {
                 if chan.close_requested_at_ms().is_none() {
                     if let Some(slot) = self.store.slot(&id).await {
@@ -458,6 +458,7 @@ impl Router {
                                     id,
                                     provider.address,
                                     provider.endpoint.clone(),
+                                    chan.model_id().to_string(),
                                     chan.deposit(),
                                     floor,
                                 )
@@ -469,10 +470,10 @@ impl Router {
             }
         }
         // Cold-start / proxy-restart fallback: the in-memory pointer is
-        // empty, but an OPEN channel for (payer, payee) might still live
-        // on chain (the proxy is stateless on disk). Check the indexer
-        // before paying for a fresh OpenChannel.
-        if let Some(slot) = self.try_rehydrate_from_indexer(provider).await {
+        // empty, but an OPEN channel for (payer, payee, model_id) might
+        // still live on chain (the proxy is stateless on disk). Check
+        // the indexer before paying for a fresh OpenChannel.
+        if let Some(slot) = self.try_rehydrate_from_indexer(provider, model_id).await {
             return Ok(slot);
         }
         // Lazy on-chain open — bind to the requested model_id so the
@@ -504,6 +505,7 @@ impl Router {
                 id,
                 provider.address,
                 provider.endpoint.clone(),
+                chan.model_id().to_string(),
                 chan.deposit(),
                 chan.settled_amount(),
             )
@@ -511,7 +513,7 @@ impl Router {
         Ok(slot)
     }
 
-    /// Look up an existing OPEN channel for (`client_address`, `payee`)
+    /// Look up an existing OPEN channel for (`client_address`, `payee`, `model_id`)
     /// from the indexer and install a slot for it — so a proxy restart
     /// doesn't pay a fresh `OpenChannel` when one already lives on chain.
     /// Returns `None` on any indexer/chain failure or when no usable
@@ -519,18 +521,19 @@ impl Router {
     async fn try_rehydrate_from_indexer(
         &self,
         provider: &ProviderInfo,
+        model_id: &str,
     ) -> Option<Arc<tokio::sync::Mutex<ChannelSlot>>> {
         let indexer_url = self.registry.indexer_url()?;
         let payer_hex = format!("0x{}", hex::encode(self.client_address.to_vec()));
         let payee_hex = format!("0x{}", hex::encode(provider.address.to_vec()));
-        let query = r#"query OpenChans($p: String!, $e: String!) {
-            channels(payer: $p, payee: $e, status: OPEN, first: 5) {
+        let query = r#"query OpenChans($p: String!, $e: String!, $m: String!) {
+            channels(payer: $p, payee: $e, modelId: $m, status: OPEN, first: 5) {
                 edges { node { id } }
             }
         }"#;
         let body = serde_json::json!({
             "query": query,
-            "variables": { "p": payer_hex, "e": payee_hex },
+            "variables": { "p": payer_hex, "e": payee_hex, "m": model_id },
         });
         let resp = self.http.post(indexer_url).json(&body).send().await.ok()?;
         if !resp.status().is_success() {
@@ -548,6 +551,12 @@ impl Router {
             if chan.close_requested_at_ms().is_some() {
                 continue;
             }
+            // Indexer already filtered by `modelId`, but the on-chain
+            // value is the source of truth — assert it matches before
+            // we install a slot bound to it.
+            if chan.model_id() != model_id {
+                continue;
+            }
             // Floor at the chain's `settled_amount`. The provider's
             // running cumulative may be above this between auto-settle
             // ticks (every 5 min), but the next chat after restart
@@ -563,11 +572,15 @@ impl Router {
                     id,
                     provider.address,
                     provider.endpoint.clone(),
+                    chan.model_id().to_string(),
                     chan.deposit(),
                     floor,
                 )
                 .await;
-            tracing::info!(channel = %id, "rehydrated open channel from indexer");
+            tracing::info!(
+                channel = %id, model = %model_id,
+                "rehydrated open channel from indexer"
+            );
             return Some(slot);
         }
         None

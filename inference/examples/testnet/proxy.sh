@@ -14,10 +14,16 @@ echo "→ payer $PAYER"
 echo "→ proxy  http://127.0.0.1:${PROXY_PORT}"
 echo "  Ctrl-C to stop."
 echo
+EXTRA_ARGS=()
+if [ "${INCLUDE_UNTRUSTED:-0}" = "1" ]; then
+  EXTRA_ARGS+=(--include-untrusted)
+fi
+
 exec env RUST_LOG="${RUST_LOG:-inference=info,sdk=info}" \
   "$SOMA" proxy \
     --address "$PAYER" \
     --listen "127.0.0.1:${PROXY_PORT}" \
     --indexer-url "$INDEXER_URL" \
     --soma-home "$PROXY_HOME" \
-    --prewarm-model "$MODEL"
+    --prewarm-model "$MODEL" \
+    "${EXTRA_ARGS[@]}"

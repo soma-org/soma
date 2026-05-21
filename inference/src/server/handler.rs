@@ -105,6 +105,7 @@ async fn run_non_streaming(
                         body_sha256_hex: &prep.body_sha256_hex,
                         timestamp_ms: now_ms(),
                         request_id: &prep.request_id,
+                        model_id: &prep.model_id,
                     };
                     let _ = state
                         .channel
@@ -200,6 +201,7 @@ async fn run_streaming(
                 body_sha256_hex: &prep_for_task.body_sha256_hex,
                 timestamp_ms: now_ms(),
                 request_id: &prep_for_task.request_id,
+                model_id: &prep_for_task.model_id,
             };
             let _ = state_for_task
                 .channel

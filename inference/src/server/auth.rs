@@ -93,6 +93,7 @@ pub async fn auth_middleware(
         body_sha256_hex: &body_sha256_hex,
         timestamp_ms: now_ms(),
         request_id: &request_id,
+        model_id: &chat.model,
     };
 
     let auth_header =
@@ -232,6 +233,15 @@ pub async fn auth_middleware(
                 StatusCode::NOT_FOUND,
                 "channel_unknown",
                 "channel handle unknown",
+            );
+        }
+        Err(ChannelError::ModelMismatch { expected, got }) => {
+            return err_response(
+                StatusCode::BAD_REQUEST,
+                "model_mismatch",
+                &format!(
+                    "channel bound to {expected}; request used {got}. Open a fresh channel for {got}."
+                ),
             );
         }
         Err(ChannelError::BadSignature)

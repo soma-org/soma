@@ -238,7 +238,7 @@ impl ChannelCommand {
                         channels({role_arg}: $a{status_filter}, first: 50) {{
                             edges {{ node {{
                                 id payer payee token deposit settledAmount
-                                status closeRequestedAtMs lastUpdateCp
+                                status closeRequestedAtMs lastUpdateCp modelId
                             }} }}
                         }}
                     }}"#

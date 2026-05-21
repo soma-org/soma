@@ -26,6 +26,10 @@ pub struct RequestMeta<'a> {
     pub body_sha256_hex: &'a str,
     pub timestamp_ms: u64,
     pub request_id: &'a str,
+    /// The OpenAI-format `model` from the request body. The relay
+    /// enforces this against the channel's on-chain `model_id` so the
+    /// `(payer, provider, model_id)` accounting holds end-to-end.
+    pub model_id: &'a str,
 }
 
 /// Per-request usage breakdown reported by an upstream OpenAI-compatible
@@ -78,6 +82,8 @@ pub enum ChannelError {
     PaymentRequired { need_micros: u64 },
     #[error("not found")]
     NotFound,
+    #[error("model mismatch: channel bound to {expected}, request used {got}")]
+    ModelMismatch { expected: String, got: String },
     #[error("internal: {0}")]
     Internal(String),
 }

@@ -22,6 +22,11 @@ pub struct Channel {
     pub opened_at_cp: i64,
     pub opened_tx_digest: Vec<u8>,
     pub last_update_cp: i64,
+    /// On-chain `Channel.model_id`, frozen at `OpenChannel` time from
+    /// the matching offering. Channels are scoped per
+    /// `(payer, payee, model_id)` — the relay rejects requests whose
+    /// payload `model` doesn't match.
+    pub model_id: String,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
@@ -109,5 +114,12 @@ impl Channel {
     /// Most recent checkpoint at which the channel changed.
     async fn last_update_cp(&self) -> BigInt {
         BigInt(self.last_update_cp)
+    }
+
+    /// Canonical `model_id` from the protocol-config `ModelRegistry`
+    /// that this channel was opened for. Channels are per-model — a
+    /// single (payer, payee) pair has one channel per offering.
+    async fn model_id(&self) -> &str {
+        &self.model_id
     }
 }

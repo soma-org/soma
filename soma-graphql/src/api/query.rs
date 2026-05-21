@@ -1096,6 +1096,7 @@ impl Query {
             i64,
             Vec<u8>,
             i64,
+            String,
         );
 
         let row: Option<Row> = soma_channels::table
@@ -1112,6 +1113,7 @@ impl Query {
                 soma_channels::opened_at_cp,
                 soma_channels::opened_tx_digest,
                 soma_channels::last_update_cp,
+                soma_channels::model_id,
             ))
             .filter(soma_channels::channel_id.eq(id_bytes))
             .first(conn.deref_mut())
@@ -1132,13 +1134,16 @@ impl Query {
             opened_at_cp: r.9,
             opened_tx_digest: r.10,
             last_update_cp: r.11,
+            model_id: r.12,
         }))
     }
 
     /// List payment channels filtered by payer and/or payee. At least
     /// one of the two must be supplied — channel listing is otherwise
-    /// unbounded and the indexer doesn't pre-aggregate. Status
-    /// filter narrows further.
+    /// unbounded and the indexer doesn't pre-aggregate. Status and
+    /// `model_id` filters narrow further; `(payer, payee, model_id)`
+    /// uniquely identifies an OPEN channel because each on-chain
+    /// `OpenChannel` snapshots the offering's `model_id`.
     #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn channels(
         &self,
@@ -1146,6 +1151,7 @@ impl Query {
         payer: Option<String>,
         payee: Option<String>,
         status: Option<ChannelStatus>,
+        model_id: Option<String>,
         first: Option<i32>,
         after: Option<String>,
     ) -> Result<Connection<String, GqlChannel>> {
@@ -1173,6 +1179,7 @@ impl Query {
             i64,
             Vec<u8>,
             i64,
+            String,
         );
 
         let mut query = soma_channels::table
@@ -1189,6 +1196,7 @@ impl Query {
                 soma_channels::opened_at_cp,
                 soma_channels::opened_tx_digest,
                 soma_channels::last_update_cp,
+                soma_channels::model_id,
             ))
             .order(soma_channels::last_update_cp.desc())
             .limit(limit + 1)
@@ -1206,6 +1214,9 @@ impl Query {
         }
         if let Some(s) = status {
             query = query.filter(soma_channels::status.eq(s.to_i16()));
+        }
+        if let Some(m) = model_id.as_deref() {
+            query = query.filter(soma_channels::model_id.eq(m.to_string()));
         }
 
         if let Some(after) = after.as_deref() {
@@ -1238,6 +1249,7 @@ impl Query {
                     opened_at_cp: r.9,
                     opened_tx_digest: r.10,
                     last_update_cp: r.11,
+                    model_id: r.12,
                 },
             ));
         }

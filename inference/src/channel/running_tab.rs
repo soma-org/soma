@@ -72,7 +72,6 @@ pub struct TabClientState {
     /// Model id bound to this channel — set at slot install from the
     /// on-chain `Channel.model_id`. The relay rejects requests whose
     /// payload `model` doesn't match.
-    #[serde(default)]
     pub model_id: String,
     /// Cumulative usage breakdown signed alongside `cumulative_authorized_micros`
     /// onto each on-chain voucher. The relay bumps these counters from the
@@ -103,6 +102,7 @@ impl TabClientState {
         channel_id: ObjectID,
         provider_address: SomaAddress,
         provider_endpoint: String,
+        model_id: String,
         deposit_micros: u64,
     ) -> Self {
         Self {
@@ -115,7 +115,7 @@ impl TabClientState {
             realized: HashMap::new(),
             ttft_bound_ms: 0,
             ttot_bound_ms: 0,
-            model_id: String::new(),
+            model_id,
             cumulative_prompt_tokens: 0,
             cumulative_completion_tokens: 0,
             cumulative_cache_read_tokens: 0,
@@ -191,6 +191,12 @@ pub struct TabProviderState {
     pub last_signed_cache_write_tokens: u64,
     #[serde(default)]
     pub last_signed_requests: u64,
+    /// Model id bound to this channel on-chain. Snapshotted from
+    /// `Channel.model_id` at slot install. The relay rejects any
+    /// chat request whose payload `model` differs from this value —
+    /// channels are scoped per `(payer, provider, model_id)` and
+    /// pricing/usage accounting is per-channel.
+    pub model_id: String,
 }
 
 mod onchain_sig_serde {
@@ -248,6 +254,7 @@ impl TabProviderState {
             last_signed_cache_read_tokens: 0,
             last_signed_cache_write_tokens: 0,
             last_signed_requests: 0,
+            model_id: chan.model_id().to_string(),
         }
     }
 }
@@ -412,6 +419,17 @@ impl PaymentChannel for RunningTab {
         }
         if header.channel_id != state.channel_id {
             return Err(ChannelError::NotFound);
+        }
+
+        // Channel is bound on-chain to a single `model_id` (snapshotted
+        // at `OpenChannel` time). Reject requests that target a different
+        // model — they belong on a different channel; reusing this one
+        // would break the per-(payer, payee, model_id) accounting.
+        if meta.model_id != state.model_id {
+            return Err(ChannelError::ModelMismatch {
+                expected: state.model_id.clone(),
+                got: meta.model_id.to_string(),
+            });
         }
 
         // HttpVoucher binding fields must match the actual request.
