@@ -2,6 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
@@ -13,6 +14,19 @@ const CHECKPOINT_MAILBOX_SIZE: usize = 1024;
 const MAILBOX_SIZE: usize = 128;
 const SUBSCRIPTION_CHANNEL_SIZE: usize = 256;
 const MAX_SUBSCRIBERS: usize = 1024;
+/// How many recently-committed checkpoints the service retains so it
+/// can replay them into a freshly-registered subscriber.
+///
+/// Closes the race in `execute_transaction_and_wait_for_checkpoint`
+/// where the client subscribes *after* its tx's checkpoint has already
+/// been broadcast: a subscriber registered now would otherwise see only
+/// *future* checkpoints, hit the 30s timeout, and erroneously conclude
+/// the chain is stuck. Sized to comfortably cover the round-trip
+/// between the client sending `subscribe_checkpoints` and the service
+/// task processing the registration — at `min_checkpoint_interval_ms =
+/// 200` (`protocol-config`), 16 entries ≈ 3.2s of history, well above
+/// the few-ms window we actually need to cover.
+const RECENT_CHECKPOINT_BUFFER_SIZE: usize = 16;
 
 struct SubscriptionRequest {
     sender: oneshot::Sender<mpsc::Receiver<Arc<Checkpoint>>>,
@@ -41,6 +55,12 @@ pub struct SubscriptionService {
     mailbox: mpsc::Receiver<SubscriptionRequest>,
     subscribers: Vec<mpsc::Sender<Arc<Checkpoint>>>,
     last_sequence_number: CheckpointSequenceNumber,
+    /// Ring buffer of the last `RECENT_CHECKPOINT_BUFFER_SIZE` checkpoints
+    /// the service has broadcast. Replayed into freshly-registered
+    /// subscribers so the SDK's `execute_transaction_and_wait_for_checkpoint`
+    /// doesn't miss a checkpoint that landed during the subscribe-then-
+    /// register race window.
+    recent_checkpoints: VecDeque<Arc<Checkpoint>>,
 }
 
 impl SubscriptionService {
@@ -49,8 +69,14 @@ impl SubscriptionService {
         let (subscription_request_sender, mailbox) = mpsc::channel(MAILBOX_SIZE);
 
         tokio::spawn(
-            Self { checkpoint_mailbox, mailbox, subscribers: Vec::new(), last_sequence_number: 0 }
-                .start(),
+            Self {
+                checkpoint_mailbox,
+                mailbox,
+                subscribers: Vec::new(),
+                last_sequence_number: 0,
+                recent_checkpoints: VecDeque::with_capacity(RECENT_CHECKPOINT_BUFFER_SIZE),
+            }
+            .start(),
         );
 
         (checkpoint_sender, SubscriptionServiceHandle { sender: subscription_request_sender })
@@ -102,6 +128,14 @@ impl SubscriptionService {
 
         let checkpoint = Arc::new(checkpoint);
 
+        // Buffer the checkpoint for replay to late-registering subscribers.
+        // Eviction is oldest-first so the buffer always holds the most
+        // recent `RECENT_CHECKPOINT_BUFFER_SIZE` checkpoints in order.
+        if self.recent_checkpoints.len() == RECENT_CHECKPOINT_BUFFER_SIZE {
+            self.recent_checkpoints.pop_front();
+        }
+        self.recent_checkpoints.push_back(Arc::clone(&checkpoint));
+
         // Try to send the latest checkpoint to all subscribers. If a subscriber's channel is full
         // then they are likely too slow so we drop them.
         self.subscribers.retain(|subscriber| {
@@ -131,6 +165,22 @@ impl SubscriptionService {
         }
 
         let (sender, reciever) = mpsc::channel(SUBSCRIPTION_CHANNEL_SIZE);
+
+        // Replay the recent-checkpoint buffer into the new subscriber's
+        // queue *before* handing back the receiver, so the subscriber's
+        // stream begins with any checkpoint that landed during the race
+        // window between `subscribe_checkpoints` being sent and the
+        // request reaching this task. `SUBSCRIPTION_CHANNEL_SIZE` is
+        // comfortably larger than `RECENT_CHECKPOINT_BUFFER_SIZE`, so
+        // `try_send` only fails if the receiver is already closed — in
+        // which case we skip registration entirely.
+        for cp in self.recent_checkpoints.iter() {
+            if let Err(e) = sender.try_send(Arc::clone(cp)) {
+                trace!("dropping new subscriber during replay: {e}");
+                return;
+            }
+        }
+
         match request.sender.send(reciever) {
             Ok(()) => {
                 trace!("successfully registered new subscriber");

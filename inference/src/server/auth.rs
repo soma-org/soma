@@ -135,7 +135,32 @@ pub async fn auth_middleware(
     let slot = match state.ledger.slot(&channel_id).await {
         Some(s) => s,
         None => {
-            let chan = match state.chain.get(channel_id).await {
+            // Retry briefly on `NotFound` for the *first* lookup.
+            // A freshly-opened channel is finalized by quorum on the
+            // payer's side before any voucher ships, but the certified
+            // checkpoint can take a couple of seconds to propagate via
+            // state-sync to this fullnode. Without the retry, the very
+            // first chat after `chain.open` races the propagation and
+            // fails with `channel_unknown` — exactly the case the
+            // proxy's no-wait open optimization makes likely.
+            //
+            // Bounded retries (≤6 × 500 ms = ~3 s, total deadline 5 s)
+            // — longer than the typical propagation gap, much shorter
+            // than the user-visible request-timeout. Genuinely-missing
+            // channels pay the same delay before erroring; this is
+            // acceptable for the unauthenticated-first-lookup path.
+            const NOT_FOUND_RETRIES: u32 = 6;
+            const NOT_FOUND_RETRY_DELAY: std::time::Duration =
+                std::time::Duration::from_millis(500);
+            let mut chan_result = state.chain.get(channel_id).await;
+            for _ in 0..NOT_FOUND_RETRIES {
+                if !matches!(chan_result, Err(crate::chain::ChainError::NotFound)) {
+                    break;
+                }
+                tokio::time::sleep(NOT_FOUND_RETRY_DELAY).await;
+                chan_result = state.chain.get(channel_id).await;
+            }
+            let chan = match chan_result {
                 Ok(c) => c,
                 Err(_) => {
                     return err_response(
@@ -169,11 +194,15 @@ pub async fn auth_middleware(
 
     let guard = slot.lock_owned().await;
     let mut slot_inner = guard;
-    let result =
-        state.channel.pre_flight(&mut slot_inner.state, &somapay_str, &meta, worst_case).await;
+    let result = state
+        .channel
+        .pre_flight(&mut slot_inner.state, &somapay_str, &onchain_sig, &meta, worst_case)
+        .await;
     match result {
         Ok(()) => {
-            // Stash the latest on-chain sig — used at settle time.
+            // Stash the latest on-chain sig — used at settle time. By
+            // this point `pre_flight` has already verified it against
+            // the embedded voucher, so settle will verify by construction.
             slot_inner.state.last_onchain_sig = Some(onchain_sig);
             if let Err(e) = state.ledger.persist(&mut slot_inner).await {
                 return err_response(

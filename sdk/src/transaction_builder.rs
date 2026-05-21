@@ -2,10 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Result;
 use fastcrypto::encoding::Encoding as _;
+use rand::Rng as _;
 use types::base::SomaAddress;
 use types::digests::{ChainIdentifier, CheckpointDigest};
 use types::transaction::{Transaction, TransactionData, TransactionExpiration, TransactionKind};
@@ -15,7 +17,17 @@ use crate::wallet_context::WalletContext;
 /// Per-process nonce so two builds for the same `kind`+`sender`
 /// during the same epoch still produce distinct tx digests. Doesn't
 /// affect protocol semantics — only the tx digest cache cares.
-static STATELESS_NONCE: AtomicU32 = AtomicU32::new(0);
+///
+/// Seeded randomly on first use so two *separate* processes building
+/// the same kind+sender+epoch don't collide: a fresh `AtomicU32::new(0)`
+/// would otherwise hand out nonce=0 on every restart, replay-binding
+/// the new tx to whatever previous process opened a matching one
+/// (a daemon restart re-issuing `OpenChannel` against the same payee
+/// with the same params would silently land on the prior channel ID).
+fn stateless_nonce() -> &'static AtomicU32 {
+    static STATELESS_NONCE: OnceLock<AtomicU32> = OnceLock::new();
+    STATELESS_NONCE.get_or_init(|| AtomicU32::new(rand::thread_rng().r#gen()))
+}
 
 /// A builder for constructing and optionally executing transactions.
 ///
@@ -149,7 +161,7 @@ impl<'a> TransactionBuilder<'a> {
             .and_then(|e| e.epoch)
             .ok_or_else(|| anyhow::anyhow!("epoch not found in get_epoch response"))?;
 
-        let nonce = STATELESS_NONCE.fetch_add(1, Ordering::Relaxed);
+        let nonce = stateless_nonce().fetch_add(1, Ordering::Relaxed);
 
         Ok(TransactionExpiration::ValidDuring {
             min_epoch: Some(current_epoch),

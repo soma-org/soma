@@ -5,11 +5,12 @@ set -euo pipefail
 . "$(dirname "$0")/config.sh"
 
 PROMPT="${*:-hello}"
-PAYLOAD="$(MODEL="$MODEL" PROMPT="$PROMPT" python3 -c 'import os,json
+MAX_TOKENS="${MAX_TOKENS:-2048}"
+PAYLOAD="$(MODEL="$MODEL" PROMPT="$PROMPT" MAX_TOKENS="$MAX_TOKENS" python3 -c 'import os,json
 print(json.dumps({
   "model": os.environ["MODEL"],
   "messages": [{"role": "user", "content": os.environ["PROMPT"]}],
-  "max_tokens": 256,
+  "max_tokens": int(os.environ["MAX_TOKENS"]),
   "stream": True,
 }))')"
 

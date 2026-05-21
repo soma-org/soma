@@ -98,6 +98,7 @@ pub trait PaymentChannel: Send + Sync + 'static {
         &self,
         state: &mut Self::ProviderState,
         header_value: &str,
+        onchain_sig: &GenericSignature,
         meta: &RequestMeta<'_>,
         worst_case_cost_micros: u64,
     ) -> Result<(), ChannelError>;

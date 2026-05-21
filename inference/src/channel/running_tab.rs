@@ -337,44 +337,44 @@ impl PaymentChannel for RunningTab {
         }
         let expires_ms = now_ms() + self.auth_validity_secs * 1000;
 
-        // 3. Build the HttpVoucher and sign it (HTTP-bound layer).
+        // 3. Build the on-chain Voucher (cumulative_amount + per-channel
+        //    usage breakdown). The HttpVoucher will embed this verbatim
+        //    so the provider stores exactly what we sign — no separate
+        //    re-derivation that has to byte-match our view across every
+        //    edge case (multiple SSE `usage` events, missed reconciles,
+        //    upstream parsing differences). This makes the price/token
+        //    oracle on chain trustworthy without making settle correctness
+        //    depend on byte-perfect agreement on counters.
+        let voucher = Voucher::new(
+            state.channel_id,
+            new_cum,
+            state.cumulative_prompt_tokens,
+            state.cumulative_completion_tokens,
+            state.cumulative_cache_read_tokens,
+            state.cumulative_cache_write_tokens,
+            state.cumulative_requests,
+        );
+
+        // 4. Sign the on-chain Voucher. The provider will pair this with
+        //    the embedded voucher at settle time; the chain verifies sig
+        //    against the embedded voucher and that's it.
+        let onchain_sig = sdk::channel::sign_voucher(&ctx.config.keystore, signer, &voucher)
+            .await
+            .map_err(|e| ChannelError::Internal(format!("sign_voucher: {e}")))?;
+
+        // 5. Build the HttpVoucher embedding the on-chain voucher, sign it
+        //    for the HTTP layer. The HTTP sig additionally binds the
+        //    per-request HTTP context (body/method/path/expiry) so the
+        //    provider can't replay this signature against a different
+        //    request.
         let body_sha256 = Self::body_sha256_from_hex(meta.body_sha256_hex)?;
         let request_id_sha = Self::request_id_sha(meta.request_id);
         let method_path_sha = Self::method_path_sha(meta.method, meta.path);
-        let http_voucher = HttpVoucher::new(
-            state.channel_id,
-            new_cum,
-            expires_ms,
-            body_sha256,
-            request_id_sha,
-            method_path_sha,
-        );
+        let http_voucher =
+            HttpVoucher::new(voucher, expires_ms, body_sha256, request_id_sha, method_path_sha);
         let http_sig = sdk::channel::sign_http_voucher(&ctx.config.keystore, signer, &http_voucher)
             .await
             .map_err(|e| ChannelError::Internal(format!("sign_http_voucher: {e}")))?;
-
-        // 4. Sign the on-chain Voucher pair (cumulative + per-channel usage
-        //    breakdown). The provider stores this for `Settle`. The usage
-        //    fields are the running cumulative totals that `reconcile` has
-        //    been accumulating from upstream `usage` blocks — the on-chain
-        //    voucher therefore reflects realized token volume exactly, which
-        //    lets the indexer materialize per-channel token deltas in
-        //    `soma_channel_events`.
-        let onchain_sig = sdk::channel::sign_voucher(
-            &ctx.config.keystore,
-            signer,
-            state.channel_id,
-            new_cum,
-            sdk::channel::VoucherUsage {
-                prompt_tokens: state.cumulative_prompt_tokens,
-                completion_tokens: state.cumulative_completion_tokens,
-                cache_read_tokens: state.cumulative_cache_read_tokens,
-                cache_write_tokens: state.cumulative_cache_write_tokens,
-                requests: state.cumulative_requests,
-            },
-        )
-        .await
-        .map_err(|e| ChannelError::Internal(format!("sign_voucher: {e}")))?;
 
         // 5. Commit local state.
         state.cumulative_authorized_micros = new_cum;
@@ -398,6 +398,7 @@ impl PaymentChannel for RunningTab {
         &self,
         state: &mut Self::ProviderState,
         header_value: &str,
+        onchain_sig: &GenericSignature,
         meta: &RequestMeta<'_>,
         worst_case_cost_micros: u64,
     ) -> Result<(), ChannelError> {
@@ -426,17 +427,25 @@ impl PaymentChannel for RunningTab {
             return Err(ChannelError::BadSignature);
         }
 
-        // Signature: build a synthetic Channel just for verification.
-        // Only `authorized_signer` is read by `verify_http_voucher`.
+        // Signature pair: both HTTP-layer and on-chain layer signatures
+        // must verify against the channel's `authorized_signer` at
+        // receive time. The on-chain sig verifies against the embedded
+        // `Voucher` — the same bytes we'll submit at settle — so if it
+        // verifies here, settle is guaranteed to verify too. Fail-fast
+        // catches a corrupted/tampered/wrong-key voucher at the first
+        // request, not hours later at shutdown.
         let channel = synthetic_channel(state.authorized_signer);
         sdk::channel::verify_http_voucher(&channel, &header.http_voucher, &header.http_sig)
+            .map_err(|_| ChannelError::BadSignature)?;
+        sdk::channel::verify_voucher(&channel, *header.http_voucher.voucher(), onchain_sig)
             .map_err(|_| ChannelError::BadSignature)?;
 
         // Monotonic: same request id may re-present same cum;
         // otherwise must strictly increase.
+        let voucher = header.http_voucher.voucher();
         let same_request =
             state.last_request_id.as_deref().map(|r| r == meta.request_id).unwrap_or(false);
-        let cum = header.http_voucher.cumulative_amount();
+        let cum = voucher.cumulative_amount();
         if cum < state.cumulative_authorized_micros {
             return Err(ChannelError::NonMonotonic);
         }
@@ -453,20 +462,19 @@ impl PaymentChannel for RunningTab {
             return Err(ChannelError::PaymentRequired { need_micros: need });
         }
 
-        // Snapshot the client's signing-time values for this request.
-        // The client signs the on-chain voucher AT AUTH TIME (before its
-        // own `reconcile` runs), so the signature is over
-        // `(channel_id, cum, state.cumulative_*_tokens BEFORE post_flight)`.
-        // At this point in `pre_flight`, the provider's own counters
-        // mirror the client's signing-time values (post_flight for this
-        // request hasn't fired yet). Cache them for `final_settlement`
-        // to rebuild the exact voucher the chain will verify.
+        // Copy the voucher's fields verbatim into `last_signed_*`. The
+        // payer signed *these exact bytes*, so reusing them at settle
+        // means the chain verifies by construction. Old design re-derived
+        // them from the provider's own usage tracking, which had to
+        // byte-match the payer's view across every edge case (multiple
+        // SSE `usage` events, missed reconciles, parsing differences) —
+        // any drift silently broke settle hours later.
         state.last_signed_cumulative_amount = cum;
-        state.last_signed_prompt_tokens = state.cumulative_prompt_tokens;
-        state.last_signed_completion_tokens = state.cumulative_completion_tokens;
-        state.last_signed_cache_read_tokens = state.cumulative_cache_read_tokens;
-        state.last_signed_cache_write_tokens = state.cumulative_cache_write_tokens;
-        state.last_signed_requests = state.cumulative_requests;
+        state.last_signed_prompt_tokens = voucher.cumulative_prompt_tokens();
+        state.last_signed_completion_tokens = voucher.cumulative_completion_tokens();
+        state.last_signed_cache_read_tokens = voucher.cumulative_cache_read_tokens();
+        state.last_signed_cache_write_tokens = voucher.cumulative_cache_write_tokens();
+        state.last_signed_requests = voucher.cumulative_requests();
 
         state.cumulative_authorized_micros = cum;
         state.last_request_id = Some(meta.request_id.to_string());

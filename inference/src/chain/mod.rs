@@ -47,13 +47,19 @@ pub trait ChannelSurface: Send + Sync + 'static {
     /// Open a new channel with `payee` as the provider's address,
     /// bound to the given `model_id`. The chain executor snapshots
     /// the provider's offering for that model into the channel.
+    ///
+    /// Returns the new channel's `ObjectID` plus the parsed `Channel`
+    /// object when the underlying implementation surfaces it (chain-
+    /// backed impls pull it from the OpenChannel tx's output objects,
+    /// avoiding a separate `get` round-trip). Callers can fall back to
+    /// [`Self::get`] when the channel is `None`.
     async fn open(
         &self,
         payee: SomaAddress,
         coin_type: CoinType,
         deposit_amount: u64,
         model_id: String,
-    ) -> Result<ObjectID, ChainError>;
+    ) -> Result<(ObjectID, Option<Channel>), ChainError>;
 
     /// Look up the on-chain `Channel` object by id.
     async fn get(&self, id: ObjectID) -> Result<Channel, ChainError>;

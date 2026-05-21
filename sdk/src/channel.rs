@@ -28,24 +28,11 @@ use types::transaction::{
     Transaction, TransactionKind, WithdrawAfterTimeoutArgs,
 };
 
-/// Cumulative usage breakdown signed alongside a voucher. Mirrors the
-/// fields on `types::channel::VoucherV1` so callers can name them once.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct VoucherUsage {
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub cache_write_tokens: u64,
-    pub requests: u64,
-}
-
 use crate::transaction_builder::TransactionBuilder;
 use crate::wallet_context::WalletContext;
 
-/// Sign a voucher authorizing `cumulative_amount` (with the
-/// accompanying `usage` breakdown) on `channel_id`, returning the
-/// canonical wire form (`GenericSignature`) ready to embed in a
-/// `SettleArgs`.
+/// Sign an on-chain [`Voucher`], returning the canonical wire form
+/// (`GenericSignature`) ready to embed in a `SettleArgs`.
 ///
 /// `signer` must be the channel's `authorized_signer` (typically the
 /// payer's address, or a hot-key delegate).
@@ -56,36 +43,25 @@ use crate::wallet_context::WalletContext;
 pub async fn sign_voucher<K: AccountKeystore>(
     keystore: &K,
     signer: &SomaAddress,
-    channel_id: ObjectID,
-    cumulative_amount: u64,
-    usage: VoucherUsage,
+    voucher: &Voucher,
 ) -> anyhow::Result<GenericSignature> {
-    let voucher = Voucher::new(
-        channel_id,
-        cumulative_amount,
-        usage.prompt_tokens,
-        usage.completion_tokens,
-        usage.cache_read_tokens,
-        usage.cache_write_tokens,
-        usage.requests,
-    );
     let sig: Signature = keystore
-        .sign_secure::<Voucher>(signer, &voucher, Intent::soma_app(IntentScope::PaymentVoucher))
+        .sign_secure::<Voucher>(signer, voucher, Intent::soma_app(IntentScope::PaymentVoucher))
         .await
         .map_err(|e| anyhow::anyhow!("voucher signing failed: {}", e))?;
     Ok(sig.into())
 }
 
-/// Back-compat helper for callers that only care about `cumulative_amount`
-/// — signs a voucher with all usage fields zero. Suitable for tests and
-/// for clients that haven't yet adopted the per-model usage breakdown.
+/// Convenience wrapper for callers that only care about
+/// `cumulative_amount` — signs a voucher with all usage fields zero.
+/// Useful for tests and tooling.
 pub async fn sign_voucher_amount_only<K: AccountKeystore>(
     keystore: &K,
     signer: &SomaAddress,
     channel_id: ObjectID,
     cumulative_amount: u64,
 ) -> anyhow::Result<GenericSignature> {
-    sign_voucher(keystore, signer, channel_id, cumulative_amount, VoucherUsage::default()).await
+    sign_voucher(keystore, signer, &Voucher::new_amount_only(channel_id, cumulative_amount)).await
 }
 
 /// Verify a voucher's signature against the channel's
@@ -186,6 +162,42 @@ pub async fn open_channel(
     let tx_digest = *tx.digest();
     ctx.execute_transaction_require_success(tx).await?;
     Ok(predicted_channel_id(tx_digest))
+}
+
+/// Open a new on-chain channel, waiting only for finality (effects), NOT
+/// for checkpoint inclusion. Returns the predicted channel id plus the
+/// new `Channel` object parsed straight from the tx's output objects —
+/// so the caller doesn't pay a separate `get_object` round-trip after
+/// open. Returns `None` for the channel if the response didn't include
+/// the new object (defensive — the executor always emits it).
+///
+/// Skips the up-to-30s `wait_for_checkpoint` window. The right choice
+/// when the caller only needs the channel's deposit / settled_amount to
+/// install a local slot — not read-your-writes against the indexer.
+pub async fn open_channel_no_wait(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    payee: SomaAddress,
+    authorized_signer: SomaAddress,
+    coin_type: CoinType,
+    deposit_amount: u64,
+    model_id: String,
+) -> anyhow::Result<(ObjectID, Option<Channel>)> {
+    let kind = TransactionKind::OpenChannel(OpenChannelArgs {
+        payee,
+        authorized_signer,
+        token: coin_type,
+        deposit_amount,
+        model_id,
+    });
+    let tx = build_signed(ctx, sender, kind).await?;
+    let tx_digest = *tx.digest();
+    let id = predicted_channel_id(tx_digest);
+    let response = ctx.execute_transaction_finality_only_require_success(tx).await?;
+    // Pull the new Channel object out of output_objects so the caller
+    // doesn't have to round-trip through `get_object`.
+    let channel = response.objects.iter().filter(|o| o.id() == id).find_map(|o| o.as_channel());
+    Ok((id, channel))
 }
 
 /// Settle on-chain: provider-side. Submits the latest voucher

@@ -259,10 +259,14 @@ impl Voucher {
 /// commits to the per-request HTTP context so an adversarial provider
 /// can't replay the signature against a different request.
 ///
-/// The on-chain executor never sees `HttpVoucher` — it's purely a
-/// transport-layer authorization. When the provider settles on-chain,
-/// it builds an ordinary `Voucher` with the same `(channel_id,
-/// cumulative_amount)` and uses that signature instead.
+/// Composition: the [`HttpVoucher`] *embeds* the on-chain [`Voucher`]
+/// the payer signed (full cumulative + usage breakdown), so the provider
+/// stores exactly the bytes the payer signed — no independent re-derivation
+/// of usage counters that has to byte-match the payer's view across every
+/// edge case (multiple SSE `usage` events, missed reconciles, upstream
+/// parsing differences, etc.). The chain still verifies the on-chain sig
+/// over the embedded [`Voucher`] alone; the HTTP sig adds the per-request
+/// HTTP bindings on top.
 ///
 /// Versioned via the enum tag — see the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -273,8 +277,10 @@ pub enum HttpVoucher {
 /// V1 layout of [`HttpVoucher`].
 ///
 /// Field rationale:
-///   - `channel_id` + `cumulative_amount`: matches `Voucher`, so a
-///     payer signing both layers commits to the same monetary intent.
+///   - `voucher`: the full on-chain [`Voucher`] the payer signed
+///     (cumulative_amount + usage breakdown). The provider stores this
+///     verbatim and submits it at settle time, so the chain's voucher
+///     sig verification matches by construction.
 ///   - `expires_ms`: per-request expiry so a provider can't sit on a
 ///     signature indefinitely.
 ///   - `body_sha256`: binds to the request body so the request body
@@ -286,8 +292,7 @@ pub enum HttpVoucher {
 ///     signer so the on-the-wire struct stays fixed-size).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct HttpVoucherV1 {
-    pub channel_id: ObjectID,
-    pub cumulative_amount: u64,
+    pub voucher: Voucher,
     pub expires_ms: TimestampMs,
     pub body_sha256: [u8; 32],
     pub request_id_sha256: [u8; 32],
@@ -296,16 +301,14 @@ pub struct HttpVoucherV1 {
 
 impl HttpVoucher {
     pub const fn new(
-        channel_id: ObjectID,
-        cumulative_amount: u64,
+        voucher: Voucher,
         expires_ms: TimestampMs,
         body_sha256: [u8; 32],
         request_id_sha256: [u8; 32],
         method_path_sha256: [u8; 32],
     ) -> Self {
         Self::V1(HttpVoucherV1 {
-            channel_id,
-            cumulative_amount,
+            voucher,
             expires_ms,
             body_sha256,
             request_id_sha256,
@@ -316,8 +319,7 @@ impl HttpVoucher {
     /// Convenience constructor that hashes the per-request strings so
     /// callers don't need to import sha2 directly.
     pub fn from_request(
-        channel_id: ObjectID,
-        cumulative_amount: u64,
+        voucher: Voucher,
         expires_ms: TimestampMs,
         body_bytes: &[u8],
         request_id: &str,
@@ -332,33 +334,24 @@ impl HttpVoucher {
         h.update(b"\n");
         h.update(path.as_bytes());
         let method_path_sha256: [u8; 32] = h.finalize().into();
-        Self::new(
-            channel_id,
-            cumulative_amount,
-            expires_ms,
-            body_sha256,
-            request_id_sha256,
-            method_path_sha256,
-        )
+        Self::new(voucher, expires_ms, body_sha256, request_id_sha256, method_path_sha256)
     }
 
-    /// Project this HTTP voucher down to its on-chain `Voucher`
-    /// equivalent — the same `(channel_id, cumulative_amount)` pair
-    /// the provider would settle with on the chain.
-    pub fn to_voucher(&self) -> Voucher {
-        Voucher::new_amount_only(self.channel_id(), self.cumulative_amount())
+    /// The embedded on-chain [`Voucher`] — the exact bytes a settle
+    /// will submit. Provider callers should store these fields verbatim
+    /// rather than recomputing them from local observation.
+    pub fn voucher(&self) -> &Voucher {
+        match self {
+            Self::V1(v) => &v.voucher,
+        }
     }
 
     pub fn channel_id(&self) -> ObjectID {
-        match self {
-            Self::V1(v) => v.channel_id,
-        }
+        self.voucher().channel_id()
     }
 
     pub fn cumulative_amount(&self) -> u64 {
-        match self {
-            Self::V1(v) => v.cumulative_amount,
-        }
+        self.voucher().cumulative_amount()
     }
 
     pub fn expires_ms(&self) -> TimestampMs {
@@ -711,9 +704,10 @@ mod tests {
     /// `voucher_bcs_round_trip`.
     #[test]
     fn http_voucher_bcs_round_trip() {
+        let chan = ObjectID::random();
+        let voucher = Voucher::new(chan, 42, 11, 7, 0, 0, 1);
         let v = HttpVoucher::from_request(
-            ObjectID::random(),
-            42,
+            voucher,
             1_700_000_000_000,
             b"body bytes",
             "request-id-abc",
@@ -726,6 +720,10 @@ mod tests {
         assert_eq!(decoded, v);
         assert_eq!(decoded.cumulative_amount(), 42);
         assert_eq!(decoded.expires_ms(), 1_700_000_000_000);
+        // The embedded voucher carries the full usage breakdown verbatim.
+        assert_eq!(decoded.voucher().cumulative_prompt_tokens(), 11);
+        assert_eq!(decoded.voucher().cumulative_completion_tokens(), 7);
+        assert_eq!(decoded.voucher().cumulative_requests(), 1);
     }
 
     /// Object<->Channel helpers: type, ownership, contents survive

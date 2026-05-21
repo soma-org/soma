@@ -95,12 +95,11 @@ impl RunningSession {
     ) -> GenericSignature {
         let new_cum = sdk_channel::next_cumulative(self.cumulative, amount)
             .expect("voucher bump must not overflow");
-        let sig = sdk_channel::sign_voucher(
+        let sig = sdk_channel::sign_voucher_amount_only(
             &test_cluster.wallet.config.keystore,
             &self.payer,
             self.channel_id,
             new_cum,
-            sdk_channel::VoucherUsage::default(),
         )
         .await
         .expect("voucher signing succeeds");
@@ -529,12 +528,11 @@ async fn channel_typed_error_sweep() {
     // 2. Stale voucher (cumulative <= settled) → ChannelVoucherNotMonotonic.
     {
         // Build a stale voucher manually (cumulative < settled_amount).
-        let stale_sig = sdk_channel::sign_voucher(
+        let stale_sig = sdk_channel::sign_voucher_amount_only(
             &test_cluster.wallet.config.keystore,
             &payer,
             channel_id,
             500, // less than the 1_000 we just settled
-            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -545,12 +543,11 @@ async fn channel_typed_error_sweep() {
     // 3. Overspend → ChannelOverspend (cumulative > deposit + settled).
     {
         let huge = 999_999_999;
-        let huge_sig = sdk_channel::sign_voucher(
+        let huge_sig = sdk_channel::sign_voucher_amount_only(
             &test_cluster.wallet.config.keystore,
             &payer,
             channel_id,
             huge,
-            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -562,12 +559,11 @@ async fn channel_typed_error_sweep() {
     //    ChannelInvalidVoucherSignature.
     {
         // Sign with the third party's key — wrong signer.
-        let bad_sig = sdk_channel::sign_voucher(
+        let bad_sig = sdk_channel::sign_voucher_amount_only(
             &test_cluster.wallet.config.keystore,
             &third_party,
             channel_id,
             session.cumulative + 1_000,
-            sdk_channel::VoucherUsage::default(),
         )
         .await
         .unwrap();
@@ -705,12 +701,11 @@ async fn settle_credits_payee_immediately_no_close_needed() {
     let payee_before = read_usdc(&test_cluster, payee);
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
 
-    let sig = sdk_channel::sign_voucher(
+    let sig = sdk_channel::sign_voucher_amount_only(
         &test_cluster.wallet.config.keystore,
         &payer,
         channel_id,
         25_000,
-        sdk_channel::VoucherUsage::default(),
     )
     .await
     .unwrap();

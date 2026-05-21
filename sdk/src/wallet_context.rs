@@ -383,6 +383,35 @@ impl WalletContext {
             .map_err(|e| anyhow::anyhow!("Transaction execution failed: {}", e))
     }
 
+    /// Submit a transaction and wait only for finality (effects), NOT for
+    /// checkpoint inclusion. Returns an `Err` if the RPC failed or the
+    /// effects status is not success.
+    ///
+    /// Use this when the caller doesn't need read-your-writes against the
+    /// indexer — only that the tx is finalized by the quorum driver. Skips
+    /// the up-to-30s wait for the fullnode to receive the certified
+    /// checkpoint via state-sync.
+    ///
+    /// Returns the executed response (effects + balance_changes + objects);
+    /// new objects from this tx are included in `objects` so callers can
+    /// avoid a separate `get_object` round-trip.
+    pub async fn execute_transaction_finality_only_require_success(
+        &self,
+        tx: Transaction,
+    ) -> anyhow::Result<rpc::api::client::TransactionExecutionResponse> {
+        let mut client = self.get_client().await?;
+        let response = client
+            .execute_transaction(&tx)
+            .await
+            .map_err(|e| anyhow::anyhow!("Transaction execution failed: {}", e))?;
+        anyhow::ensure!(
+            response.effects.status().is_ok(),
+            "transaction failed: {:?}",
+            response.effects.status()
+        );
+        Ok(response)
+    }
+
     /// Get one address managed by the wallet (for testing)
     pub fn get_one_address(&self) -> Option<SomaAddress> {
         self.get_addresses().first().copied()

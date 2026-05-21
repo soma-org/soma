@@ -478,7 +478,13 @@ impl Router {
         // Lazy on-chain open — bind to the requested model_id so the
         // chain executor snapshots the provider's offering for this
         // model onto the new channel.
-        let id = self
+        //
+        // `chain.open` waits only for finality and returns the new
+        // Channel parsed from the tx's output objects, so no extra
+        // round-trip is needed. We only fall back to `chain.get` when
+        // the underlying impl doesn't surface the object (in-memory
+        // tests).
+        let (id, channel) = self
             .chain
             .open(
                 provider.address,
@@ -488,7 +494,10 @@ impl Router {
             )
             .await
             .context("open_channel")?;
-        let chan = self.chain.get(id).await.context("get_channel after open")?;
+        let chan = match channel {
+            Some(c) => c,
+            None => self.chain.get(id).await.context("get_channel after open")?,
+        };
         let slot = self
             .store
             .install_slot(

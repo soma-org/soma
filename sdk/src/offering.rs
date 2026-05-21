@@ -110,6 +110,50 @@ pub async fn register_or_update(
     }
 }
 
+/// Same as [`register_or_update`] but waits only for finality (effects),
+/// not for checkpoint inclusion. The right choice on a provider's boot
+/// path — the on-chain offering is best-effort, no downstream caller in
+/// the boot sequence reads it back, and the heartbeat re-stamps the
+/// provider record later. Skips the up-to-30s `wait_for_checkpoint`
+/// window.
+pub async fn register_or_update_no_wait(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    model_id: String,
+    p: OfferingPrices,
+) -> anyhow::Result<()> {
+    let kind = if get(ctx, sender, &model_id).await?.is_some() {
+        let offering_id = Offering::derive_id(sender, &model_id);
+        TransactionKind::UpdateOffering(UpdateOfferingArgs {
+            offering_id,
+            model_id,
+            prompt_micros_per_1k: p.prompt_micros_per_1k,
+            completion_micros_per_1k: p.completion_micros_per_1k,
+            cache_read_micros_per_1k: p.cache_read_micros_per_1k,
+            cache_write_micros_per_1k: p.cache_write_micros_per_1k,
+            request_micros: p.request_micros,
+            ttft_bound_ms: p.ttft_bound_ms,
+            ttot_bound_ms: p.ttot_bound_ms,
+        })
+    } else {
+        TransactionKind::RegisterOffering(RegisterOfferingArgs {
+            model_id,
+            prompt_micros_per_1k: p.prompt_micros_per_1k,
+            completion_micros_per_1k: p.completion_micros_per_1k,
+            cache_read_micros_per_1k: p.cache_read_micros_per_1k,
+            cache_write_micros_per_1k: p.cache_write_micros_per_1k,
+            request_micros: p.request_micros,
+            ttft_bound_ms: p.ttft_bound_ms,
+            ttot_bound_ms: p.ttot_bound_ms,
+        })
+    };
+    let tx = crate::transaction_builder::TransactionBuilder::new(ctx)
+        .build_transaction_async(sender, kind)
+        .await?;
+    ctx.execute_transaction_finality_only_require_success(tx).await?;
+    Ok(())
+}
+
 /// Submit a `DeactivateOffering` tx. Flips `active=false` on the row;
 /// the row stays on chain for audit. Channels opened against an
 /// inactive offering are rejected with `ChannelOfferingMissing`.

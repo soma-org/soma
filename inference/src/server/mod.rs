@@ -55,36 +55,47 @@ pub async fn run(
     let channel = Arc::new(RunningTab::for_provider(cfg.auth.clock_skew_tolerance_secs));
     let ledger = ledger::Ledger::new(soma_home);
 
-    // On-chain registry. Lands the Provider object or updates the
-    // advertised endpoint. Liveness is purely an off-chain concern
-    // (the proxy probes `endpoint` directly), so this runs once at
-    // boot and only re-runs if the operator restarts the server.
-    // Failure is logged but not fatal — the proxy can still discover
-    // the provider on the next refresh once the local node is up.
-    if let Err(e) =
-        sdk::provider::register_or_update(&wallet, address, cfg.server.public_endpoint.clone())
-            .await
-    {
-        tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
-    }
-
-    // On-chain offerings. Each `[[offerings]]` block in the provider TOML
-    // is registered (or updated) on chain, so the operator declares its
-    // pricing in exactly one place — the same card that drives the served
-    // `/v1/models` catalog. Prices convert to on-chain micros via
-    // `pricing::offering_prices_from_card`. Best-effort, like the provider
-    // registration above: a transient failure is logged, not fatal.
-    for card in &cfg.offerings {
-        let prices = crate::pricing::offering_prices_from_card(card);
-        match sdk::offering::register_or_update(&wallet, address, card.id.clone(), prices).await {
-            Ok(()) => tracing::info!(model_id = %card.id, "offering registered on-chain"),
-            Err(e) => tracing::warn!(
-                model_id = %card.id,
-                err = %e,
-                "on-chain offering register/update failed (continuing)",
-            ),
+    // On-chain registry + offerings, in parallel. Both go through the
+    // finality-only path (no `wait_for_checkpoint`) — the boot sequence
+    // has no read-after-write dependency on the indexer here, the
+    // heartbeat re-stamps the provider record later, and the proxy
+    // picks up offerings on its own discovery refresh cadence. Each
+    // call independently logs a warning on failure; one bad offering
+    // doesn't sink the others.
+    let provider_fut = {
+        let wallet = wallet.clone();
+        let endpoint = cfg.server.public_endpoint.clone();
+        async move {
+            if let Err(e) =
+                sdk::provider::register_or_update_no_wait(&wallet, address, endpoint).await
+            {
+                tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
+            }
         }
-    }
+    };
+    let offering_futs = cfg.offerings.iter().map(|card| {
+        let wallet = wallet.clone();
+        let model_id = card.id.clone();
+        let prices = crate::pricing::offering_prices_from_card(card);
+        async move {
+            match sdk::offering::register_or_update_no_wait(
+                &wallet,
+                address,
+                model_id.clone(),
+                prices,
+            )
+            .await
+            {
+                Ok(()) => tracing::info!(model_id = %model_id, "offering registered on-chain"),
+                Err(e) => tracing::warn!(
+                    model_id = %model_id,
+                    err = %e,
+                    "on-chain offering register/update failed (continuing)",
+                ),
+            }
+        }
+    });
+    let _ = futures::future::join(provider_fut, futures::future::join_all(offering_futs)).await;
 
     // Heartbeat. Periodically re-submits `UpdateProvider` so the
     // on-chain `Provider.registered_at_ms` keeps advancing while the
@@ -159,7 +170,12 @@ fn spawn_heartbeat(
         ticker.tick().await;
         loop {
             ticker.tick().await;
-            match sdk::provider::register_or_update(&wallet, address, endpoint.clone()).await {
+            // Finality-only — like boot, the heartbeat has no read-
+            // after-write dependency on the indexer and shouldn't be
+            // paying the up-to-30s checkpoint-inclusion wait.
+            match sdk::provider::register_or_update_no_wait(&wallet, address, endpoint.clone())
+                .await
+            {
                 Ok(()) => tracing::debug!("provider heartbeat sent"),
                 Err(e) => tracing::warn!(err = %e, "provider heartbeat failed (will retry)"),
             }
@@ -334,7 +350,7 @@ mod tests {
             _coin_type: CoinType,
             _deposit_amount: u64,
             _model_id: String,
-        ) -> Result<ObjectID, ChainError> {
+        ) -> Result<(ObjectID, Option<Channel>), ChainError> {
             unimplemented!()
         }
         async fn get(&self, _id: ObjectID) -> Result<Channel, ChainError> {

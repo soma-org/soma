@@ -91,8 +91,15 @@ pub const ONCHAIN_SIG_HEADER: &str = "x-soma-onchain-sig";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::types::channel::HttpVoucher;
+    use ::types::channel::{HttpVoucher, Voucher};
     use ::types::object::ObjectID;
+
+    fn bogus_sig() -> GenericSignature {
+        // 1-byte flag (0 == ED25519) + 64 zero bytes + 32 zero pk = 97 bytes.
+        let mut sig_bytes = vec![0u8; 97];
+        sig_bytes[0] = 0;
+        GenericSignature::from_bytes(&sig_bytes).expect("ed25519 sig parses")
+    }
 
     #[test]
     fn round_trip_parse_format() {
@@ -102,26 +109,18 @@ mod tests {
         // channel_ids.
         let id_a = ObjectID::random();
         let id_b = ObjectID::random();
-        let hv = HttpVoucher::from_request(id_a, 100, 0, b"", "rid", "POST", "/v1/x");
-        // Bogus 65-byte Ed25519 sig: 1-byte flag (0 == ED25519) + 64 zero bytes + 32 zero pk = 97 bytes.
-        let mut sig_bytes = vec![0u8; 97];
-        sig_bytes[0] = 0; // ED25519 flag
-        let http_sig = GenericSignature::from_bytes(&sig_bytes).expect("ed25519 sig parses");
-        let h = SomaPayHeader { channel_id: id_a, http_voucher: hv, http_sig };
+        let v_a = Voucher::new(id_a, 100, 0, 0, 0, 0, 0);
+        let hv = HttpVoucher::from_request(v_a, 0, b"", "rid", "POST", "/v1/x");
+        let h = SomaPayHeader { channel_id: id_a, http_voucher: hv, http_sig: bogus_sig() };
         let s = h.format();
         let parsed = SomaPayHeader::parse(&s).expect("round-trips");
         assert_eq!(parsed.channel_id, id_a);
         assert_eq!(parsed.http_voucher.cumulative_amount(), 100);
 
         // Channel-id mismatch must be rejected.
-        let hv_b = HttpVoucher::from_request(id_b, 100, 0, b"", "rid", "POST", "/v1/x");
-        let mut sig_bytes2 = vec![0u8; 97];
-        sig_bytes2[0] = 0;
-        let bad = SomaPayHeader {
-            channel_id: id_a,
-            http_voucher: hv_b,
-            http_sig: GenericSignature::from_bytes(&sig_bytes2).unwrap(),
-        };
+        let v_b = Voucher::new(id_b, 100, 0, 0, 0, 0, 0);
+        let hv_b = HttpVoucher::from_request(v_b, 0, b"", "rid", "POST", "/v1/x");
+        let bad = SomaPayHeader { channel_id: id_a, http_voucher: hv_b, http_sig: bogus_sig() };
         let s = bad.format();
         assert!(SomaPayHeader::parse(&s).is_err());
     }

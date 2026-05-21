@@ -169,7 +169,21 @@ impl Client {
 
         let request = proto::ExecuteTransactionRequest::new(proto_transaction)
             .with_signatures(signatures)
-            .with_read_mask(FieldMask::from_paths(["effects", "balance_changes", "objects"]));
+            // `objects.objects` (not just `objects`): the response's
+            // `ExecutedTransaction.objects` is an `ObjectSet` whose inner
+            // array of `Object` lives at the nested `objects.objects`
+            // path. Asking only for `objects` matches the wrapper field
+            // but not its contents — the service's
+            // `read_mask.subtree("objects.objects")` returns `None` and
+            // the response carries an empty set. Callers that read
+            // output objects (e.g. `sdk::channel::open_channel_no_wait`
+            // pulling the new Channel out of the tx response) need the
+            // nested path to actually get the data.
+            .with_read_mask(FieldMask::from_paths([
+                "effects",
+                "balance_changes",
+                "objects.objects",
+            ]));
 
         let (metadata, response, _extentions) =
             self.0.execution_client().execute_transaction(request).await?.into_parts();
@@ -197,7 +211,21 @@ impl Client {
 
         let request = proto::ExecuteTransactionRequest::new(proto_transaction)
             .with_signatures(signatures)
-            .with_read_mask(FieldMask::from_paths(["effects", "balance_changes", "objects"]));
+            // `objects.objects` (not just `objects`): the response's
+            // `ExecutedTransaction.objects` is an `ObjectSet` whose inner
+            // array of `Object` lives at the nested `objects.objects`
+            // path. Asking only for `objects` matches the wrapper field
+            // but not its contents — the service's
+            // `read_mask.subtree("objects.objects")` returns `None` and
+            // the response carries an empty set. Callers that read
+            // output objects (e.g. `sdk::channel::open_channel_no_wait`
+            // pulling the new Channel out of the tx response) need the
+            // nested path to actually get the data.
+            .with_read_mask(FieldMask::from_paths([
+                "effects",
+                "balance_changes",
+                "objects.objects",
+            ]));
 
         let execute_and_wait_response = self
             .0

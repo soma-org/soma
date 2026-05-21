@@ -41,8 +41,13 @@ impl ChannelSurface for ChainChannelSurface {
         coin_type: CoinType,
         deposit_amount: u64,
         model_id: String,
-    ) -> Result<ObjectID, ChainError> {
-        sdk::channel::open_channel(
+    ) -> Result<(ObjectID, Option<Channel>), ChainError> {
+        // Use the finality-only variant — the proxy doesn't need
+        // checkpoint inclusion to start using the channel (deposit /
+        // settled_amount come straight from the tx's output objects).
+        // Avoids the up-to-30s `wait_for_checkpoint` window that would
+        // otherwise dominate first-channel latency.
+        sdk::channel::open_channel_no_wait(
             &self.ctx,
             self.signer,
             payee,

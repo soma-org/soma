@@ -89,6 +89,29 @@ pub async fn register_or_update(
     }
 }
 
+/// Same as [`register_or_update`] but waits only for finality (effects),
+/// not for checkpoint inclusion. The right choice on a provider's boot
+/// path — the on-chain registration is best-effort, no downstream caller
+/// in the boot sequence reads it back, and the heartbeat re-stamps it
+/// later anyway. Skips the up-to-30s `wait_for_checkpoint` window.
+pub async fn register_or_update_no_wait(
+    ctx: &WalletContext,
+    sender: SomaAddress,
+    endpoint: String,
+) -> anyhow::Result<()> {
+    let kind = if get(ctx, sender).await?.is_some() {
+        TransactionKind::UpdateProvider(UpdateProviderArgs {
+            provider_id: Provider::derive_id(sender),
+            endpoint,
+        })
+    } else {
+        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint })
+    };
+    let tx = build_signed(ctx, sender, kind).await?;
+    ctx.execute_transaction_finality_only_require_success(tx).await?;
+    Ok(())
+}
+
 /// Convenience wrapper holding the wallet context + sender so callers
 /// (server boot, CLI, tests) don't have to thread them through every
 /// call.

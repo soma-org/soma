@@ -193,6 +193,15 @@ pub async fn forward_chat_completion(
             tokio::spawn(async move {
                 let mut buf: Vec<u8> = Vec::new();
                 let mut first_byte_ms: Option<u64> = None;
+                // Latest usage block seen on this stream — OpenAI-compatible
+                // backends (incl. Anthropic via OpenRouter) often emit
+                // *cumulative* usage in every `message_delta` event, not
+                // a per-chunk delta, so summing them per event would
+                // multi-count. Mirror the provider's `found_usage = Some(u)`
+                // pattern: keep the most recent value, reconcile once
+                // when the stream ends.
+                let mut latest_usage: Option<crate::openai::Usage> = None;
+                let mut last_byte_ms: u64 = now_ms();
                 while let Some(item) = s.next().await {
                     let bytes = match item {
                         Ok(b) => b,
@@ -206,6 +215,7 @@ pub async fn forward_chat_completion(
                     if first_byte_ms.is_none() {
                         first_byte_ms = Some(now_ms());
                     }
+                    last_byte_ms = now_ms();
                     if tx.send(Ok(bytes.clone())).await.is_err() {
                         return;
                     }
@@ -214,63 +224,69 @@ pub async fn forward_chat_completion(
                         let block: Vec<u8> = buf.drain(..pos + 2).collect();
                         let block_s = String::from_utf8_lossy(&block);
                         if let Some(u) = extract_usage_from_chunk(&block_s) {
-                            let actual = realized_for_usage(&card, &u);
-                            let usage = RequestUsage::from_openai(&u);
-                            reconcile(&channel, &slot, &rid, actual, usage).await;
-
-                            // Compute TTFT / TTOT and compare against
-                            // the channel's snapshotted SLA bounds.
-                            let last_byte_ms = now_ms();
-                            let ttft_ms =
-                                first_byte_ms.map(|fb| fb.saturating_sub(t0)).unwrap_or(0);
-                            let completion_tokens = u.completion_tokens as u64;
-                            let ttot_ms = if completion_tokens > 0 {
-                                let stream_ms =
-                                    last_byte_ms.saturating_sub(first_byte_ms.unwrap_or(t0));
-                                stream_ms / completion_tokens
-                            } else {
-                                0
-                            };
-                            // Channel-bound SLA: a non-zero bound + a
-                            // measured breach → emit a negative
-                            // `RateChannel(TtftBreach|TtotBreach)` on chain.
-                            // Rate-limit to at most one breach rating per
-                            // channel per epoch so a degraded provider
-                            // doesn't generate per-request tx fan-out;
-                            // the indexer aggregates over epochs anyway.
-                            let g = slot.lock().await;
-                            let ttft_bound = g.state.ttft_bound_ms;
-                            let ttot_bound = g.state.ttot_bound_ms;
-                            let last_emit_epoch = g.state.last_breach_emitted_at_epoch;
-                            drop(g);
-                            let ttft_breach = ttft_bound > 0 && ttft_ms > ttft_bound as u64;
-                            let ttot_breach = ttot_bound > 0 && ttot_ms > ttot_bound as u64;
-                            if ttft_breach || ttot_breach {
-                                let reason = if ttft_breach {
-                                    RatingReasonCode::TtftBreach
-                                } else {
-                                    RatingReasonCode::TtotBreach
-                                };
-                                tracing::warn!(
-                                    request_id = %rid,
-                                    ttft_ms,
-                                    ttot_ms,
-                                    ttft_bound,
-                                    ttot_bound,
-                                    ?reason,
-                                    "SLA breach"
-                                );
-                                emit_breach_rating(
-                                    &wallet,
-                                    signer,
-                                    channel_id,
-                                    reason,
-                                    &slot,
-                                    last_emit_epoch,
-                                )
-                                .await;
-                            }
+                            latest_usage = Some(u);
                         }
+                    }
+                }
+                // Drain any tail bytes that didn't end on a `\n\n`
+                // boundary — the upstream sometimes terminates the
+                // final `data:` line without a trailing double-newline.
+                if !buf.is_empty() {
+                    let s = String::from_utf8_lossy(&buf);
+                    if let Some(u) = extract_usage_from_chunk(&s) {
+                        latest_usage = Some(u);
+                    }
+                }
+
+                // Reconcile + SLA check exactly once per request, using
+                // the last cumulative-usage report from the stream.
+                if let Some(u) = latest_usage {
+                    let actual = realized_for_usage(&card, &u);
+                    let usage = RequestUsage::from_openai(&u);
+                    reconcile(&channel, &slot, &rid, actual, usage).await;
+
+                    // TTFT / TTOT against the channel's snapshotted SLA
+                    // bounds. Same rate-limit + breach-rating shape as
+                    // before, just lifted out of the per-chunk loop.
+                    let ttft_ms = first_byte_ms.map(|fb| fb.saturating_sub(t0)).unwrap_or(0);
+                    let completion_tokens = u.completion_tokens as u64;
+                    let ttot_ms = if completion_tokens > 0 {
+                        let stream_ms = last_byte_ms.saturating_sub(first_byte_ms.unwrap_or(t0));
+                        stream_ms / completion_tokens
+                    } else {
+                        0
+                    };
+                    let g = slot.lock().await;
+                    let ttft_bound = g.state.ttft_bound_ms;
+                    let ttot_bound = g.state.ttot_bound_ms;
+                    let last_emit_epoch = g.state.last_breach_emitted_at_epoch;
+                    drop(g);
+                    let ttft_breach = ttft_bound > 0 && ttft_ms > ttft_bound as u64;
+                    let ttot_breach = ttot_bound > 0 && ttot_ms > ttot_bound as u64;
+                    if ttft_breach || ttot_breach {
+                        let reason = if ttft_breach {
+                            RatingReasonCode::TtftBreach
+                        } else {
+                            RatingReasonCode::TtotBreach
+                        };
+                        tracing::warn!(
+                            request_id = %rid,
+                            ttft_ms,
+                            ttot_ms,
+                            ttft_bound,
+                            ttot_bound,
+                            ?reason,
+                            "SLA breach"
+                        );
+                        emit_breach_rating(
+                            &wallet,
+                            signer,
+                            channel_id,
+                            reason,
+                            &slot,
+                            last_emit_epoch,
+                        )
+                        .await;
                     }
                 }
             });
