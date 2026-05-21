@@ -383,3 +383,126 @@ async fn channel_snapshots_offering_at_open() {
     assert_eq!(o.prompt_micros_per_1k(), prompt_y);
     assert_eq!(o.completion_micros_per_1k(), completion_y);
 }
+
+/// Regression for the version-poisoning chain-halt DoS: a failed
+/// `OpenChannel` that declared the payee's `ProviderInbox` as a mutable
+/// shared input bumps the inbox's `next_version` without materializing
+/// the object, then a subsequent `OpenChannel` for the same payee gets
+/// the bumped (non-initial) version. Previously the input loader
+/// `panic!`d on this combination (`transaction_input_loader.rs:226`)
+/// and every validator replayed the panic on boot → cluster
+/// `CrashLoopBackOff`. The fix surfaces the missing-object case as
+/// `NotYetCreated` regardless of the assigned version when the object
+/// has never been materialized on chain, so the second OpenChannel
+/// executes cleanly and the inbox is lazy-created at the bumped
+/// version.
+#[tokio::test]
+async fn open_channel_after_failed_open_for_same_payee_does_not_panic() {
+    init_tracing();
+    let test_cluster = TestClusterBuilder::new().build().await;
+    let payer = test_cluster.wallet.get_addresses()[0];
+    let payee = test_cluster.wallet.get_addresses()[1];
+
+    // 1. Register a valid offering for (payee, VALID_MODEL) so the
+    // second open below has something to snapshot.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        payee,
+        TransactionKind::RegisterOffering(RegisterOfferingArgs {
+            model_id: VALID_MODEL.to_string(),
+            prompt_micros_per_1k: 3_000,
+            completion_micros_per_1k: 15_000,
+            cache_read_micros_per_1k: 300,
+            cache_write_micros_per_1k: 3_000,
+            request_micros: 0,
+            ttft_bound_ms: 1_500,
+            ttot_bound_ms: 50,
+        }),
+    );
+    let r = test_cluster
+        .wallet
+        .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
+        .await
+        .expect("register submits");
+    assert!(r.effects.status().is_ok(), "register offering must succeed");
+
+    // 2. First OpenChannel against `payee` that FAILS at the executor
+    // (self-payee — `payer == payee` is rejected). This still goes
+    // through consensus, so the scheduler bumps the payee's
+    // ProviderInbox `next_version` even though the executor aborts
+    // without materializing the inbox object.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        payee,
+        TransactionKind::OpenChannel(OpenChannelArgs {
+            payee, // self-payee → executor rejects
+            authorized_signer: payee,
+            token: types::object::CoinType::Usdc,
+            deposit_amount: 50_000,
+            model_id: VALID_MODEL.to_string(),
+        }),
+    );
+    let r = test_cluster
+        .wallet
+        .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
+        .await
+        .expect("failed-open submits cleanly");
+    assert!(
+        !r.effects.status().is_ok(),
+        "self-payee OpenChannel must fail at the executor (this is the trigger that bumps next_version)"
+    );
+
+    // 3. Second OpenChannel for the SAME payee from a different payer.
+    // The scheduler hands this tx the bumped, non-initial version for
+    // `ProviderInbox(payee)`. Before the fix this would `panic!` in
+    // `read_objects_for_execution` because the object didn't exist
+    // at the bumped version AND the `version == initial` escape
+    // hatch didn't fire. After the fix the input loader detects
+    // "object never existed at any version" and surfaces
+    // `NotYetCreated(bumped_version)`, the executor lazy-creates the
+    // inbox at the lamport-incremented version, the channel opens
+    // normally, and no validator panics.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        payer,
+        TransactionKind::OpenChannel(OpenChannelArgs {
+            payee,
+            authorized_signer: payer,
+            token: types::object::CoinType::Usdc,
+            deposit_amount: 100_000,
+            model_id: VALID_MODEL.to_string(),
+        }),
+    );
+    let r = test_cluster
+        .wallet
+        .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
+        .await
+        .expect("second open submits cleanly (no validator panic)");
+    assert!(
+        r.effects.status().is_ok(),
+        "second OpenChannel must succeed against a poisoned ProviderInbox version: status={:?}",
+        r.effects.status()
+    );
+
+    // 4. Chain liveness check: a third tx after the poison-then-recover
+    // sequence must still land — proves validators kept producing
+    // checkpoints (i.e. they did not all crash on the second
+    // OpenChannel and recover only via restart).
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        payee,
+        TransactionKind::DeactivateOffering(DeactivateOfferingArgs {
+            offering_id: Offering::derive_id(payee, VALID_MODEL),
+            model_id: VALID_MODEL.to_string(),
+        }),
+    );
+    let r = test_cluster
+        .wallet
+        .execute_transaction_may_fail(test_cluster.wallet.sign_transaction(&tx_data).await)
+        .await
+        .expect("post-recovery tx lands");
+    assert!(
+        r.effects.status().is_ok(),
+        "chain must still advance after the poison-recovery sequence"
+    );
+}

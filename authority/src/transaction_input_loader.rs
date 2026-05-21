@@ -212,22 +212,52 @@ impl TransactionInputLoader {
                             input_object_kind: *input,
                             object: ObjectReadResultKind::DeletedSharedObject(version, dependency),
                         }
-                    } else if version == *initial_shared_version {
-                        // Lazy-create pattern: the scheduler assigned the declared
-                        // initial_shared_version because no prior tx had ever materialized
-                        // this shared id. Pass NotYetCreated through to the executor — for
-                        // ProviderInbox the executor creates it on write; for Offering reads
-                        // (OpenChannel) the executor rejects with ChannelOfferingMissing.
+                    } else {
+                        // Lazy-create pattern: the object has never been materialized at
+                        // this version and was not consensus-deleted. Surface as
+                        // `NotYetCreated` so the executor sees `None` and handles the
+                        // absent case directly (`ProviderInbox`: create on write;
+                        // `Offering`: fail `OpenChannel` with `ChannelOfferingMissing`).
+                        //
+                        // Previously this branch panicked when `version >
+                        // initial_shared_version`, on the assumption that a non-initial
+                        // assigned version implied the object must already exist. That
+                        // assumption is wrong: a *failed* tx that declared this id as a
+                        // mutable shared input still bumps `next_version` in the
+                        // scheduler without materializing the object. Any subsequent tx
+                        // for the same shared id then receives the bumped, non-initial
+                        // version and tripped the panic deterministically on every
+                        // validator → cluster-wide `CrashLoopBackOff`.
+                        //
+                        // The QA repro is two `OpenChannel`s for the same payee: a
+                        // self-payee (or no-offering / zero-deposit) `OpenChannel` first
+                        // — fails at the executor but bumps the payee's `ProviderInbox`
+                        // `next_version` — followed by any second `OpenChannel` for the
+                        // same payee. Without this fix it is a trivial, unprivileged,
+                        // remote chain-halt DoS reachable with two cheap transactions
+                        // from any address.
+                        //
+                        // Always treating the missing-at-assigned-version case as
+                        // `NotYetCreated` keeps the executor's behavior deterministic
+                        // (same code path on every validator regardless of cache
+                        // timing); for non-lazy-create shared inputs the executor still
+                        // surfaces a clean execution failure rather than a chain-halt
+                        // panic.
+                        //
+                        // We carry the declared `initial_shared_version` (not the
+                        // bumped `version`) so that downstream consumers — notably
+                        // `InputObjects::lamport_timestamp` and the input-equality
+                        // checks that re-derive `NotYetCreated` from the certificate's
+                        // declared shared inputs in `assign_versions_from_effects` —
+                        // observe the same value on every validator. Using the
+                        // scheduler's bumped version here would diverge from those
+                        // re-derivation sites (which only know the declared initial
+                        // version), producing different lamport timestamps → different
+                        // effects digests → a fork.
                         ObjectReadResult {
                             input_object_kind: *input,
                             object: ObjectReadResultKind::NotYetCreated(*initial_shared_version),
                         }
-                    } else {
-                        panic!(
-                            "All dependencies of tx {tx_key:?} should have been executed now, but Shared Object id: {:?}, version: {:?} is absent in epoch {epoch_id}",
-                            input.full_object_id(),
-                            version
-                        );
                     }
                 }
                 (Some(obj), input_object_kind) => {
