@@ -111,11 +111,21 @@ impl EthSubmitter {
             "submitting Eth-side withdrawal release tx"
         );
 
-        let pending = self
-            .provider
-            .send_transaction(tx)
-            .await
-            .map_err(|e| BridgeError::ProviderError(format!("send_transaction: {e}")))?;
+        let pending = self.provider.send_transaction(tx).await.map_err(|e| {
+            // Recognize the SomaBridge "already processed" revert and
+            // surface it as a typed error so `outbound_relayer` can
+            // mark the WAL entry complete instead of looping forever.
+            // The revert reason string is part of the EVM revert payload
+            // (Error(string) ABI) and alloy includes it verbatim in the
+            // RPC error message; see `SomaBridge.sol::transferBridgedTokens
+            // WithSignatures` for the exact require string.
+            let msg = e.to_string();
+            if msg.contains("Withdrawal nonce already processed") {
+                BridgeError::NonceAlreadyProcessed(withdrawal.nonce)
+            } else {
+                BridgeError::ProviderError(format!("send_transaction: {msg}"))
+            }
+        })?;
         let tx_hash = *pending.tx_hash();
         info!(?tx_hash, "release tx broadcasted");
         Ok(tx_hash)

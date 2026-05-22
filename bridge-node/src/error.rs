@@ -36,7 +36,14 @@ pub enum BridgeError {
     #[error("Bridge is paused")]
     BridgePaused,
 
-    #[error("Deposit nonce {0} already processed")]
+    /// The Eth-side `SomaBridge` contract reports this nonce as already
+    /// processed (the `isMessageProcessed[nonce]` mapping is `true`).
+    /// Surfaced when an outbound withdrawal release tx reverts because
+    /// a peer bridge-node already submitted the same nonce, or this node
+    /// previously submitted and crashed before persisting the WAL
+    /// idempotency entry. Callers should treat this as terminal-success
+    /// for the nonce and `mark_relayed` to stop further retries.
+    #[error("Nonce {0} already processed on Eth")]
     NonceAlreadyProcessed(u64),
 
     // --- gRPC / network errors ---

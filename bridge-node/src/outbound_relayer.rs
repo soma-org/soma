@@ -295,6 +295,15 @@ impl<C: SomaBridgeClientInner + 'static> OutboundRelayer<C> {
                 Ok(None) => {
                     debug!(nonce = outbound.nonce, "submitter returned None; skipping");
                 }
+                Err(BridgeError::NonceAlreadyProcessed(n)) => {
+                    // Terminal success from our POV: a peer node already
+                    // landed the release on Eth, or we did and crashed
+                    // before persisting the idempotency entry. Either
+                    // way the chain state is final; mark the WAL so
+                    // restarts and subsequent ticks skip this nonce.
+                    info!(nonce = n, "Eth side reports nonce already processed; marking relayed");
+                    self.tracker.mark_relayed(n);
+                }
                 Err(e) => {
                     warn!(
                         nonce = outbound.nonce,
@@ -488,6 +497,61 @@ mod tests {
         assert!(!tracker.is_relayed(3));
         relayer.scan_once().await.unwrap();
         assert!(tracker.is_relayed(3));
+    }
+
+    /// `NonceAlreadyProcessed` from the submitter means the Eth side
+    /// already finalized this nonce — a peer landed it or we did and
+    /// crashed before persisting. The relayer must treat it as
+    /// terminal-success: mark the WAL so subsequent scans (and
+    /// restarts) skip the nonce. Without this branch the relayer
+    /// loops forever burning gas on `isMessageProcessed` reverts.
+    #[tokio::test]
+    async fn nonce_already_processed_marks_relayed() {
+        let client = build_client_with_withdrawals(vec![pw(11, true)]);
+        let tracker = Arc::new(InMemoryRelayedTracker::new());
+
+        struct AlreadyProcessedSubmitter;
+        #[async_trait::async_trait]
+        impl WithdrawalSubmitter for AlreadyProcessedSubmitter {
+            async fn submit(
+                &self,
+                w: &OutboundWithdrawal,
+            ) -> BridgeResult<Option<alloy::primitives::TxHash>> {
+                Err(BridgeError::NonceAlreadyProcessed(w.nonce))
+            }
+        }
+
+        let relayer = OutboundRelayer::new(
+            client,
+            Arc::new(AlreadyProcessedSubmitter),
+            tracker.clone(),
+            Duration::from_millis(10),
+            5,
+        );
+        relayer.scan_once().await.unwrap();
+        assert!(tracker.is_relayed(11), "nonce must be marked relayed on NonceAlreadyProcessed");
+
+        // Second scan with a (would-be) panicking submitter — the WAL
+        // entry from the first scan must keep us from re-submitting.
+        struct PanickingSubmitter;
+        #[async_trait::async_trait]
+        impl WithdrawalSubmitter for PanickingSubmitter {
+            async fn submit(
+                &self,
+                _: &OutboundWithdrawal,
+            ) -> BridgeResult<Option<alloy::primitives::TxHash>> {
+                panic!("submitter must not be called for already-relayed nonce");
+            }
+        }
+        let client = build_client_with_withdrawals(vec![pw(11, true)]);
+        let relayer2 = OutboundRelayer::new(
+            client,
+            Arc::new(PanickingSubmitter),
+            tracker.clone(),
+            Duration::from_millis(10),
+            5,
+        );
+        relayer2.scan_once().await.unwrap();
     }
 
     /// `Ok(None)` from the submitter (intentional skip) leaves the
