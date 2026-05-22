@@ -175,9 +175,15 @@ async fn test_balance_transfer_self_recipient_rejected() {
     );
 }
 
-/// Underfunded BalanceTransfer is dropped by the reservation pre-pass
-/// (Stage 6d). Reaches neither execution nor settlement. The recipient
-/// must see no balance change.
+/// Underfunded BalanceTransfer is rejected — fast.
+///
+/// F7/F23: the tx must NOT reach neither execution nor settlement, and
+/// the submitter must NOT be left waiting out the finality timeout.
+/// The best-effort funds check in early validation rejects it before
+/// consensus with a non-retriable `InsufficientBalance` error; the
+/// consensus reservation pre-pass remains the deterministic net for
+/// the concurrent / cumulative case. Either way the recipient must see
+/// no balance change.
 #[cfg(msim)]
 #[msim::sim_test]
 async fn test_balance_transfer_underfunded_dropped_by_prepass() {
@@ -220,14 +226,30 @@ async fn test_balance_transfer_underfunded_dropped_by_prepass() {
     .await;
 
     match result {
+        // Acceptable: the tx finalized as a failed effect.
         Ok(Ok(response)) => {
             assert!(
                 !response.effects.status().is_ok(),
                 "underfunded BalanceTransfer must NOT succeed",
             );
         }
-        Ok(Err(e)) => info!("underfunded tx rejected at submission: {:#}", e),
-        Err(_) => info!("underfunded tx dropped by pre-pass (timeout)"),
+        // Expected: early validation rejects the underfunded tx fast,
+        // before consensus, with a clear insufficient-balance reason.
+        Ok(Err(e)) => {
+            let msg = format!("{e:#}").to_lowercase();
+            assert!(
+                msg.contains("insufficient") && msg.contains("balance"),
+                "expected an insufficient-balance rejection, got: {e:#}",
+            );
+            info!("underfunded tx rejected fast at submission: {e:#}");
+        }
+        // F23 regression: a pre-pass-dropped tx that produces no
+        // observable outcome leaves the client waiting out the full
+        // finality window.
+        Err(_) => panic!(
+            "underfunded tx must be rejected fast — it instead timed out \
+             waiting for finality (F23 regression)",
+        ),
     }
 
     // Critical: the recipient must NOT have been credited — Settlement
@@ -238,5 +260,76 @@ async fn test_balance_transfer_underfunded_dropped_by_prepass() {
         read_usdc(&test_cluster, recipient),
         0,
         "recipient must not be credited by an underfunded transfer",
+    );
+}
+
+/// F22: `simulate_transaction` must model the consensus reservation
+/// pre-pass. The balance-transfer executor has no funds check of its
+/// own — sufficiency is enforced only by the pre-pass, which simulation
+/// bypasses. Without modelling it, simulating an unspendable transfer
+/// wrongly reports "Would Succeed". This verifies an over-balance
+/// transfer simulates as a failure while an affordable one still
+/// simulates as success.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_simulate_over_balance_transfer_reports_failure() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+
+    let sender = test_cluster.get_addresses()[0];
+    let recipient = SomaAddress::random();
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
+
+    let balance = read_usdc(&test_cluster, sender);
+    assert!(balance > 0, "sender must start with USDC");
+
+    let make_tx = |amount: u64, nonce: u32| {
+        TransactionData::new_with_expiration(
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: CoinType::Usdc,
+                transfers: vec![(recipient, amount)],
+            }),
+            sender,
+            Vec::new(),
+            TransactionExpiration::ValidDuring {
+                min_epoch: Some(0),
+                max_epoch: Some(1),
+                chain,
+                nonce,
+            },
+        )
+    };
+
+    // Over-balance transfer: simulation must report a failure.
+    let over_tx = make_tx(balance.saturating_add(1_000_000_000), 0);
+    let over_result = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .simulate_transaction(over_tx, types::transaction_executor::TransactionChecks::Enabled)
+            .expect("simulation itself must not error")
+    });
+    assert!(
+        over_result.execution_result.is_err(),
+        "simulating an over-balance transfer must report failure, got: {:?}",
+        over_result.execution_result,
+    );
+    assert!(
+        !over_result.effects.status().is_ok(),
+        "over-balance simulation effects must carry a failure status",
+    );
+    info!("over-balance simulation correctly failed: {:?}", over_result.execution_result);
+
+    // Control: a small, affordable transfer still simulates as success.
+    let ok_tx = make_tx(1_000, 1);
+    let ok_result = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .simulate_transaction(ok_tx, types::transaction_executor::TransactionChecks::Enabled)
+            .expect("simulation itself must not error")
+    });
+    assert!(
+        ok_result.execution_result.is_ok(),
+        "an affordable transfer must still simulate as success, got: {:?}",
+        ok_result.execution_result,
     );
 }

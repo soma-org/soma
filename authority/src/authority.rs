@@ -40,8 +40,8 @@ use types::digests::{
     TransactionEffectsDigest,
 };
 use types::effects::{
-    InputSharedObject, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
-    VerifiedSignedTransactionEffects,
+    ExecutionFailureStatus, InputSharedObject, SignedTransactionEffects, TransactionEffects,
+    TransactionEffectsAPI, VerifiedSignedTransactionEffects,
 };
 use types::envelope::Message;
 use types::error::{ExecutionError, ExecutionResult, SomaError, SomaResult};
@@ -542,6 +542,45 @@ impl AuthorityState {
         Ok(())
     }
 
+    /// Best-effort funds check for balance-mode transactions.
+    ///
+    /// Sums the transaction's declared `WithdrawalReservation`s and
+    /// compares them against the sender's current accumulator balance,
+    /// so the client can fail fast with a clear
+    /// [`SomaError::InsufficientBalance`] instead of waiting out the
+    /// finality timeout while the consensus reservation pre-pass
+    /// silently drops the transaction.
+    ///
+    /// This is a *best-effort* check against local state — the
+    /// authoritative, deterministic funds gate remains the consensus
+    /// pre-pass (`run_reservation_prepass`), which is the only thing
+    /// that can resolve the concurrent / cumulative case where two
+    /// individually-affordable txs from one sender share a commit.
+    /// Coin-mode and system transactions declare no reservations and
+    /// pass through untouched.
+    fn check_balance_reservations(
+        &self,
+        epoch_store: &AuthorityPerEpochStore,
+        tx_data: &TransactionData,
+    ) -> SomaResult<()> {
+        let unit_fee = epoch_store.epoch_start_state().fee_parameters().unit_fee;
+        let reservations = tx_data.reservations(unit_fee);
+        if reservations.is_empty() {
+            return Ok(());
+        }
+        let cache_reader = self.get_object_cache_reader();
+        let decisions =
+            types::balance::check_reservations(&[reservations.as_slice()], |owner, coin_type| {
+                cache_reader.get_balance(owner, coin_type)
+            });
+        if let Some(types::balance::ReservationDecision::Drop { reason }) =
+            decisions.into_iter().next()
+        {
+            return Err(reason.into());
+        }
+        Ok(())
+    }
+
     /// Used for early client validation check for transactions before submission to server.
     /// Performs the same validation checks as handle_vote_transaction without acquiring locks.
     /// This allows for fast failure feedback to clients for non-retriable errors.
@@ -587,6 +626,12 @@ impl AuthorityState {
                 }
             }
         }
+
+        // Best-effort funds check: fail an underfunded balance-mode tx
+        // fast here (non-retriable), rather than letting the client
+        // wait out the finality timeout while the consensus
+        // reservation pre-pass silently drops it.
+        self.check_balance_reservations(epoch_store, transaction.data().transaction_data())?;
 
         Ok(())
     }
@@ -1156,12 +1201,24 @@ impl AuthorityState {
             &receiving_objects,
         )?;
 
+        // F22: simulation must model the consensus reservation
+        // pre-pass. An over-balance balance-mode tx would be dropped
+        // on-chain, so surface it here as a predetermined execution
+        // failure instead of executing it and reporting "Would
+        // Succeed" (the executor itself has no balance check — funds
+        // sufficiency is enforced only by the pre-pass).
+        let reservation_error: Option<ExecutionFailureStatus> = self
+            .check_balance_reservations(&epoch_store, &transaction)
+            .err()
+            .map(ExecutionFailureStatus::from);
+
         let (kind, signer, gas_payment) = transaction.execution_parts();
         let early_execution_error = get_early_execution_error(
             &transaction.digest(),
             &checked_input_objects,
             self.config.certificate_deny_config.certificate_deny_set(),
-        );
+        )
+        .or(reservation_error);
         let execution_params = match early_execution_error {
             Some(error) => ExecutionOrEarlyError::Err(error),
             None => ExecutionOrEarlyError::Ok(()),

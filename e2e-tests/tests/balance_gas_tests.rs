@@ -231,13 +231,11 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
     )
     .await;
 
-    // Three acceptable outcomes:
-    //   1. Validators drop the tx pre-consensus (most likely): the
-    //      reservation pre-pass filters it out, no effects produced.
-    //      Surfaces as a timeout or RPC error from the wallet.
-    //   2. Tx reaches execution and fails non-success there.
-    //   3. Tx fails at submission validation.
-    // What's NOT acceptable: tx succeeds.
+    // F7/F23: the underfunded tx must be rejected — fast. Acceptable
+    // outcomes are a fast submission-time rejection (early validation)
+    // or a finalized failed effect. What is NOT acceptable: the tx
+    // succeeds, or the client is left waiting out the finality timeout
+    // because the pre-pass dropped it without an observable outcome.
     match result {
         Ok(Ok(response)) => {
             assert!(
@@ -246,12 +244,16 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
             );
         }
         Ok(Err(e)) => {
-            info!("underfunded tx rejected at submission: {:#}", e);
-        }
-        Err(_) => {
-            info!(
-                "underfunded tx timed out (expected — no validator will sign / drop in pre-pass)"
+            let msg = format!("{e:#}").to_lowercase();
+            assert!(
+                msg.contains("insufficient") && msg.contains("balance"),
+                "expected an insufficient-balance rejection, got: {e:#}",
             );
+            info!("underfunded tx rejected fast at submission: {e:#}");
         }
+        Err(_) => panic!(
+            "underfunded tx must be rejected fast — it instead timed out \
+             waiting for finality (F23 regression)",
+        ),
     }
 }
