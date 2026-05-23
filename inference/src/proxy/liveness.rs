@@ -58,6 +58,10 @@ pub struct LivenessCache {
     /// How long a probe result stays fresh in the cache.
     ttl: Duration,
     /// How often the background refresher walks the full set.
+    /// On proxy restart, the cache starts empty — the first chat
+    /// triggers a synchronous probe via `is_live`. No persistence is
+    /// needed because the chain mirror is the source of truth for
+    /// the provider population.
     refresh: Duration,
 }
 
