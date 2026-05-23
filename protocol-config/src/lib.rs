@@ -364,6 +364,9 @@ impl ProtocolConfig {
         // `build_system_parameters()` whenever `next_protocol_version
         // != self.protocol_version`, which rewrites the parameters
         // block (including this cap) from the new ProtocolConfig.
+        // Snapshots: `snapshots/*_version_8.snap` were added in the
+        // same release; the test suite enforces "only add, never
+        // update" snapshot drift.
         if version.0 >= 8 {
             cfg.max_channels_per_pair = Some(64);
         }
