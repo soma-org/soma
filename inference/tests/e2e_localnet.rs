@@ -224,6 +224,13 @@ async fn proxy_provider_full_stack_against_real_chain() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
+        // Liveness probing is off in localnet e2e — the provider's /health
+        // is wired up after the proxy boots, so probing during cold-start
+        // would false-negative and flake the test. Production defaults
+        // (probe_liveness: true) are exercised by the unit tests.
+        probe_liveness: false,
+        liveness_refresh_secs: 30,
+        liveness_timeout_ms: 1_500,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({
@@ -488,6 +495,13 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
+        // Liveness probing is off in localnet e2e — the provider's /health
+        // is wired up after the proxy boots, so probing during cold-start
+        // would false-negative and flake the test. Production defaults
+        // (probe_liveness: true) are exercised by the unit tests.
+        probe_liveness: false,
+        liveness_refresh_secs: 30,
+        liveness_timeout_ms: 1_500,
     };
     let proxy_v1_home = TempDir::new().unwrap();
     let proxy_v1_handle = tokio::spawn({
@@ -567,6 +581,13 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
+        // Liveness probing is off in localnet e2e — the provider's /health
+        // is wired up after the proxy boots, so probing during cold-start
+        // would false-negative and flake the test. Production defaults
+        // (probe_liveness: true) are exercised by the unit tests.
+        probe_liveness: false,
+        liveness_refresh_secs: 30,
+        liveness_timeout_ms: 1_500,
     };
     let proxy_v2_home = TempDir::new().unwrap();
     let proxy_v2_handle = tokio::spawn({

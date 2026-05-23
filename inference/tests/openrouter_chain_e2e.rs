@@ -201,6 +201,10 @@ async fn openrouter_full_stack_round_trip() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
+        // See e2e_localnet.rs comment.
+        probe_liveness: false,
+        liveness_refresh_secs: 30,
+        liveness_timeout_ms: 1_500,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({
