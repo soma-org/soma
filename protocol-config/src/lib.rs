@@ -17,10 +17,15 @@ pub use model_registry::{
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-/// V7 (Stage 14c.1): `ObjectOut::AccumulatorWriteV1` variant added
-/// for SIP-58-style per-tx accumulator delta records. Effects digest
-/// format changes — pre-mainnet network-wide flip, no runtime gate.
-pub const MAX_PROTOCOL_VERSION: u64 = 7;
+/// V8: bump `max_channels_per_pair` from 8 → 64. The original cap was
+/// chosen for legitimate hot/cold-key splits; testnet usage (one
+/// wallet driving the integration suite plus repeated dev runs)
+/// blows past it quickly because closed-and-withdrawn channels still
+/// count toward the live slot count for the duration of the grace
+/// window. 64 is roughly 2× the current ModelRegistry size so a
+/// single wallet can open one channel per registered model with
+/// headroom for retries.
+pub const MAX_PROTOCOL_VERSION: u64 = 8;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -351,6 +356,18 @@ impl ProtocolConfig {
         // (Sui SIP-58 style). The variant is unused at this version
         // (Stage 14c.2+ migrates executors to emit it); the bump
         // exists to gate the wire-format change.
+
+        // V8: raise the per-(payer, payee) channel cap to 64. Reading
+        // this on a chain whose `SystemState.parameters` was frozen
+        // at v7 won't take effect until the validators advance the
+        // protocol version; the per-epoch `advance_epoch` flow calls
+        // `build_system_parameters()` whenever `next_protocol_version
+        // != self.protocol_version`, which rewrites the parameters
+        // block (including this cap) from the new ProtocolConfig.
+        if version.0 >= 8 {
+            cfg.max_channels_per_pair = Some(64);
+        }
+
         if version.0 >= 9 {
             panic!("unsupported version {:?}", version);
         }

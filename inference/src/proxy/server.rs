@@ -81,7 +81,15 @@ async fn chat_completions(
 
     let slot = match state.router.ensure_channel(&provider, &model).await {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "channel_error", &format!("{e}")),
+        // `{e:#}` walks the anyhow chain so the message includes both
+        // the high-level context (e.g. "open_channel") and the
+        // underlying chain failure ("ChannelTooManyOpenForPair { … }",
+        // "ChannelOfferingMissing { … }", insufficient-balance, etc.).
+        // Default `{e}` only shows the topmost context, which is
+        // useless for debugging.
+        Err(e) => {
+            return err(StatusCode::INTERNAL_SERVER_ERROR, "channel_error", &format!("{e:#}"));
+        }
     };
 
     let worst_case = pricing::worst_case_for_request(&card, &chat);

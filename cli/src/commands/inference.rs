@@ -97,6 +97,24 @@ pub struct ProxyArgs {
     /// keep the lazy-on-first-request behaviour.
     #[clap(long)]
     pub prewarm_model: Option<String>,
+    /// Disable the per-provider liveness probe. Default is to probe
+    /// each provider's `/health` endpoint with a short timeout and
+    /// skip ones that don't respond before routing. Turn off when
+    /// running against a fixture / localnet provider that doesn't
+    /// expose `/health`.
+    #[clap(long)]
+    pub no_probe_liveness: bool,
+    /// Refresh cadence (seconds) for the liveness cache. Probes
+    /// older than this are re-issued on demand. Lower-bounded to 5 s
+    /// internally.
+    #[clap(long, default_value_t = 30)]
+    pub liveness_refresh_secs: u64,
+    /// Per-probe HTTP timeout (milliseconds). Lower-bounded to
+    /// 100 ms internally. The default is short enough that a single
+    /// bad provider doesn't add noticeable latency to a chat
+    /// request that has to fall through to the next candidate.
+    #[clap(long, default_value_t = 1_500)]
+    pub liveness_timeout_ms: u64,
 }
 
 pub async fn run_provider(args: ProviderArgs) -> Result<(), anyhow::Error> {
@@ -122,6 +140,9 @@ pub async fn run_proxy(args: ProxyArgs) -> Result<(), anyhow::Error> {
         trusted_providers_refresh_secs,
         include_untrusted,
         prewarm_model,
+        no_probe_liveness,
+        liveness_refresh_secs,
+        liveness_timeout_ms,
     } = args;
     let (wallet, signer) = build_wallet(client, address).await?;
     let soma_home = soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
@@ -146,6 +167,9 @@ pub async fn run_proxy(args: ProxyArgs) -> Result<(), anyhow::Error> {
         trusted_providers_url,
         trusted_providers_refresh_secs,
         prewarm_model,
+        probe_liveness: !no_probe_liveness,
+        liveness_refresh_secs,
+        liveness_timeout_ms,
     };
     inference::proxy::run(cfg, wallet, signer, registry, soma_home).await
 }

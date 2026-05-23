@@ -8,11 +8,13 @@
 //! reconciles realized cost on the streamed `usage` chunk.
 
 pub mod config;
+mod liveness;
 mod relay;
 mod router;
 mod server;
 pub mod state;
 mod trusted;
+pub use liveness::LivenessCache;
 pub use trusted::TrustedProviders;
 
 use std::path::PathBuf;
@@ -49,6 +51,7 @@ pub async fn run(
 
     let inner_router =
         Arc::new(router::Router::new(registry.clone(), chain.clone(), store, cfg.clone(), address));
+    inner_router.spawn_liveness_refresher();
 
     // D. Warm the discovery cache + per-provider HTTP/2 connections
     // before serving, so the user's first chat doesn't pay for the

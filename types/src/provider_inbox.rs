@@ -42,7 +42,12 @@ use crate::object::{Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 /// tuned per-network (testnet vs. mainnet) without a binary upgrade;
 /// this constant is just the genesis default and a fallback for
 /// tests that don't bring up a SystemState.
-pub const DEFAULT_MAX_CHANNELS_PER_PAIR: u32 = 8;
+///
+/// Bumped from 8 → 64 alongside protocol v8: the original cap was
+/// pessimistic about state bloat, but the per-channel `ProviderInbox`
+/// growth is bounded by gas costs anyway, and 8 ran out for any
+/// single wallet exercising more than a handful of models.
+pub const DEFAULT_MAX_CHANNELS_PER_PAIR: u32 = 64;
 
 /// Domain tag for `ProviderInbox` ID derivation. Distinct from any
 /// other derived-ID domain tag in this crate so a structural collision

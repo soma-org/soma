@@ -26,6 +26,16 @@ pub struct Config {
     /// chat doesn't pay the ~3–5 s channel-open latency. `None` keeps
     /// the lazy-on-first-request behaviour.
     pub prewarm_model: Option<String>,
+    /// When `true`, before scoring candidates the router probes each
+    /// provider's `/health` endpoint and skips ones that don't
+    /// respond within `liveness_timeout_ms`. Results are cached for
+    /// `liveness_refresh_secs`. On by default — without it, a stale
+    /// on-chain registration pointing at a dead endpoint will be
+    /// picked for routing and surface as an opaque `channel_error`
+    /// to the caller.
+    pub probe_liveness: bool,
+    pub liveness_refresh_secs: u64,
+    pub liveness_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +105,9 @@ impl Default for Config {
             trusted_providers_url: None,
             trusted_providers_refresh_secs: 600,
             prewarm_model: None,
+            probe_liveness: true,
+            liveness_refresh_secs: 30,
+            liveness_timeout_ms: 1_500,
         }
     }
 }

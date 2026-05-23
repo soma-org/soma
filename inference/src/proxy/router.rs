@@ -140,6 +140,13 @@ pub struct Router {
     /// applied before scoring to limit the candidate set to addresses
     /// approved on the points service's authorized list.
     trusted: Option<Arc<crate::proxy::TrustedProviders>>,
+    /// Per-provider liveness cache. `Some` when `cfg.probe_liveness`
+    /// is on; the router skips providers whose `/health` endpoint
+    /// doesn't respond, before scoring. This makes stale on-chain
+    /// registrations (a provider that took its endpoint down without
+    /// deregistering) non-fatal — the router quietly routes around
+    /// them instead of failing the request with `channel_error`.
+    liveness: Option<Arc<crate::proxy::LivenessCache>>,
 }
 
 struct CacheState {
@@ -170,6 +177,14 @@ impl Router {
         } else {
             None
         };
+        let liveness = if cfg.probe_liveness {
+            Some(Arc::new(crate::proxy::LivenessCache::new(
+                cfg.liveness_timeout_ms,
+                cfg.liveness_refresh_secs,
+            )))
+        } else {
+            None
+        };
         Self {
             registry,
             chain,
@@ -180,6 +195,47 @@ impl Router {
             cache: Arc::new(RwLock::new(CacheState { last_refresh: None, providers: Vec::new() })),
             indexer,
             trusted,
+            liveness,
+        }
+    }
+
+    /// Snapshot every known provider's `(address, endpoint)` for the
+    /// liveness refresher. Returns an empty vec if the cache hasn't
+    /// been populated yet (refresher will retry on the next tick).
+    async fn provider_endpoints_snapshot(&self) -> Vec<(SomaAddress, String)> {
+        let g = self.cache.read().await;
+        g.providers.iter().map(|p| (p.address, p.endpoint.clone())).collect()
+    }
+
+    /// Start the background liveness refresher, if liveness probing is
+    /// enabled. Spawns a tokio task that walks the discovery cache
+    /// every `refresh_interval` and bulk-probes each provider's
+    /// `/health`. Cheap when probing is disabled — this returns
+    /// without spawning.
+    pub fn spawn_liveness_refresher(self: &Arc<Self>) {
+        let Some(liveness) = self.liveness.clone() else { return };
+        let router = self.clone();
+        let interval = liveness.refresh_interval();
+        tokio::spawn(async move {
+            loop {
+                let providers = router.provider_endpoints_snapshot().await;
+                if !providers.is_empty() {
+                    let alive = liveness.probe_all(&providers).await;
+                    tracing::debug!(total = providers.len(), alive, "liveness refresh");
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
+    /// Visible for relay.rs: when a request fails in a way that
+    /// strongly suggests the provider's HTTP endpoint went down
+    /// between the last probe and the request (connection refused,
+    /// channel-open transport error), evict the liveness entry so the
+    /// next pick re-probes instead of selecting the same dead provider.
+    pub async fn mark_provider_dead(&self, addr: &SomaAddress) {
+        if let Some(l) = &self.liveness {
+            l.mark_dead(addr).await;
         }
     }
 
@@ -338,6 +394,11 @@ impl Router {
                 // cold-start doesn't lock everyone out.
                 if let Some(t) = &self.trusted {
                     if !t.is_allowed(&p.address).await {
+                        continue;
+                    }
+                }
+                if let Some(l) = &self.liveness {
+                    if !l.is_live(&p.address, &p.endpoint).await {
                         continue;
                     }
                 }
