@@ -12,6 +12,7 @@ use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::BigInt;
+use crate::api::scalars::SomaAddress;
 use crate::api::types::address::Address;
 use crate::api::types::available_range::AvailableRange;
 use crate::api::types::bridge_deposit::BridgeDeposit;
@@ -27,6 +28,7 @@ use crate::api::types::service_config::ServiceConfig;
 use crate::api::types::staked_soma::StakedSoma;
 use crate::api::types::transaction::Transaction;
 use crate::api::types::transaction_detail::TransactionDetail;
+use crate::api::types::usage::TokenUsageTotals;
 use crate::api::types::validator::Validator;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
@@ -1500,6 +1502,270 @@ impl Query {
         Ok(connection)
     }
 
+    // ---------------------------------------------------------------
+    // Token usage leaderboards
+    // ---------------------------------------------------------------
+
+    /// Top models by aggregated voucher token usage and spend. Each
+    /// channel's latest `cumulative_*` (from
+    /// `soma_inference_settlements`) is summed by `model_id` — so
+    /// repeat-settles on the same channel are *not* double-counted.
+    /// Ordered by `total_amount` desc. Models with no Settle activity
+    /// are absent (this is the leaderboard the explorer's "Rankings →
+    /// Models" tab consumes).
+    async fn model_token_leaderboard(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<Vec<TokenUsageTotals>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let off = offset.unwrap_or(0).max(0) as i64;
+        let mut conn = pg.connect().await?;
+
+        let rows: Vec<UsageRow> = diesel::sql_query(
+            r#"
+            WITH per_channel_latest AS (
+                SELECT DISTINCT ON (channel_id)
+                    channel_id, model_id,
+                    cumulative_amount, cumulative_prompt_tokens,
+                    cumulative_completion_tokens,
+                    cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens,
+                    cumulative_requests
+                FROM soma_inference_settlements
+                ORDER BY channel_id, tx_sequence_number DESC
+            )
+            SELECT
+                model_id AS key,
+                NULL::bytea AS payer,
+                SUM(cumulative_amount)::BIGINT             AS total_amount,
+                SUM(cumulative_prompt_tokens)::BIGINT      AS total_prompt_tokens,
+                SUM(cumulative_completion_tokens)::BIGINT  AS total_completion_tokens,
+                SUM(cumulative_cache_read_tokens)::BIGINT  AS total_cache_read_tokens,
+                SUM(cumulative_cache_write_tokens)::BIGINT AS total_cache_write_tokens,
+                SUM(cumulative_requests)::BIGINT           AS total_requests,
+                COUNT(*)::INT                              AS channel_count
+            FROM per_channel_latest
+            GROUP BY model_id
+            ORDER BY total_amount DESC NULLS LAST, model_id ASC
+            LIMIT $1 OFFSET $2
+            "#,
+        )
+        .bind::<diesel::sql_types::BigInt, _>(limit)
+        .bind::<diesel::sql_types::BigInt, _>(off)
+        .load(conn.deref_mut())
+        .await
+        .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TokenUsageTotals {
+                key: r.key.clone(),
+                payer: None,
+                model_id: Some(r.key),
+                total_amount: BigInt(r.total_amount),
+                total_prompt_tokens: BigInt(r.total_prompt_tokens),
+                total_completion_tokens: BigInt(r.total_completion_tokens),
+                total_cache_read_tokens: BigInt(r.total_cache_read_tokens),
+                total_cache_write_tokens: BigInt(r.total_cache_write_tokens),
+                total_requests: BigInt(r.total_requests),
+                channel_count: r.channel_count,
+            })
+            .collect())
+    }
+
+    /// Top users (payer addresses) by aggregated voucher token usage
+    /// and spend. Same dedupe-by-latest-per-channel rule as
+    /// `modelTokenLeaderboard`. Ordered by `total_amount` desc.
+    async fn user_token_leaderboard(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<Vec<TokenUsageTotals>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let off = offset.unwrap_or(0).max(0) as i64;
+        let mut conn = pg.connect().await?;
+
+        let rows: Vec<UsageRow> = diesel::sql_query(
+            r#"
+            WITH per_channel_latest AS (
+                SELECT DISTINCT ON (channel_id)
+                    channel_id, payer,
+                    cumulative_amount, cumulative_prompt_tokens,
+                    cumulative_completion_tokens,
+                    cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens,
+                    cumulative_requests
+                FROM soma_inference_settlements
+                ORDER BY channel_id, tx_sequence_number DESC
+            )
+            SELECT
+                encode(payer, 'hex') AS key,
+                payer                AS payer,
+                SUM(cumulative_amount)::BIGINT             AS total_amount,
+                SUM(cumulative_prompt_tokens)::BIGINT      AS total_prompt_tokens,
+                SUM(cumulative_completion_tokens)::BIGINT  AS total_completion_tokens,
+                SUM(cumulative_cache_read_tokens)::BIGINT  AS total_cache_read_tokens,
+                SUM(cumulative_cache_write_tokens)::BIGINT AS total_cache_write_tokens,
+                SUM(cumulative_requests)::BIGINT           AS total_requests,
+                COUNT(*)::INT                              AS channel_count
+            FROM per_channel_latest
+            GROUP BY payer
+            ORDER BY total_amount DESC NULLS LAST, payer ASC
+            LIMIT $1 OFFSET $2
+            "#,
+        )
+        .bind::<diesel::sql_types::BigInt, _>(limit)
+        .bind::<diesel::sql_types::BigInt, _>(off)
+        .load(conn.deref_mut())
+        .await
+        .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TokenUsageTotals {
+                key: r.key,
+                payer: r.payer.map(SomaAddress),
+                model_id: None,
+                total_amount: BigInt(r.total_amount),
+                total_prompt_tokens: BigInt(r.total_prompt_tokens),
+                total_completion_tokens: BigInt(r.total_completion_tokens),
+                total_cache_read_tokens: BigInt(r.total_cache_read_tokens),
+                total_cache_write_tokens: BigInt(r.total_cache_write_tokens),
+                total_requests: BigInt(r.total_requests),
+                channel_count: r.channel_count,
+            })
+            .collect())
+    }
+
+    /// Token usage totals for a single user — payer-keyed aggregate
+    /// across that user's channels. `None` when the user has no
+    /// Settle activity.
+    async fn user_token_totals(
+        &self,
+        ctx: &Context<'_>,
+        payer: String,
+    ) -> Result<Option<TokenUsageTotals>> {
+        let addr_hex = payer.strip_prefix("0x").unwrap_or(&payer);
+        let addr_bytes =
+            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid payer: {e}")))?;
+
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let row: Option<UsageRow> = diesel::sql_query(
+            r#"
+            WITH per_channel_latest AS (
+                SELECT DISTINCT ON (channel_id)
+                    channel_id, payer,
+                    cumulative_amount, cumulative_prompt_tokens,
+                    cumulative_completion_tokens,
+                    cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens,
+                    cumulative_requests
+                FROM soma_inference_settlements
+                WHERE payer = $1
+                ORDER BY channel_id, tx_sequence_number DESC
+            )
+            SELECT
+                encode(payer, 'hex') AS key,
+                payer                AS payer,
+                SUM(cumulative_amount)::BIGINT             AS total_amount,
+                SUM(cumulative_prompt_tokens)::BIGINT      AS total_prompt_tokens,
+                SUM(cumulative_completion_tokens)::BIGINT  AS total_completion_tokens,
+                SUM(cumulative_cache_read_tokens)::BIGINT  AS total_cache_read_tokens,
+                SUM(cumulative_cache_write_tokens)::BIGINT AS total_cache_write_tokens,
+                SUM(cumulative_requests)::BIGINT           AS total_requests,
+                COUNT(*)::INT                              AS channel_count
+            FROM per_channel_latest
+            GROUP BY payer
+            "#,
+        )
+        .bind::<diesel::sql_types::Bytea, _>(addr_bytes)
+        .get_result(conn.deref_mut())
+        .await
+        .optional()
+        .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| TokenUsageTotals {
+            key: r.key,
+            payer: r.payer.map(SomaAddress),
+            model_id: None,
+            total_amount: BigInt(r.total_amount),
+            total_prompt_tokens: BigInt(r.total_prompt_tokens),
+            total_completion_tokens: BigInt(r.total_completion_tokens),
+            total_cache_read_tokens: BigInt(r.total_cache_read_tokens),
+            total_cache_write_tokens: BigInt(r.total_cache_write_tokens),
+            total_requests: BigInt(r.total_requests),
+            channel_count: r.channel_count,
+        }))
+    }
+
+    /// Token usage totals for a single model — model-keyed aggregate
+    /// across all channels carrying that `model_id`. `None` when the
+    /// model has no Settle activity.
+    async fn model_token_totals(
+        &self,
+        ctx: &Context<'_>,
+        model_id: String,
+    ) -> Result<Option<TokenUsageTotals>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let row: Option<UsageRow> = diesel::sql_query(
+            r#"
+            WITH per_channel_latest AS (
+                SELECT DISTINCT ON (channel_id)
+                    channel_id, model_id,
+                    cumulative_amount, cumulative_prompt_tokens,
+                    cumulative_completion_tokens,
+                    cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens,
+                    cumulative_requests
+                FROM soma_inference_settlements
+                WHERE model_id = $1
+                ORDER BY channel_id, tx_sequence_number DESC
+            )
+            SELECT
+                model_id AS key,
+                NULL::bytea AS payer,
+                SUM(cumulative_amount)::BIGINT             AS total_amount,
+                SUM(cumulative_prompt_tokens)::BIGINT      AS total_prompt_tokens,
+                SUM(cumulative_completion_tokens)::BIGINT  AS total_completion_tokens,
+                SUM(cumulative_cache_read_tokens)::BIGINT  AS total_cache_read_tokens,
+                SUM(cumulative_cache_write_tokens)::BIGINT AS total_cache_write_tokens,
+                SUM(cumulative_requests)::BIGINT           AS total_requests,
+                COUNT(*)::INT                              AS channel_count
+            FROM per_channel_latest
+            GROUP BY model_id
+            "#,
+        )
+        .bind::<diesel::sql_types::Text, _>(model_id)
+        .get_result(conn.deref_mut())
+        .await
+        .optional()
+        .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| TokenUsageTotals {
+            key: r.key.clone(),
+            payer: None,
+            model_id: Some(r.key),
+            total_amount: BigInt(r.total_amount),
+            total_prompt_tokens: BigInt(r.total_prompt_tokens),
+            total_completion_tokens: BigInt(r.total_completion_tokens),
+            total_cache_read_tokens: BigInt(r.total_cache_read_tokens),
+            total_cache_write_tokens: BigInt(r.total_cache_write_tokens),
+            total_requests: BigInt(r.total_requests),
+            channel_count: r.channel_count,
+        }))
+    }
+
     /// Network-wide metrics (TPS, totals).
     async fn network_metrics(&self, ctx: &Context<'_>) -> Result<NetworkMetrics> {
         let pg: &Arc<PgReader> = ctx.data()?;
@@ -1507,18 +1773,40 @@ impl Query {
 
         use indexer_alt_schema::schema::{cp_sequence_numbers, kv_checkpoints, soma_validators};
 
-        // Total transactions: txLo of latest checkpoint
-        let latest_cp: Option<(i64, i64)> = cp_sequence_numbers::table
-            .select((cp_sequence_numbers::cp_sequence_number, cp_sequence_numbers::tx_lo))
+        // `cp_sequence_numbers.tx_lo` is the *running total before this
+        // checkpoint* (per handler: `tx_lo = network_total_transactions
+        // - len(transactions)`), so the latest row's tx_lo undercounts
+        // by exactly the size of the most recent checkpoint. Decode the
+        // checkpoint summary to read `network_total_transactions`
+        // directly, which is the inclusive running total.
+        let latest_cp: Option<i64> = cp_sequence_numbers::table
+            .select(cp_sequence_numbers::cp_sequence_number)
             .order(cp_sequence_numbers::cp_sequence_number.desc())
             .first(conn.deref_mut())
             .await
             .optional()
             .map_err(|e| Error::new(e.to_string()))?;
 
-        let (total_checkpoints, total_transactions) = match latest_cp {
-            Some((cp, tx_lo)) => (cp + 1, tx_lo),
-            None => (0, 0),
+        let total_checkpoints = latest_cp.map(|cp| cp + 1).unwrap_or(0);
+
+        let total_transactions = match latest_cp {
+            Some(cp) => {
+                let bytes: Option<Vec<u8>> = kv_checkpoints::table
+                    .select(kv_checkpoints::checkpoint_summary)
+                    .filter(kv_checkpoints::sequence_number.eq(cp))
+                    .first(conn.deref_mut())
+                    .await
+                    .optional()
+                    .map_err(|e| Error::new(e.to_string()))?;
+                bytes
+                    .and_then(|b| {
+                        bcs::from_bytes::<types::checkpoints::CheckpointSummary>(&b)
+                            .ok()
+                            .map(|s| s.network_total_transactions as i64)
+                    })
+                    .unwrap_or(0)
+            }
+            None => 0,
         };
 
         // Total validators at latest epoch
@@ -1592,4 +1880,29 @@ impl Query {
 
         Ok(NetworkMetrics { tps, total_transactions, total_checkpoints, total_validators })
     }
+}
+
+/// Row shape for the per-channel-latest aggregation used by the
+/// `*_token_leaderboard` and `*_token_totals` queries. `payer` is
+/// `None` for model-keyed rows.
+#[derive(diesel::QueryableByName, Debug)]
+struct UsageRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    key: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Bytea>)]
+    payer: Option<Vec<u8>>,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_amount: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_prompt_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_completion_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_cache_read_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_cache_write_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_requests: i64,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    channel_count: i32,
 }

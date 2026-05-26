@@ -17,4 +17,5 @@ pub mod service_config;
 pub mod staked_soma;
 pub mod transaction;
 pub mod transaction_detail;
+pub mod usage;
 pub mod validator;

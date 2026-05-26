@@ -1,9 +1,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::ops::DerefMut;
+use std::sync::Arc;
+
 use async_graphql::*;
+use diesel::ExpressionMethods;
+use diesel::OptionalExtension;
+use diesel::QueryDsl;
+use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::{BigInt, SomaAddress};
+use crate::api::types::usage::ChannelUsage;
+use crate::db::PgReader;
 
 /// Off-chain projection of a payment channel — sourced from the
 /// `soma_channels` indexer table, which mirrors the on-chain
@@ -121,5 +130,46 @@ impl Channel {
     /// single (payer, payee) pair has one channel per offering.
     async fn model_id(&self) -> &str {
         &self.model_id
+    }
+
+    /// Voucher-side token usage for this channel, sourced from the
+    /// most recent `Settle` row in `soma_inference_settlements`.
+    /// `None` when the channel has never been settled (newly opened
+    /// or only topped up). Cumulative_* are monotonic per channel, so
+    /// the latest row carries the channel's lifetime totals.
+    async fn usage(&self, ctx: &Context<'_>) -> Result<Option<ChannelUsage>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_inference_settlements as s;
+
+        type Row = (i64, i64, i64, i64, i64, i64, i64);
+
+        let row: Option<Row> = s::table
+            .select((
+                s::cumulative_amount,
+                s::cumulative_prompt_tokens,
+                s::cumulative_completion_tokens,
+                s::cumulative_cache_read_tokens,
+                s::cumulative_cache_write_tokens,
+                s::cumulative_requests,
+                s::timestamp_ms,
+            ))
+            .filter(s::channel_id.eq(&self.channel_id))
+            .order(s::tx_sequence_number.desc())
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(row.map(|r| ChannelUsage {
+            cumulative_amount: BigInt(r.0),
+            cumulative_prompt_tokens: BigInt(r.1),
+            cumulative_completion_tokens: BigInt(r.2),
+            cumulative_cache_read_tokens: BigInt(r.3),
+            cumulative_cache_write_tokens: BigInt(r.4),
+            cumulative_requests: BigInt(r.5),
+            last_settlement_ms: BigInt(r.6),
+        }))
     }
 }

@@ -71,21 +71,17 @@ impl Processor for SomaChannelEvents {
                         pre_chan.as_ref().map(|(_, c)| c.settled_amount()).unwrap_or(0);
                     let delta = post_c.settled_amount().saturating_sub(pre_settled) as i64;
                     // Voucher-signed cumulative usage rides on the
-                    // SettleArgs. The handler stores them as
-                    // *deltas* (post-cum minus pre-cum) — but the
-                    // pre-state cumulative isn't tracked on chain.
-                    // Until the indexer maintains a per-channel
-                    // running counter, we store the *cumulative*
-                    // value from args as the "delta" — readers
-                    // wanting per-tx deltas must subtract the
-                    // previous Settle row's value. This is good
-                    // enough for the per-model oracle view since
-                    // the latest row carries the full cumulative.
-                    tokens_in_delta = args.cumulative_prompt_tokens as i64;
-                    tokens_out_delta = args.cumulative_completion_tokens as i64;
-                    cache_read_delta = args.cumulative_cache_read_tokens as i64;
-                    cache_write_delta = args.cumulative_cache_write_tokens as i64;
-                    requests_delta = args.cumulative_requests as i64;
+                    // SettleArgs but the pre-state cumulative isn't
+                    // tracked on chain, so a checkpoint-pure processor
+                    // can't compute true per-tx token deltas without a
+                    // DB lookup. Leave the `*_delta` columns at 0 here
+                    // — consumers wanting per-Settle token volumes
+                    // should query `soma_inference_settlements` (whose
+                    // rows carry the post-Settle cumulative_*); per-tx
+                    // deltas are then `cumulative - LAG(cumulative)
+                    // OVER (PARTITION BY channel_id ORDER BY
+                    // tx_sequence_number)`.
+                    let _ = args;
                     (id, "settle", delta)
                 }
                 TransactionKind::TopUp(args) => {
