@@ -39,6 +39,12 @@ pub struct EthClient {
     /// deadline elapses, whatever responses arrived are considered
     /// for quorum; outstanding requests are abandoned.
     rpc_deadline: std::time::Duration,
+    /// `eth_getBlockByNumber` block tag used as the reorg-safety
+    /// boundary for everything the syncer reads — finalized cursor,
+    /// state-read `eth_call`s. See `BridgeNodeConfig::eth_finality_tag`
+    /// for the tradeoffs. Validated at config load; the four legal
+    /// JSON-RPC tags are `"finalized" | "safe" | "latest" | "earliest"`.
+    finality_tag: String,
 }
 
 /// JSON-RPC request.
@@ -191,7 +197,17 @@ fn default_quorum(n: usize) -> usize {
 
 impl EthClient {
     /// Create a new EthClient.
-    pub async fn new(rpc_urls: Vec<String>, bridge_contract_address: &str) -> BridgeResult<Self> {
+    ///
+    /// `finality_tag` is the `eth_getBlockByNumber` tag used as the
+    /// reorg-safety boundary for everything this client reads. Must be
+    /// one of `"finalized" | "safe" | "latest" | "earliest"` — the
+    /// `BridgeNodeConfig::validate` check enforces this upstream, so
+    /// callers in production pass an already-validated string.
+    pub async fn new(
+        rpc_urls: Vec<String>,
+        bridge_contract_address: &str,
+        finality_tag: String,
+    ) -> BridgeResult<Self> {
         if rpc_urls.is_empty() {
             return Err(BridgeError::ConfigError("At least one RPC URL required".into()));
         }
@@ -207,6 +223,7 @@ impl EthClient {
             failure_counts,
             quorum_threshold: default_quorum(n),
             rpc_deadline: DEFAULT_RPC_DEADLINE,
+            finality_tag,
         };
 
         // Verify connectivity. Note: a misconfigured cluster where the
@@ -250,6 +267,7 @@ impl EthClient {
             failure_counts: vec![AtomicU32::new(0)],
             quorum_threshold: 1,
             rpc_deadline: DEFAULT_RPC_DEADLINE,
+            finality_tag: "finalized".to_string(),
         }
     }
 
@@ -270,6 +288,7 @@ impl EthClient {
             failure_counts,
             quorum_threshold,
             rpc_deadline: std::time::Duration::from_secs(2),
+            finality_tag: "finalized".to_string(),
         }
     }
 
@@ -435,7 +454,7 @@ impl EthClient {
                         "to": token_contract,
                         "data": calldata,
                     },
-                    "finalized"
+                    self.finality_tag.as_str()
                 ]),
             )
             .await?;
@@ -479,7 +498,7 @@ impl EthClient {
                         "to": bridge_contract,
                         "data": calldata,
                     },
-                    "finalized"
+                    self.finality_tag.as_str()
                 ]),
             )
             .await?;
@@ -503,10 +522,18 @@ impl EthClient {
         Ok(bytes[31] == 1)
     }
 
-    /// Get the latest finalized block number.
+    /// Get the latest "finalized" block number — where "finalized"
+    /// here means whatever block tag the operator configured via
+    /// `BridgeNodeConfig::eth_finality_tag` (typically `"finalized"`
+    /// on L1s and L2-with-conservative-ops; `"safe"` on L2s that
+    /// accept L1-reorg risk for faster inbound deposits).
     pub async fn get_last_finalized_block_id(&self) -> BridgeResult<u64> {
-        let block: EthBlock =
-            self.rpc_call("eth_getBlockByNumber", serde_json::json!(["finalized", false])).await?;
+        let block: EthBlock = self
+            .rpc_call(
+                "eth_getBlockByNumber",
+                serde_json::json!([self.finality_tag.as_str(), false]),
+            )
+            .await?;
         Ok(block.number)
     }
 
@@ -826,6 +853,7 @@ mod tests {
             failure_counts: vec![AtomicU32::new(0)],
             quorum_threshold: 1,
             rpc_deadline: std::time::Duration::from_secs(2),
+            finality_tag: "finalized".to_string(),
         };
 
         // Construct ABI-encoded event data — 7 words, 224 bytes total.
@@ -878,6 +906,7 @@ mod tests {
             failure_counts: vec![AtomicU32::new(0)],
             quorum_threshold: 1,
             rpc_deadline: std::time::Duration::from_secs(2),
+            finality_tag: "finalized".to_string(),
         };
 
         let log = EthLog {
@@ -903,6 +932,7 @@ mod tests {
             failure_counts: vec![AtomicU32::new(0)],
             quorum_threshold: 1,
             rpc_deadline: std::time::Duration::from_secs(2),
+            finality_tag: "finalized".to_string(),
         };
 
         let log = EthLog {
@@ -945,7 +975,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], "0x0001").await.unwrap();
+        let client =
+            EthClient::new(vec![server.uri()], "0x0001", "finalized".to_string()).await.unwrap();
         let block = client.get_last_finalized_block_id().await.unwrap();
         assert_eq!(block, 0x1a4); // 420
     }
@@ -1030,7 +1061,9 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], contract_addr).await.unwrap();
+        let client = EthClient::new(vec![server.uri()], contract_addr, "finalized".to_string())
+            .await
+            .unwrap();
         let events = client.get_deposit_events_in_range(100, 200).await.unwrap();
 
         assert_eq!(events.len(), 1);
@@ -1071,7 +1104,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = EthClient::new(vec![server.uri()], "0x0001").await.unwrap();
+        let client =
+            EthClient::new(vec![server.uri()], "0x0001", "finalized".to_string()).await.unwrap();
         let result = client.get_deposit_events_in_range(0, 10000).await;
 
         assert!(
@@ -1091,6 +1125,7 @@ mod tests {
             failure_counts: vec![AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
             quorum_threshold: 2,
             rpc_deadline: std::time::Duration::from_secs(2),
+            finality_tag: "finalized".to_string(),
         };
 
         assert_eq!(client.current_url(), "http://rpc1");

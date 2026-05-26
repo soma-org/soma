@@ -90,9 +90,28 @@ peer_addresses = []
 eth_chain_id = 84532
 
 # Finalized block poll interval (ms). Base Sepolia produces blocks every
-# ~2s and finalizes ~12-15s behind head; 5s is fine for production. Lower
-# only if you've measured your provider's rate-limit headroom.
+# ~2s; 5s is fine for production. Lower only if you've measured your
+# provider's rate-limit headroom.
 eth_poll_interval_ms = 5000
+
+# Block tag the bridge treats as the reorg-safety boundary on Base.
+# Options: "finalized" | "safe" | "latest" | "earliest".
+#
+# Default = "finalized" (matches L1 Casper FFG finality). On Base this
+# bubbles up Eth L1 finality, which means inbound Eth→Soma deposits
+# wait ~15–25 minutes on Sepolia (the time it takes for the L2 batch
+# carrying your deposit to land on L1 and for L1 to finalize that
+# block) — strongest reorg safety.
+#
+# "safe" drops the wait to ~3–5 minutes: the L2 batch is on L1 but L1
+# itself hasn't finalized. Accepts L1-reorg risk on Base testnet in
+# exchange for ~5× faster inbound latency. Soma→Eth withdrawals are
+# unaffected (those depend on Soma BFT finality, not this setting).
+#
+# Set to "safe" here because Base Sepolia is a testnet and the faster
+# inbound UX is worth the (small, testnet-only) reorg risk. Override
+# back to "finalized" for any production / mainnet deployment.
+eth_finality_tag = "safe"
 
 # Maximum block range per `eth_getLogs` query. Alchemy free tier caps at
 # ~500 blocks; paid tiers go higher. 1000 is the safe default for our

@@ -95,8 +95,12 @@ impl BridgeNode {
 
         // 1. Create Ethereum client
         let eth_client = Arc::new(
-            EthClient::new(self.config.eth_rpc_urls.clone(), &self.config.bridge_contract_address)
-                .await?,
+            EthClient::new(
+                self.config.eth_rpc_urls.clone(),
+                &self.config.bridge_contract_address,
+                self.config.eth_finality_tag.clone(),
+            )
+            .await?,
         );
 
         // 2. Sig exchange happens over HTTP (spawned below once

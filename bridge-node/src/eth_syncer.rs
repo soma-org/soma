@@ -349,9 +349,13 @@ mod tests {
         mock_get_logs_empty(&server).await;
 
         let client = Arc::new(
-            EthClient::new(vec![server.uri()], "0x0000000000000000000000000000000000000001")
-                .await
-                .unwrap(),
+            EthClient::new(
+                vec![server.uri()],
+                "0x0000000000000000000000000000000000000001",
+                "finalized".to_string(),
+            )
+            .await
+            .unwrap(),
         );
 
         let syncer = EthSyncer::new(client, Duration::from_millis(50), 1000);
@@ -385,9 +389,13 @@ mod tests {
         mock_get_logs_with_deposits(&server, vec![(1, 1_000_000), (2, 2_000_000)]).await;
 
         let client = Arc::new(
-            EthClient::new(vec![server.uri()], "0x0000000000000000000000000000000000000001")
-                .await
-                .unwrap(),
+            EthClient::new(
+                vec![server.uri()],
+                "0x0000000000000000000000000000000000000001",
+                "finalized".to_string(),
+            )
+            .await
+            .unwrap(),
         );
 
         let syncer = EthSyncer::new(client, Duration::from_millis(50), 1000);
@@ -420,9 +428,13 @@ mod tests {
         mock_get_logs_empty(&server).await;
 
         let client =
-            EthClient::new(vec![server.uri()], "0x0000000000000000000000000000000000000001")
-                .await
-                .unwrap();
+            EthClient::new(
+                vec![server.uri()],
+                "0x0000000000000000000000000000000000000001",
+                "finalized".to_string(),
+            )
+            .await
+            .unwrap();
 
         // Query range 0..2000 with max_range 500 — should chunk into 4 queries
         let result = query_events_with_retry(&client, 0, 1999, 500).await;
@@ -474,9 +486,13 @@ mod tests {
             .await;
 
         let client =
-            EthClient::new(vec![server.uri()], "0x0000000000000000000000000000000000000001")
-                .await
-                .unwrap();
+            EthClient::new(
+                vec![server.uri()],
+                "0x0000000000000000000000000000000000000001",
+                "finalized".to_string(),
+            )
+            .await
+            .unwrap();
 
         // Large range that exceeds max_range, triggering chunked queries.
         // First chunk gets -32005, range halves, subsequent chunks succeed.

@@ -110,6 +110,23 @@ pub struct BridgeNodeConfig {
     #[serde(default = "default_poll_interval_ms")]
     pub eth_poll_interval_ms: u64,
 
+    /// Eth `eth_getBlockByNumber` block tag used as the bridge's reorg-
+    /// safety boundary. The eth_syncer only processes deposits inside
+    /// blocks at-or-before this tag, and the eth_client's `eth_call`s
+    /// read state at this tag. Valid values: `"finalized"` (safest,
+    /// L1 Casper FFG finality — default), `"safe"` (L1 batch submitted
+    /// but not finalized — accepts L1-reorg risk; ~3–5 min on L2s
+    /// vs ~15–25 min for `finalized`), `"latest"` (sequencer-only;
+    /// trusts sequencer can't reorg/censor).
+    ///
+    /// On L1s `"finalized"` is the only sane choice. On rollups like
+    /// Base, `"finalized"` bubbles up L1 finality which is much slower
+    /// than the L2's own block time; operators willing to accept the
+    /// L1-reorg risk for faster L2 inbound deposits can drop to
+    /// `"safe"` per-deployment. The default stays conservative.
+    #[serde(default = "default_eth_finality_tag")]
+    pub eth_finality_tag: String,
+
     /// Maximum block range per eth_getLogs query.
     #[serde(default = "default_max_log_query_range")]
     pub max_log_query_range: u64,
@@ -228,6 +245,10 @@ fn default_poll_interval_ms() -> u64 {
     5000 // 5 seconds
 }
 
+fn default_eth_finality_tag() -> String {
+    "finalized".to_string()
+}
+
 fn default_max_log_query_range() -> u64 {
     1000
 }
@@ -269,6 +290,18 @@ impl BridgeNodeConfig {
         }
         if !self.bridge_key_path.exists() {
             return Err(format!("Bridge key file not found: {}", self.bridge_key_path.display()));
+        }
+        // Cheap typo guard: only accept the four `eth_getBlockByNumber`
+        // tags we actually understand. Anything else would make every
+        // RPC call fail at runtime with a confusing JSON-RPC error
+        // instead of a clear startup failure.
+        match self.eth_finality_tag.as_str() {
+            "finalized" | "safe" | "latest" | "earliest" => {}
+            other => {
+                return Err(format!(
+                    "eth_finality_tag must be one of finalized|safe|latest|earliest, got {other:?}"
+                ));
+            }
         }
         Ok(())
     }
