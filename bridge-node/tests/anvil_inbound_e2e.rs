@@ -222,7 +222,8 @@ async fn e2e_deposit_event_is_parseable_by_bridge_node() {
     // through `parse_deposit_log`); only the finalization gate
     // differs. Finalization is exercised in unit tests with mocked
     // `eth_getBlockByNumber` responses.
-    let eth_client = EthClient::new(vec![rpc], &bridge_contract_str).await.unwrap();
+    let eth_client =
+        EthClient::new(vec![rpc], &bridge_contract_str, "finalized".to_string()).await.unwrap();
     let receipt_block = receipt.block_number.expect("receipt has a block number");
     let events = eth_client
         .get_deposit_events_in_range(receipt_block, receipt_block)

@@ -427,14 +427,13 @@ mod tests {
         mock_chain_id(&server).await;
         mock_get_logs_empty(&server).await;
 
-        let client =
-            EthClient::new(
-                vec![server.uri()],
-                "0x0000000000000000000000000000000000000001",
-                "finalized".to_string(),
-            )
-            .await
-            .unwrap();
+        let client = EthClient::new(
+            vec![server.uri()],
+            "0x0000000000000000000000000000000000000001",
+            "finalized".to_string(),
+        )
+        .await
+        .unwrap();
 
         // Query range 0..2000 with max_range 500 — should chunk into 4 queries
         let result = query_events_with_retry(&client, 0, 1999, 500).await;
@@ -485,14 +484,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client =
-            EthClient::new(
-                vec![server.uri()],
-                "0x0000000000000000000000000000000000000001",
-                "finalized".to_string(),
-            )
-            .await
-            .unwrap();
+        let client = EthClient::new(
+            vec![server.uri()],
+            "0x0000000000000000000000000000000000000001",
+            "finalized".to_string(),
+        )
+        .await
+        .unwrap();
 
         // Large range that exceeds max_range, triggering chunked queries.
         // First chunk gets -32005, range halves, subsequent chunks succeed.
