@@ -86,6 +86,30 @@ fn err(status: StatusCode, code: &str, msg: &str) -> Response {
     (status, Json(json!({"error":{"code":code,"message":msg}}))).into_response()
 }
 
+/// Build the structured 402 body for an insufficient-balance failure.
+/// The message embeds the live balance, the wallet address (when the
+/// proxy was configured with one), and a `soma://fund?...` deep-link
+/// the desktop app's URL handler picks up. Shape matches OpenAI's
+/// error envelope so off-the-shelf agents render it as a normal
+/// error message instead of a transport failure.
+pub(crate) fn insufficient_balance_body(
+    available_micros: u64,
+    wallet_address: Option<&str>,
+) -> serde_json::Value {
+    let mut msg = format!("Soma balance too low ({available_micros} micros available).");
+    if let Some(addr) = wallet_address {
+        msg.push_str(&format!(" Wallet: {addr}."));
+    }
+    msg.push_str(" Add USDC in the Soma Desktop app: soma://fund?reason=low_balance");
+    json!({
+        "error": {
+            "type": "insufficient_balance",
+            "code": "insufficient_balance",
+            "message": msg,
+        }
+    })
+}
+
 async fn chat_completions(
     State(state): State<Arc<ClientState>>,
     headers: HeaderMap,
@@ -117,13 +141,21 @@ async fn chat_completions(
 
     let slot = match state.router.ensure_channel(&provider, &model).await {
         Ok(s) => s,
-        // `{e:#}` walks the anyhow chain so the message includes both
-        // the high-level context (e.g. "open_channel") and the
-        // underlying chain failure ("ChannelTooManyOpenForPair { … }",
-        // "ChannelOfferingMissing { … }", insufficient-balance, etc.).
-        // Default `{e}` only shows the topmost context, which is
-        // useless for debugging.
         Err(e) => {
+            if let Some(ib) =
+                e.downcast_ref::<crate::proxy::router::InsufficientBalance>()
+            {
+                let body = insufficient_balance_body(
+                    ib.available_micros,
+                    state.router.cfg.wallet_address.as_deref(),
+                );
+                return (StatusCode::PAYMENT_REQUIRED, Json(body)).into_response();
+            }
+            // `{e:#}` walks the anyhow chain so the message includes both
+            // the high-level context (e.g. "open_channel") and the
+            // underlying chain failure ("ChannelTooManyOpenForPair { … }",
+            // "ChannelOfferingMissing { … }", etc.). Default `{e}` only
+            // shows the topmost context, which is useless for debugging.
             return err(StatusCode::INTERNAL_SERVER_ERROR, "channel_error", &format!("{e:#}"));
         }
     };
@@ -243,6 +275,51 @@ mod tests {
             status(r, Request::builder().uri("/health").method("GET")).await,
             StatusCode::OK
         );
+    }
+
+    /// 402 body carries the `insufficient_balance` envelope, the
+    /// `soma://fund` deep-link, and the wallet address when configured
+    /// — the message must render as a normal OpenAI error so
+    /// off-the-shelf agents surface it to the user verbatim.
+    #[test]
+    fn insufficient_balance_body_includes_wallet_and_fund_link() {
+        let v = insufficient_balance_body(123_456, Some("0xabc"));
+        let err = &v["error"];
+        assert_eq!(err["type"], "insufficient_balance");
+        assert_eq!(err["code"], "insufficient_balance");
+        let msg = err["message"].as_str().unwrap();
+        assert!(msg.contains("123456 micros available"), "missing balance: {msg}");
+        assert!(msg.contains("0xabc"), "missing wallet address: {msg}");
+        assert!(msg.contains("soma://fund?reason=low_balance"), "missing deep link: {msg}");
+    }
+
+    /// Without a configured wallet address the message still renders;
+    /// the wallet line is just omitted.
+    #[test]
+    fn insufficient_balance_body_omits_wallet_when_none() {
+        let v = insufficient_balance_body(0, None);
+        let msg = v["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("0 micros available"));
+        assert!(msg.contains("soma://fund?reason=low_balance"));
+        assert!(!msg.contains("Wallet:"), "wallet line should be omitted: {msg}");
+    }
+
+    /// The handler's downcast path catches an `InsufficientBalance`
+    /// error wrapped inside `anyhow::Error` — guards against a future
+    /// refactor that adds extra `.context(...)` layers and silently
+    /// breaks the typed match.
+    #[test]
+    fn insufficient_balance_downcast_round_trips_through_anyhow() {
+        let ib = crate::proxy::router::InsufficientBalance {
+            available_micros: 42,
+            required_micros: 1_000,
+        };
+        let e: anyhow::Error = anyhow::Error::new(ib);
+        let got = e
+            .downcast_ref::<crate::proxy::router::InsufficientBalance>()
+            .expect("downcast should succeed");
+        assert_eq!(got.available_micros, 42);
+        assert_eq!(got.required_micros, 1_000);
     }
 
     #[tokio::test]

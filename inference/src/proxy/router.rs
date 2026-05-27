@@ -123,6 +123,58 @@ pub struct ProviderInfo {
     pub catalog: Vec<ModelCard>,
 }
 
+/// Typed error returned by [`Router::ensure_channel`] when an
+/// `OpenChannel` tx fails because the payer wallet doesn't hold enough
+/// USDC to fund the deposit. Carried inside `anyhow::Error` so callers
+/// can `downcast_ref` to render a structured HTTP 402 instead of the
+/// generic `channel_error` 500.
+///
+/// `available_micros` and `required_micros` are best-effort: the chain
+/// abort message embeds both, but if parsing fails they're left at 0
+/// and the requested deposit, respectively.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "Soma balance too low ({available_micros} micros available, {required_micros} required)"
+)]
+pub struct InsufficientBalance {
+    pub available_micros: u64,
+    pub required_micros: u64,
+}
+
+/// Detect an insufficient-USDC-balance error in a stringified chain
+/// failure. The on-chain abort surfaces as
+/// `Insufficient USDC balance: address 0x.. has <N> but the
+/// transaction requires <M>` (via `SomaError::InsufficientBalance`);
+/// the lower-level execution failure variant surfaces as
+/// `Insufficient coin balance for operation.` (coin-type agnostic).
+/// Either substring matches.
+///
+/// Returns the parsed `(available, required)` pair when present,
+/// `(0, required_fallback)` when only the high-level marker matches.
+pub(crate) fn parse_insufficient_balance(
+    err_chain: &str,
+    required_fallback: u64,
+) -> Option<InsufficientBalance> {
+    if !err_chain.contains("Insufficient USDC balance")
+        && !err_chain.contains("Insufficient coin balance for operation")
+    {
+        return None;
+    }
+    let available = err_chain
+        .split("has ")
+        .nth(1)
+        .and_then(|t| t.split_whitespace().next())
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(0);
+    let required = err_chain
+        .split("requires ")
+        .nth(1)
+        .and_then(|t| t.split(|c: char| !c.is_ascii_digit()).find(|s| !s.is_empty()))
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(required_fallback);
+    Some(InsufficientBalance { available_micros: available, required_micros: required })
+}
+
 pub struct Router {
     pub registry: Arc<dyn ProviderRegistry>,
     pub chain: Arc<dyn ChannelSurface>,
@@ -553,7 +605,7 @@ impl Router {
         // round-trip is needed. We only fall back to `chain.get` when
         // the underlying impl doesn't surface the object (in-memory
         // tests).
-        let (id, channel) = self
+        let (id, channel) = match self
             .chain
             .open(
                 provider.address,
@@ -562,7 +614,18 @@ impl Router {
                 model_id.to_string(),
             )
             .await
-            .context("open_channel")?;
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let msg = e.to_string();
+                if let Some(ib) =
+                    parse_insufficient_balance(&msg, self.cfg.default_deposit_micros)
+                {
+                    return Err(anyhow::Error::new(ib));
+                }
+                return Err(anyhow::Error::new(e).context("open_channel"));
+            }
+        };
         let chan = match channel {
             Some(c) => c,
             None => self.chain.get(id).await.context("get_channel after open")?,
@@ -875,6 +938,36 @@ mod tests {
         assert!(clean > mid && mid > bad, "monotonic penalty: clean={clean}, mid={mid}, bad={bad}",);
         // Exact: clean - bad = w.negative_rate * 1.0 = 10.0.
         assert!(((clean - bad) - 10.0).abs() < 1e-9);
+    }
+
+    /// SDK-formatted insufficient-balance abort parses both the
+    /// available and required values out of the chain error chain.
+    #[test]
+    fn parse_insufficient_balance_extracts_both_amounts() {
+        let chain = "open_channel: tx: transaction failed: Insufficient USDC balance: \
+                     address 0xabc has 250000 but the transaction requires 5000000";
+        let ib = parse_insufficient_balance(chain, 5_000_000).expect("matches");
+        assert_eq!(ib.available_micros, 250_000);
+        assert_eq!(ib.required_micros, 5_000_000);
+    }
+
+    /// Coin-type-agnostic execution-failure variant also matches; with
+    /// no numbers in the message we fall back to (0, requested).
+    #[test]
+    fn parse_insufficient_balance_matches_coin_balance_variant() {
+        let chain = "open_channel: tx: Insufficient coin balance for operation.";
+        let ib = parse_insufficient_balance(chain, 5_000_000).expect("matches");
+        assert_eq!(ib.available_micros, 0);
+        assert_eq!(ib.required_micros, 5_000_000);
+    }
+
+    /// Unrelated chain failures (e.g. ChannelTooManyOpenForPair) must
+    /// not be mistaken for an insufficient-balance abort — they need
+    /// to keep falling through to the generic `channel_error` 500.
+    #[test]
+    fn parse_insufficient_balance_ignores_unrelated_errors() {
+        let chain = "open_channel: tx: ChannelTooManyOpenForPair { … }";
+        assert!(parse_insufficient_balance(chain, 5_000_000).is_none());
     }
 
     /// `negative_rate_30d == None` is a no-op even with a high
