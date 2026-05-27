@@ -66,6 +66,21 @@ impl ClientStore {
         self.slots.read().await.get(id).cloned()
     }
 
+    /// Snapshot every installed slot's `(deposit - cumulative_authorized)`
+    /// headroom. The `/health` endpoint reduces this to
+    /// `(channels_open, balance_micros)`. Saturating-sub guards against
+    /// the (impossible-in-practice) post-reconcile case where the
+    /// cumulative briefly exceeds the deposit during a slot update.
+    pub async fn channel_headrooms(&self) -> Vec<u64> {
+        let slots = self.slots.read().await;
+        let mut out = Vec::with_capacity(slots.len());
+        for slot in slots.values() {
+            let g = slot.lock().await;
+            out.push(g.state.deposit_micros.saturating_sub(g.state.cumulative_authorized_micros));
+        }
+        out
+    }
+
     /// Insert (or overwrite) a slot for `channel_id`. Used both by
     /// the lazy-open path (after a fresh OpenChannel) and by the
     /// indexer-backed cold-start hydration.

@@ -10,6 +10,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::Serialize;
 use serde_json::json;
 
 use crate::pricing;
@@ -66,9 +67,59 @@ pub async fn local_auth_middleware(
 
 const MAX_BODY: usize = 16 * 1024 * 1024;
 
+/// `GET /health` response. The first two fields (`status`,
+/// `aggregate_healthy`) are kept for backward compatibility with
+/// existing supervisors; the remainder is what the desktop watches to
+/// surface serve-state and balance without re-querying the chain.
+///
+/// `balance_micros` is best-effort: it sums the headroom on every open
+/// channel but does not include the raw wallet's free USDC balance
+/// (which would require a chain RPC per probe). The desktop's
+/// `soma balance --json` shell-out is still the source of truth for
+/// total funds; this field exists so the proxy can flip
+/// `can_serve` and emit a low-balance prompt without a chain probe.
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    aggregate_healthy: bool,
+    can_serve: bool,
+    balance_micros: u64,
+    wallet_address: String,
+    channels_open: usize,
+}
+
+fn build_health_response(
+    aggregate_healthy: bool,
+    headrooms: &[u64],
+    low_balance_threshold_micros: u64,
+    wallet_address: Option<&str>,
+) -> HealthResponse {
+    let balance_micros: u64 = headrooms.iter().copied().fold(0u64, u64::saturating_add);
+    // `can_serve` is the proactive cut-off: any channel with headroom
+    // above the configured threshold means the next request will not
+    // trigger the low-balance prompt. The hard 402 still fires when
+    // `ensure_channel` literally cannot open — that's covered by I3.
+    let can_serve = headrooms.iter().any(|h| *h > low_balance_threshold_micros);
+    HealthResponse {
+        status: "ok",
+        aggregate_healthy,
+        can_serve,
+        balance_micros,
+        wallet_address: wallet_address.unwrap_or("").to_string(),
+        channels_open: headrooms.len(),
+    }
+}
+
 async fn health(State(state): State<Arc<ClientState>>) -> impl IntoResponse {
     let healthy = state.router.aggregate_health().await;
-    Json(json!({"status": "ok", "aggregate_healthy": healthy}))
+    let headrooms = state.router.store.channel_headrooms().await;
+    let body = build_health_response(
+        healthy,
+        &headrooms,
+        state.router.cfg.low_balance_threshold_micros,
+        state.router.cfg.wallet_address.as_deref(),
+    );
+    Json(body)
 }
 
 async fn list_models(State(state): State<Arc<ClientState>>) -> impl IntoResponse {
@@ -320,6 +371,52 @@ mod tests {
             .expect("downcast should succeed");
         assert_eq!(got.available_micros, 42);
         assert_eq!(got.required_micros, 1_000);
+    }
+
+    /// `/health` carries the old back-compat fields (`status`,
+    /// `aggregate_healthy`) plus the desktop-facing serve-state
+    /// (`can_serve`, `balance_micros`, `wallet_address`,
+    /// `channels_open`). With headroom on at least one channel above
+    /// the threshold, `can_serve` is true and the balance is the sum
+    /// of all headrooms.
+    #[test]
+    fn health_response_includes_serve_state_and_balance() {
+        let r =
+            build_health_response(true, &[2_000_000, 500_000], 1_000_000, Some("0xabc"));
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["aggregate_healthy"], true);
+        assert_eq!(v["can_serve"], true);
+        assert_eq!(v["balance_micros"], 2_500_000u64);
+        assert_eq!(v["wallet_address"], "0xabc");
+        assert_eq!(v["channels_open"], 2);
+    }
+
+    /// When every channel's headroom is at or below the threshold
+    /// (and the threshold is a *strict* lower bound), `can_serve`
+    /// flips to false so the desktop raises the fund prompt before
+    /// the next request hits the hard 402.
+    #[test]
+    fn health_response_flips_can_serve_below_threshold() {
+        let r = build_health_response(false, &[100_000, 200_000], 1_000_000, None);
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["can_serve"], false);
+        assert_eq!(v["balance_micros"], 300_000u64);
+        assert_eq!(v["wallet_address"], "");
+        assert_eq!(v["channels_open"], 2);
+    }
+
+    /// No channels open yet → zero balance, zero channels,
+    /// `can_serve=false` (we don't know if a fresh open would
+    /// succeed without a chain probe, so we surface false and let
+    /// the desktop prompt for funding).
+    #[test]
+    fn health_response_no_channels() {
+        let r = build_health_response(true, &[], 1_000_000, None);
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["can_serve"], false);
+        assert_eq!(v["balance_micros"], 0u64);
+        assert_eq!(v["channels_open"], 0);
     }
 
     #[tokio::test]
