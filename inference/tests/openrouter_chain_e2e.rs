@@ -205,6 +205,9 @@ async fn openrouter_full_stack_round_trip() {
         probe_liveness: false,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
+        local_token: None,
+        low_balance_threshold_micros: 1_000_000,
+        wallet_address: None,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({

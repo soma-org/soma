@@ -36,6 +36,22 @@ pub struct Config {
     pub probe_liveness: bool,
     pub liveness_refresh_secs: u64,
     pub liveness_timeout_ms: u64,
+    /// Shared secret required in the `Authorization: Bearer …` header
+    /// on inbound requests. `None` disables inbound auth (every caller
+    /// allowed). The desktop app sets this to a per-install random
+    /// token so coexisting agents on the same machine can't piggyback
+    /// on the proxy without explicit configuration.
+    pub local_token: Option<String>,
+    /// Headroom (in micros) below which the desktop surfaces a
+    /// low-balance warning and `GET /health` flips `can_serve` to
+    /// `false`. Distinct from the hard `ensure_channel` block — this
+    /// is the proactive threshold; hitting zero deposit is still what
+    /// actually fails requests with HTTP 402.
+    pub low_balance_threshold_micros: u64,
+    /// Display-only wallet address surfaced via `GET /health` so the
+    /// desktop can render a fund prompt without re-querying the chain.
+    /// `None` omits the field from the health payload.
+    pub wallet_address: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +109,7 @@ impl Default for RoutingConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            listen_addr: "127.0.0.1:11434".to_string(),
+            listen_addr: "127.0.0.1:7662".to_string(),
             default_deposit_micros: 5_000_000,
             provider_cache_ttl_secs: 30,
             routing: RoutingConfig::default(),
@@ -108,6 +124,9 @@ impl Default for Config {
             probe_liveness: true,
             liveness_refresh_secs: 30,
             liveness_timeout_ms: 1_500,
+            local_token: None,
+            low_balance_threshold_micros: 1_000_000,
+            wallet_address: None,
         }
     }
 }

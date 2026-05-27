@@ -54,7 +54,7 @@ pub struct ProxyArgs {
     #[clap(long)]
     pub soma_home: Option<PathBuf>,
     /// HTTP listen address.
-    #[clap(long, default_value = "127.0.0.1:11434")]
+    #[clap(long, default_value = "127.0.0.1:7662")]
     pub listen: String,
     /// Default deposit (micros) when lazily opening a new channel.
     #[clap(long, default_value_t = 5_000_000)]
@@ -115,6 +115,22 @@ pub struct ProxyArgs {
     /// request that has to fall through to the next candidate.
     #[clap(long, default_value_t = 1_500)]
     pub liveness_timeout_ms: u64,
+    /// Shared secret required in the `Authorization: Bearer …` header
+    /// on inbound requests. Omit to disable inbound auth. Also read
+    /// from `SOMA_LOCAL_TOKEN` when the flag is absent.
+    #[clap(long)]
+    pub local_token: Option<String>,
+    /// Headroom (in micros) below which `/health` flips `can_serve`
+    /// to `false` and the desktop surfaces a low-balance prompt.
+    /// Also read from `SOMA_LOW_BALANCE_THRESHOLD_MICROS`.
+    #[clap(long)]
+    pub low_balance_threshold_micros: Option<u64>,
+    /// Display-only wallet address surfaced via `GET /health` so
+    /// callers (the desktop) can render a fund prompt without
+    /// re-querying the chain. Defaults to the signing address. Also
+    /// read from `SOMA_WALLET_ADDRESS`.
+    #[clap(long)]
+    pub wallet_address: Option<String>,
 }
 
 pub async fn run_provider(args: ProviderArgs) -> Result<(), anyhow::Error> {
@@ -143,7 +159,17 @@ pub async fn run_proxy(args: ProxyArgs) -> Result<(), anyhow::Error> {
         no_probe_liveness,
         liveness_refresh_secs,
         liveness_timeout_ms,
+        local_token,
+        low_balance_threshold_micros,
+        wallet_address,
     } = args;
+    // Env-var fallbacks so the desktop can pass these without
+    // recomputing CLI argv on every config change.
+    let local_token = local_token.or_else(|| std::env::var("SOMA_LOCAL_TOKEN").ok());
+    let low_balance_threshold_micros = low_balance_threshold_micros
+        .or_else(|| std::env::var("SOMA_LOW_BALANCE_THRESHOLD_MICROS").ok().and_then(|s| s.parse().ok()))
+        .unwrap_or(1_000_000);
+    let wallet_address = wallet_address.or_else(|| std::env::var("SOMA_WALLET_ADDRESS").ok());
     let (wallet, signer) = build_wallet(client, address).await?;
     let soma_home = soma_home.map(Ok).unwrap_or_else(soma_config_dir)?;
     let registry = Arc::new(IndexerProviderRegistry::new(indexer_url.clone()));
@@ -170,6 +196,12 @@ pub async fn run_proxy(args: ProxyArgs) -> Result<(), anyhow::Error> {
         probe_liveness: !no_probe_liveness,
         liveness_refresh_secs,
         liveness_timeout_ms,
+        local_token,
+        low_balance_threshold_micros,
+        // Fall back to the signing address so `/health` always carries
+        // a fund destination — overriding via `--wallet-address` is
+        // only needed when the display address differs from the signer.
+        wallet_address: Some(wallet_address.unwrap_or_else(|| signer.to_string())),
     };
     inference::proxy::run(cfg, wallet, signer, registry, soma_home).await
 }

@@ -231,6 +231,9 @@ async fn proxy_provider_full_stack_against_real_chain() {
         probe_liveness: false,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
+        local_token: None,
+        low_balance_threshold_micros: 1_000_000,
+        wallet_address: None,
     };
     let proxy_soma_home = TempDir::new().unwrap();
     let proxy_handle = tokio::spawn({
@@ -502,6 +505,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         probe_liveness: false,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
+        local_token: None,
+        low_balance_threshold_micros: 1_000_000,
+        wallet_address: None,
     };
     let proxy_v1_home = TempDir::new().unwrap();
     let proxy_v1_handle = tokio::spawn({
@@ -588,6 +594,9 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         probe_liveness: false,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
+        local_token: None,
+        low_balance_threshold_micros: 1_000_000,
+        wallet_address: None,
     };
     let proxy_v2_home = TempDir::new().unwrap();
     let proxy_v2_handle = tokio::spawn({

@@ -264,7 +264,7 @@ EXAMPLES:
     /// picks one per model, and signs vouchers per request.
     #[clap(
         name = "proxy",
-        after_help = "EXAMPLE:\n    soma proxy --listen 127.0.0.1:11434 --indexer-url ..."
+        after_help = "EXAMPLE:\n    soma proxy --listen 127.0.0.1:7662 --indexer-url ..."
     )]
     Proxy(ProxyArgs),
 
