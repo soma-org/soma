@@ -206,12 +206,40 @@ impl Handler for SomaChannels {
     const MAX_PENDING_ROWS: usize = 10_000;
 
     async fn commit<'a>(values: &[Self::Value], conn: &mut Connection<'a>) -> Result<usize> {
+        // Dedup by `channel_id` and keep the latest write per channel
+        // within this batch. The framework can hand us multiple rows
+        // for the same channel when several channel txs land in
+        // adjacent cps inside one committer batch (e.g. a TopUp +
+        // RequestClose on the same channel a few cps apart). PG's
+        // `INSERT … ON CONFLICT … DO UPDATE` errors with "command
+        // cannot affect row a second time" when two rows in the
+        // same statement target the same conflict-key; dedup before
+        // shipping so the UPSERT only sees one row per channel_id.
+        // "Latest" = highest `last_update_cp`; ties broken by the
+        // input order (the processor emits in tx order within a cp).
+        let mut latest: std::collections::HashMap<Vec<u8>, &Self::Value> =
+            std::collections::HashMap::with_capacity(values.len());
+        for v in values {
+            latest
+                .entry(v.channel_id.clone())
+                .and_modify(|prev| {
+                    if v.last_update_cp >= prev.last_update_cp {
+                        *prev = v;
+                    }
+                })
+                .or_insert(v);
+        }
+        let deduped: Vec<Self::Value> = latest.into_values().cloned().collect();
+        if deduped.is_empty() {
+            return Ok(0);
+        }
+
         // Standard Postgres ON CONFLICT update of the mutating columns.
         // `opened_at_cp`/`opened_tx_digest`/`payer`/`payee`/etc. stay at
         // their INSERT values; the mutating columns get overwritten on
         // every channel tx.
         Ok(diesel::insert_into(soma_channels::table)
-            .values(values)
+            .values(&deduped)
             .on_conflict(soma_channels::channel_id)
             .do_update()
             .set((

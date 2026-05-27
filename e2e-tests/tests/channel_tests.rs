@@ -31,8 +31,8 @@ use types::effects::TransactionEffectsAPI as _;
 use types::intent::{Intent, IntentMessage, IntentScope};
 use types::object::{CoinType, Object, ObjectID, ObjectRef, ObjectType, Version};
 use types::transaction::{
-    OpenChannelArgs, RegisterOfferingArgs, RequestCloseArgs, SettleArgs, TransactionData,
-    TransactionKind, WithdrawAfterTimeoutArgs,
+    OpenChannelArgs, RegisterOfferingArgs, RequestCloseArgs, SettleArgs, TopUpArgs,
+    TransactionData, TransactionKind, WithdrawAfterTimeoutArgs,
 };
 use utils::logging::init_tracing;
 
@@ -601,4 +601,140 @@ async fn channel_settle_rejects_invalid_signature() {
     let ch = read_channel(&test_cluster, channel_id).unwrap();
     assert_eq!(ch.deposit(), 100_000, "no payment made on rejected Settle");
     assert_eq!(ch.settled_amount(), 0);
+}
+
+/// Reproduction target for the testnet fullnode fork at tx
+/// `GixFsWyC1i8SdJwCqQbcfi7dKzLBsvUqb2dH7YFoTDz` (2026-05-25). The
+/// payer there (`0xcf0b…387c8`) ran a relay that submitted **bursts
+/// of 4 simultaneous TopUps** — one per channel — every minute, all
+/// landing in the same checkpoint. Each TopUp emits an
+/// `AccumulatorWriteV1` against the payer's `(USDC,)` accumulator;
+/// the cp builder aggregates the four into one Settlement
+/// `Withdraw`. Hypothesis (a) from the post-mortem: if anything in
+/// that aggregation or in `apply_settlement_to_object_inputs` is
+/// non-deterministic when N>1 events share an accumulator id, the
+/// fullnode's local execution diverges from the validator quorum
+/// and `authority.rs:1129`'s `fork detected!` fires.
+///
+/// This test exercises that exact workload locally. It must:
+///   * have all 4 TopUps succeed,
+///   * not trigger `fork detected!` on the fullnode,
+///   * leave the payer's USDC accumulator debited by **exactly**
+///     `4 * topup_amount + 4 * unit_fee`.
+///
+/// Any divergence here pins down hypothesis (a). A clean pass leaves
+/// the prod drift attributable to (b) — historical crashed-mid-write
+/// state divergence — or (c) — an undetected fork in a callsite the
+/// detector isn't installed on.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn channel_concurrent_topups_aggregate_correctly() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+    let addrs = test_cluster.wallet.get_addresses();
+    let payer = addrs[0];
+    let payee = addrs[1];
+
+    register_default_offering(&test_cluster, payee).await;
+
+    let read_usdc = |addr: SomaAddress| -> u64 {
+        test_cluster
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.state().database_for_testing().get_balance(addr, CoinType::Usdc))
+            .unwrap_or(0)
+    };
+
+    // Four channels — same payer, same payee, same coin — so each
+    // TopUp targets the SAME `(payer, USDC)` BalanceAccumulator. This
+    // is the only configuration that exercises N>1 events on one
+    // accumulator id in a single checkpoint.
+    let mut channel_ids = Vec::with_capacity(4);
+    for _ in 0..4 {
+        channel_ids.push(open_channel(&test_cluster, payer, payee, 1_000_000).await);
+    }
+
+    let pre_topup = read_usdc(payer);
+
+    let topup_amount = 100_000u64;
+    // Build + sign all four txs up front so the concurrent submission
+    // window contains only `execute_transaction_may_fail` calls — the
+    // tighter that window, the better the chance all four land in the
+    // same checkpoint.
+    let mut signed_txs = Vec::with_capacity(4);
+    for cid in channel_ids.iter().copied() {
+        let tx = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            payer,
+            TransactionKind::TopUp(TopUpArgs {
+                channel_id: cid,
+                coin_type: CoinType::Usdc,
+                amount: topup_amount,
+            }),
+        );
+        signed_txs.push(test_cluster.wallet.sign_transaction(&tx).await);
+    }
+    let wallet = &test_cluster.wallet;
+    let topup_futures = signed_txs.into_iter().map(|signed| async move {
+        wallet
+            .execute_transaction_may_fail(signed)
+            .await
+            .map(|r| r.effects.status().is_ok())
+            .unwrap_or(false)
+    });
+    let results: Vec<bool> = futures::future::join_all(topup_futures).await;
+    assert!(
+        results.iter().all(|ok| *ok),
+        "all 4 concurrent TopUps must succeed; got: {:?}",
+        results
+    );
+
+    // The fullnode would have panicked already if the settlement
+    // forked, so reaching here without a panic is itself the first
+    // assertion. Run one more commit so the post-state we read below
+    // includes the settlement effects (settlement applies inside the
+    // commit that includes the TopUps, but state-sync to the fullnode
+    // catches up a beat later).
+    drive_one_commit(&test_cluster).await;
+
+    let post_topup = read_usdc(payer);
+    let unit_fee = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().unwrap().fee_parameters().unit_fee
+    });
+
+    // Each TopUp debits the payer's USDC by `amount + 1*unit_fee`
+    // (TopUp's fee_units = 1). The `drive_one_commit` after the
+    // burst is a BalanceTransfer of 1 µUSDC to a single recipient,
+    // whose fee_units = 1 + n_recipients = 2 (see
+    // `TransactionKind::fee_units` in types/src/transaction.rs). So
+    // the expected debit on the payer is:
+    //   4 * (topup_amount + unit_fee)   — the 4 TopUps
+    //   +  1                            — the BalanceTransfer principal
+    //   +  2 * unit_fee                 — the BalanceTransfer gas
+    let expected_debit = 4 * (topup_amount + unit_fee) + 1 + 2 * unit_fee;
+    let actual_debit = pre_topup - post_topup;
+    info!(
+        "concurrent_topups: pre_usdc={} post_usdc={} actual_debit={} expected_debit={} \
+         (4 * ({} + {}) + 1 + 2 * {})",
+        pre_topup, post_topup, actual_debit, expected_debit, topup_amount, unit_fee, unit_fee,
+    );
+    // Drift would manifest as a non-equal debit (off by the residue
+    // amount that the cp builder mis-aggregated).
+    assert_eq!(
+        actual_debit, expected_debit,
+        "payer's USDC accumulator debit must equal 4*(topup+gas) + drive-commit gas exactly — \
+         any inequality is the aggregation/settlement drift bug"
+    );
+
+    // Per-channel sanity: each channel got exactly one top-up.
+    for cid in &channel_ids {
+        let ch = read_channel(&test_cluster, *cid).expect("channel exists post-topup");
+        assert_eq!(
+            ch.deposit(),
+            1_000_000 + topup_amount,
+            "channel {:?} deposit must equal initial + one topup",
+            cid,
+        );
+    }
 }
