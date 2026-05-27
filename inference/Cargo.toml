@@ -43,6 +43,7 @@ dirs.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { version = "1", features = ["full", "test-util"] }
+tower.workspace = true
 wiremock.workspace = true
 rand.workspace = true
 test-cluster.workspace = true

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -20,12 +21,47 @@ pub struct ClientState {
     pub relay: RelayCtx,
 }
 
-pub fn build_router(state: Arc<ClientState>) -> Router {
-    Router::new()
-        .route("/health", get(health))
+pub fn build_router(state: Arc<ClientState>, local_token: Option<String>) -> Router {
+    let token_state = Arc::new(local_token);
+    let protected = Router::new()
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(token_state, local_auth_middleware));
+    Router::new().route("/health", get(health)).merge(protected).with_state(state)
+}
+
+/// Gate inbound requests on a shared bearer token. `None` disables the
+/// check entirely (back-compat for callers that don't set
+/// `Config.local_token`). `/health` is routed outside this layer so
+/// supervisors can probe liveness without the secret.
+pub async fn local_auth_middleware(
+    State(token): State<Arc<Option<String>>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let Some(expected) = token.as_ref().as_deref() else {
+        return next.run(req).await;
+    };
+    let provided = req
+        .headers()
+        .get(http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(str::trim);
+    if provided == Some(expected) {
+        return next.run(req).await;
+    }
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error": {
+                "message": "Invalid or missing local bearer token. Set Authorization: Bearer <SOMA_LOCAL_TOKEN>.",
+                "type": "invalid_request_error",
+                "code": "invalid_local_token",
+            }
+        })),
+    )
+        .into_response()
 }
 
 const MAX_BODY: usize = 16 * 1024 * 1024;
@@ -131,4 +167,94 @@ async fn chat_completions(
         }
     }
     builder.body(Body::from(bytes)).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn router_with_token(token: Option<String>) -> Router {
+        let token_state = Arc::new(token);
+        let protected = Router::new()
+            .route("/v1/chat/completions", post(|| async { "ok" }))
+            .layer(axum::middleware::from_fn_with_state(token_state, local_auth_middleware));
+        Router::new().route("/health", get(|| async { "healthy" })).merge(protected)
+    }
+
+    async fn status(router: Router, builder: axum::http::request::Builder) -> StatusCode {
+        let req = builder.body(Body::empty()).unwrap();
+        router.oneshot(req).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn local_token_rejects_missing_bearer() {
+        let r = router_with_token(Some("secret".into()));
+        assert_eq!(
+            status(r, Request::builder().uri("/v1/chat/completions").method("POST")).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn local_token_rejects_wrong_bearer() {
+        let r = router_with_token(Some("secret".into()));
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/chat/completions")
+                    .method("POST")
+                    .header(http::header::AUTHORIZATION, "Bearer nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["error"]["code"], "invalid_local_token");
+        assert_eq!(v["error"]["type"], "invalid_request_error");
+    }
+
+    #[tokio::test]
+    async fn local_token_accepts_correct_bearer() {
+        let r = router_with_token(Some("secret".into()));
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/chat/completions")
+                    .method("POST")
+                    .header(http::header::AUTHORIZATION, "Bearer secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn local_token_bypasses_health() {
+        let r = router_with_token(Some("secret".into()));
+        assert_eq!(
+            status(r, Request::builder().uri("/health").method("GET")).await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn no_local_token_allows_all() {
+        let r = router_with_token(None);
+        assert_eq!(
+            status(r.clone(), Request::builder().uri("/v1/chat/completions").method("POST")).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(r, Request::builder().uri("/health").method("GET")).await,
+            StatusCode::OK
+        );
+    }
 }

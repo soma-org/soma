@@ -123,7 +123,7 @@ pub async fn run(
         relay::RelayCtx { channel: channel.clone(), http, wallet: wallet.clone(), signer: address };
 
     let cs = Arc::new(server::ClientState { router: inner_router, relay: relay_ctx });
-    let app = server::build_router(cs);
+    let app = server::build_router(cs, cfg.local_token.clone());
     let listener = tokio::net::TcpListener::bind(&cfg.listen_addr)
         .await
         .with_context(|| format!("bind {}", cfg.listen_addr))?;
