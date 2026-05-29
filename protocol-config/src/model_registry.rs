@@ -198,13 +198,8 @@ fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
     // Gemma 4 31B IT card; `model_id` doubles as the HuggingFace repo
     // path (`huggingface.co/google/gemma-4-31b-it`) the provider's
     // llama.cpp downloader resolves the GGUF from.
-    let mut entries = vec![gemma(
-        "google/gemma-4-31b-it",
-        "Gemma 4 31B IT",
-        262_144,
-        16_384,
-        common_chat,
-    )];
+    let mut entries =
+        vec![gemma("google/gemma-4-31b-it", "Gemma 4 31B IT", 262_144, 16_384, common_chat)];
 
     // Future protocol versions extend by pushing new entries or
     // flipping `active`. Keep the function deterministic — no env

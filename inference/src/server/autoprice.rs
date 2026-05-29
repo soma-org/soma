@@ -39,8 +39,7 @@ impl ModelPrice {
     /// configured floors so the controller starts inside its own bounds.
     pub fn new(model_id: String, base: OfferingPrices, cfg: &AutoPrice) -> Self {
         let cur_prompt = base.prompt_micros_per_1k.max(cfg.min_prompt_micros_per_1k);
-        let cur_completion =
-            base.completion_micros_per_1k.max(cfg.min_completion_micros_per_1k);
+        let cur_completion = base.completion_micros_per_1k.max(cfg.min_completion_micros_per_1k);
         Self { model_id, base, cur_prompt, cur_completion }
     }
 

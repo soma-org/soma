@@ -21,7 +21,7 @@ Options:
       --listen <LISTEN>
           HTTP listen address
           
-          [default: 127.0.0.1:11434]
+          [default: 127.0.0.1:7662]
 
       --default-deposit-micros <DEFAULT_DEPOSIT_MICROS>
           Default deposit (micros) when lazily opening a new channel
@@ -68,8 +68,17 @@ Options:
           
           [default: 1500]
 
+      --local-token <LOCAL_TOKEN>
+          Shared secret required in the `Authorization: Bearer …` header on inbound requests. Omit to disable inbound auth. Also read from `SOMA_LOCAL_TOKEN` when the flag is absent
+
+      --low-balance-threshold-micros <LOW_BALANCE_THRESHOLD_MICROS>
+          Headroom (in micros) below which `/health` flips `can_serve` to `false` and the desktop surfaces a low-balance prompt. Also read from `SOMA_LOW_BALANCE_THRESHOLD_MICROS`
+
+      --wallet-address <WALLET_ADDRESS>
+          Display-only wallet address surfaced via `GET /health` so callers (the desktop) can render a fund prompt without re-querying the chain. Defaults to the signing address. Also read from `SOMA_WALLET_ADDRESS`
+
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLE:
-    soma proxy --listen 127.0.0.1:11434 --indexer-url ...
+    soma proxy --listen 127.0.0.1:7662 --indexer-url ...

@@ -193,9 +193,7 @@ async fn chat_completions(
     let slot = match state.router.ensure_channel(&provider, &model).await {
         Ok(s) => s,
         Err(e) => {
-            if let Some(ib) =
-                e.downcast_ref::<crate::proxy::router::InsufficientBalance>()
-            {
+            if let Some(ib) = e.downcast_ref::<crate::proxy::router::InsufficientBalance>() {
                 let body = insufficient_balance_body(
                     ib.available_micros,
                     state.router.cfg.wallet_address.as_deref(),
@@ -381,8 +379,7 @@ mod tests {
     /// of all headrooms.
     #[test]
     fn health_response_includes_serve_state_and_balance() {
-        let r =
-            build_health_response(true, &[2_000_000, 500_000], 1_000_000, Some("0xabc"));
+        let r = build_health_response(true, &[2_000_000, 500_000], 1_000_000, Some("0xabc"));
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["status"], "ok");
         assert_eq!(v["aggregate_healthy"], true);

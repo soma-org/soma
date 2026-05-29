@@ -167,7 +167,9 @@ pub async fn run_proxy(args: ProxyArgs) -> Result<(), anyhow::Error> {
     // recomputing CLI argv on every config change.
     let local_token = local_token.or_else(|| std::env::var("SOMA_LOCAL_TOKEN").ok());
     let low_balance_threshold_micros = low_balance_threshold_micros
-        .or_else(|| std::env::var("SOMA_LOW_BALANCE_THRESHOLD_MICROS").ok().and_then(|s| s.parse().ok()))
+        .or_else(|| {
+            std::env::var("SOMA_LOW_BALANCE_THRESHOLD_MICROS").ok().and_then(|s| s.parse().ok())
+        })
         .unwrap_or(1_000_000);
     let wallet_address = wallet_address.or_else(|| std::env::var("SOMA_WALLET_ADDRESS").ok());
     let (wallet, signer) = build_wallet(client, address).await?;

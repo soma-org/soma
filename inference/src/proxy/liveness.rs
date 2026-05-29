@@ -243,7 +243,11 @@ mod tests {
         // Force a stale entry (last_check 1 hour ago).
         cache.entries.write().await.insert(
             addr(3),
-            Entry { last_check: Instant::now() - Duration::from_secs(3600), is_live: true, saturation: None },
+            Entry {
+                last_check: Instant::now() - Duration::from_secs(3600),
+                is_live: true,
+                saturation: None,
+            },
         );
         // Stale → re-probe → fails against unreachable endpoint.
         assert!(!cache.is_live(&addr(3), "http://127.0.0.1:1").await);

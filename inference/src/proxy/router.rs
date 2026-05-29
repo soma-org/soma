@@ -139,9 +139,7 @@ pub struct ProviderInfo {
 /// abort message embeds both, but if parsing fails they're left at 0
 /// and the requested deposit, respectively.
 #[derive(Debug, thiserror::Error)]
-#[error(
-    "Soma balance too low ({available_micros} micros available, {required_micros} required)"
-)]
+#[error("Soma balance too low ({available_micros} micros available, {required_micros} required)")]
 pub struct InsufficientBalance {
     pub available_micros: u64,
     pub required_micros: u64,
@@ -656,8 +654,7 @@ impl Router {
             Ok(v) => v,
             Err(e) => {
                 let msg = e.to_string();
-                if let Some(ib) =
-                    parse_insufficient_balance(&msg, self.cfg.default_deposit_micros)
+                if let Some(ib) = parse_insufficient_balance(&msg, self.cfg.default_deposit_micros)
                 {
                     return Err(anyhow::Error::new(ib));
                 }
