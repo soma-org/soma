@@ -17,6 +17,12 @@ use crate::proxy::config::{Config, RoutingMode, RoutingWeights};
 use crate::proxy::state::{ChannelSlot, ClientStore};
 use crate::reputation::{IndexerClient, ProviderReputation};
 
+/// Order two saturation readings ascending (less-loaded first), treating
+/// NaN as equal. Used as a routing tiebreaker after the primary score.
+fn cmp_saturation(a: f64, b: f64) -> std::cmp::Ordering {
+    a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+}
+
 /// Sum of prompt + completion price (per-token, fixed-point µ-USD).
 /// Pulled out of [`Router::price_score`] so unit tests can call it
 /// without constructing a [`Router`].
@@ -436,7 +442,11 @@ impl Router {
     ) -> anyhow::Result<Option<(ProviderInfo, ModelCard)>> {
         self.ensure_cache().await?;
         let g = self.cache.read().await;
-        let mut candidates: Vec<(ProviderInfo, ModelCard)> = Vec::new();
+        // Carry each candidate's published saturation alongside it so we
+        // can shed load off devices already at capacity and break ties
+        // toward the least-loaded provider. Unknown ⇒ 0.0 (treat a
+        // provider that doesn't report load as idle).
+        let mut candidates: Vec<(ProviderInfo, ModelCard, f64)> = Vec::new();
         for p in &g.providers {
             if let Some(c) = p.catalog.iter().find(|c| c.id == model) {
                 // Trusted-providers gate (somacode default). When the
@@ -449,43 +459,71 @@ impl Router {
                         continue;
                     }
                 }
+                let mut saturation = 0.0;
                 if let Some(l) = &self.liveness {
                     if !l.is_live(&p.address, &p.endpoint).await {
                         continue;
                     }
+                    // `is_live` just populated the cache entry, so this
+                    // reads the freshly-probed value.
+                    saturation = l.saturation(&p.address).await.unwrap_or(0.0);
                 }
-                candidates.push((p.clone(), c.clone()));
+                candidates.push((p.clone(), c.clone(), saturation));
             }
         }
         if candidates.is_empty() {
             return Ok(None);
         }
 
-        match self.cfg.routing.mode {
+        // Overload shedding: if any candidate has headroom, drop the
+        // fully-saturated ones so demand flows to devices that can serve
+        // it now. Only kicks in when there's somewhere else to send the
+        // request — never empties the candidate set.
+        if candidates.iter().any(|(_, _, s)| *s < 1.0) {
+            candidates.retain(|(_, _, s)| *s < 1.0);
+        }
+
+        let pick = match self.cfg.routing.mode {
             RoutingMode::Price => {
-                candidates.sort_by(|a, b| self.price_score(&a.1).cmp(&self.price_score(&b.1)));
-                Ok(Some(candidates.remove(0)))
+                // Cheapest first; ties broken toward the least-loaded.
+                candidates.sort_by(|a, b| {
+                    self.price_score(&a.1)
+                        .cmp(&self.price_score(&b.1))
+                        .then(cmp_saturation(a.2, b.2))
+                });
+                candidates.remove(0)
             }
             RoutingMode::Weighted => {
-                let Some(indexer) = self.indexer.clone() else {
+                if let Some(indexer) = self.indexer.clone() {
+                    let addrs: Vec<_> = candidates.iter().map(|(p, _, _)| p.address).collect();
+                    let reps = indexer.fetch_many(&addrs).await;
+                    // Pick the highest scorer. Higher = better (price is
+                    // already negated inside `weighted_score`); ties go
+                    // to the least-loaded provider.
+                    candidates.sort_by(|a, b| {
+                        let sa =
+                            self.weighted_score(&a.1, reps.get(&a.0.address).cloned().flatten());
+                        let sb =
+                            self.weighted_score(&b.1, reps.get(&b.0.address).cloned().flatten());
+                        sb.partial_cmp(&sa)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(cmp_saturation(a.2, b.2))
+                    });
+                    candidates.remove(0)
+                } else {
                     tracing::warn!(
                         "routing.mode = weighted but no indexer_url configured; falling back to price"
                     );
-                    candidates.sort_by(|a, b| self.price_score(&a.1).cmp(&self.price_score(&b.1)));
-                    return Ok(Some(candidates.remove(0)));
-                };
-                let addrs: Vec<_> = candidates.iter().map(|(p, _)| p.address).collect();
-                let reps = indexer.fetch_many(&addrs).await;
-                // Pick the highest scorer. Higher = better (price is
-                // already negated inside `weighted_score`).
-                candidates.sort_by(|a, b| {
-                    let sa = self.weighted_score(&a.1, reps.get(&a.0.address).cloned().flatten());
-                    let sb = self.weighted_score(&b.1, reps.get(&b.0.address).cloned().flatten());
-                    sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                Ok(Some(candidates.remove(0)))
+                    candidates.sort_by(|a, b| {
+                        self.price_score(&a.1)
+                            .cmp(&self.price_score(&b.1))
+                            .then(cmp_saturation(a.2, b.2))
+                    });
+                    candidates.remove(0)
+                }
             }
-        }
+        };
+        Ok(Some((pick.0, pick.1)))
     }
 
     fn price_score(&self, card: &ModelCard) -> u128 {

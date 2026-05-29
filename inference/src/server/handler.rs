@@ -54,7 +54,12 @@ pub fn build_router(state: Arc<ProviderState>) -> Router {
 
 async fn health(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
     let healthy = state.backend.health().await;
-    Json(json!({"status": "ok", "backend_healthy": healthy}))
+    let saturation = state.backend.saturation().await;
+    Json(crate::health::ProviderHealth {
+        status: "ok".to_string(),
+        backend_healthy: healthy,
+        saturation,
+    })
 }
 
 async fn chat_completions(

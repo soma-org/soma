@@ -140,7 +140,7 @@ fn read_usdc(test_cluster: &TestCluster, addr: SomaAddress) -> u64 {
         .unwrap_or(0)
 }
 
-const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+const TEST_MODEL: &str = "google/gemma-4-31b-it";
 
 /// Ensure the payee has an on-chain offering for the test model so
 /// OpenChannel's per-(payee, model) shared input resolves to a real
@@ -667,7 +667,7 @@ async fn predicted_channel_id_matches_on_chain() {
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount: 10_000,
-            model_id: "anthropic/claude-sonnet-4.6".to_string(),
+            model_id: "google/gemma-4-31b-it".to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;

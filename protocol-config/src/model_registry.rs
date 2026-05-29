@@ -162,66 +162,9 @@ fn features(items: &[ModelFeature]) -> u32 {
     items.iter().fold(0, |acc, f| acc | f.bit())
 }
 
-/// Family-specific entry constructors. Each pins the tokenizer + the
-/// modalities a typical model in that family supports (text + vision +
-/// file in/out for the multimodal frontier families; text-only for
-/// instruct-tuned open-weights base models). Centralizes the boilerplate
-/// so the seed list stays readable.
-fn anthropic(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Claude,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit() | Modality::Image.bit() | Modality::File.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-fn gpt(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Gpt,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit()
-            | Modality::Image.bit()
-            | Modality::Audio.bit()
-            | Modality::File.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-fn gemini(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Gemini,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit()
-            | Modality::Image.bit()
-            | Modality::Audio.bit()
-            | Modality::Video.bit()
-            | Modality::File.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
+/// Constructor for a Gemma-family entry. Pins the SentencePiece tokenizer
+/// (proxy falls back to chars/4) and the text+image+video input modalities
+/// the multimodal Gemma 4 weights support.
 fn gemma(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
     ModelRegistryEntry {
         model_id: model_id.to_string(),
@@ -236,312 +179,32 @@ fn gemma(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> M
     }
 }
 
-fn grok(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Grok,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit() | Modality::Image.bit() | Modality::File.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-fn llama(model_id: &str, name: &str, ctx: u32, max_out: u32, features: u32) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Llama,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit() | Modality::Image.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-fn deepseek(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Deepseek,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features,
-        active: true,
-    }
-}
-
-fn qwen_tok(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Qwen,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit() | Modality::Image.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-fn mistral(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Mistral,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features,
-        active: true,
-    }
-}
-
-/// Fallback constructor for providers whose tokenizer doesn't match any
-/// known family. Proxy falls back to chars/4 estimation.
-fn unknown_tok(
-    model_id: &str,
-    name: &str,
-    ctx: u32,
-    max_out: u32,
-    features: u32,
-) -> ModelRegistryEntry {
-    ModelRegistryEntry {
-        model_id: model_id.to_string(),
-        display_name: name.to_string(),
-        tokenizer: TokenizerFamily::Unknown,
-        total_context_tokens: ctx,
-        max_output_tokens: max_out,
-        input_modalities: Modality::Text.bit() | Modality::Image.bit(),
-        output_modalities: Modality::Text.bit(),
-        supported_features: features | ModelFeature::Vision.bit(),
-        active: true,
-    }
-}
-
-/// Compute the canonical entries for a given protocol version. New
-/// versions inherit and extend; we never silently rewrite history.
+/// Compute the canonical entries for a given protocol version.
+///
+/// Soma launches with a single locally-servable model: every provider
+/// runs the same `google/gemma-4-31b-it` weights under llama.cpp, so the
+/// network is symmetric — any participant can be both a consumer and a
+/// provider from day one without procuring upstream API keys. Additional
+/// models land via new protocol-version arms here.
 fn entries_for_version(version: ProtocolVersion) -> Vec<ModelRegistryEntry> {
-    // V1: seed with the major frontier + open-source models live on
-    // OpenRouter at protocol launch. Inclusion criteria: well-known,
-    // OpenAI-API-compatible via OpenRouter, broad provider coverage.
     if version.as_u64() == 0 {
         return Vec::new();
     }
 
-    // Default base (v1 and onward).
-    let text = Modality::Text;
-    let image = Modality::Image;
-    let file = Modality::File;
-    let audio = Modality::Audio;
-
     let common_chat =
         features(&[ModelFeature::Tools, ModelFeature::JsonMode, ModelFeature::StructuredOutputs]);
-    let reasoning_chat = features(&[
-        ModelFeature::Tools,
-        ModelFeature::JsonMode,
-        ModelFeature::StructuredOutputs,
-        ModelFeature::Reasoning,
-    ]);
-    let cached_reasoning = features(&[
-        ModelFeature::Tools,
-        ModelFeature::JsonMode,
-        ModelFeature::StructuredOutputs,
-        ModelFeature::Reasoning,
-        ModelFeature::Caching,
-    ]);
 
-    // The seed below covers each major provider at three rough size
-    // tiers — small/medium/large — plus current-gen "preview"/"latest"
-    // entries that are actively routed to. Model IDs match OpenRouter
-    // canonical slugs (`/v1/models`) verbatim so a provider can pass
-    // requests straight through. Only entries with public release
-    // dates in March 2025 or later are included; superseded versions
-    // are dropped. Updates land via new protocol-version arms here.
-    let video = Modality::Video;
-    let _ = audio;
-    let _ = file;
-    let _ = video;
-    let mut entries = vec![
-        // === Anthropic (Mar 2025+) ===
-        anthropic(
-            "anthropic/claude-haiku-4.5",
-            "Claude Haiku 4.5",
-            200_000,
-            64_000,
-            cached_reasoning,
-        ),
-        anthropic(
-            "anthropic/claude-sonnet-4.6",
-            "Claude Sonnet 4.6",
-            1_000_000,
-            128_000,
-            cached_reasoning,
-        ),
-        anthropic(
-            "anthropic/claude-opus-4.7",
-            "Claude Opus 4.7",
-            1_000_000,
-            128_000,
-            cached_reasoning,
-        ),
-        anthropic(
-            "anthropic/claude-opus-4.7-fast",
-            "Claude Opus 4.7 (Fast)",
-            1_000_000,
-            128_000,
-            cached_reasoning,
-        ),
-        // === OpenAI (Mar 2025+) ===
-        gpt("openai/gpt-5.4-nano", "GPT-5.4 Nano", 400_000, 128_000, cached_reasoning),
-        gpt("openai/gpt-5.4-mini", "GPT-5.4 Mini", 400_000, 128_000, cached_reasoning),
-        gpt("openai/gpt-5.5", "GPT-5.5", 1_050_000, 128_000, cached_reasoning),
-        gpt("openai/gpt-5.5-pro", "GPT-5.5 Pro", 1_050_000, 128_000, cached_reasoning),
-        // === Google (Mar 2025+) ===
-        gemini(
-            "google/gemini-3.1-flash-lite",
-            "Gemini 3.1 Flash Lite",
-            1_048_576,
-            65_536,
-            reasoning_chat,
-        ),
-        gemini(
-            "google/gemini-3.1-pro-preview",
-            "Gemini 3.1 Pro (Preview)",
-            1_048_576,
-            65_536,
-            reasoning_chat,
-        ),
-        gemma("google/gemma-4-26b-a4b-it", "Gemma 4 26B A4B IT", 262_144, 16_384, common_chat),
-        gemma("google/gemma-4-31b-it", "Gemma 4 31B IT", 262_144, 16_384, common_chat),
-        // === xAI (Mar 2025+) ===
-        grok("x-ai/grok-4.20", "Grok 4.20", 2_000_000, 32_768, reasoning_chat),
-        grok(
-            "x-ai/grok-4.20-multi-agent",
-            "Grok 4.20 Multi-Agent",
-            2_000_000,
-            32_768,
-            reasoning_chat,
-        ),
-        grok("x-ai/grok-4.3", "Grok 4.3", 1_000_000, 32_768, reasoning_chat),
-        // === Meta (Mar 2025+, open weights) ===
-        llama("meta-llama/llama-4-scout", "Llama 4 Scout", 327_680, 16_384, common_chat),
-        llama("meta-llama/llama-4-maverick", "Llama 4 Maverick", 1_048_576, 16_384, common_chat),
-        // === DeepSeek (Mar 2025+) ===
-        deepseek(
-            "deepseek/deepseek-v4-flash",
-            "DeepSeek V4 Flash",
-            1_048_576,
-            131_072,
-            common_chat,
-        ),
-        deepseek("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", 1_048_576, 384_000, reasoning_chat),
-        // === Moonshot (Mar 2025+) ===
-        qwen_tok("moonshotai/kimi-k2.6", "Kimi K2.6", 262_142, 262_142, reasoning_chat),
-        // === Qwen (Mar 2025+) ===
-        qwen_tok("qwen/qwen3.6-flash", "Qwen3.6 Flash", 1_000_000, 65_536, common_chat),
-        qwen_tok("qwen/qwen3.6-plus", "Qwen3.6 Plus", 1_000_000, 65_536, reasoning_chat),
-        qwen_tok(
-            "qwen/qwen3.6-max-preview",
-            "Qwen3.6 Max Preview",
-            262_144,
-            65_536,
-            reasoning_chat,
-        ),
-        // === Mistral (Mar 2025+) ===
-        mistral(
-            "mistralai/mistral-small-2603",
-            "Mistral Small 4 (2026-03)",
-            262_144,
-            32_768,
-            common_chat,
-        ),
-        mistral("mistralai/mistral-medium-3-5", "Mistral Medium 3.5", 262_144, 32_768, common_chat),
-        mistral(
-            "mistralai/mistral-large-2512",
-            "Mistral Large 3 (2025-12)",
-            262_144,
-            32_768,
-            common_chat,
-        ),
-        // === MiniMax (Mar 2025+) ===
-        unknown_tok("minimax/minimax-m2.7", "MiniMax M2.7", 196_608, 32_768, reasoning_chat),
-        // === Z.AI (user request) ===
-        unknown_tok("z-ai/glm-5.1", "GLM 5.1", 128_000, 16_384, reasoning_chat),
-        // === Xiaomi (user request) ===
-        unknown_tok("xiaomi/mimo-v2.5-pro", "MiMo V2.5 Pro", 200_000, 16_384, reasoning_chat),
-        // === Tencent (Mar 2025+) ===
-        unknown_tok(
-            "tencent/hy3-preview",
-            "Tencent Hy3 (Preview)",
-            262_144,
-            65_536,
-            reasoning_chat,
-        ),
-        // === NVIDIA (Mar 2025+) ===
-        unknown_tok(
-            "nvidia/nemotron-3-super-120b-a12b",
-            "Nemotron 3 Super 120B A12B",
-            262_144,
-            65_536,
-            common_chat,
-        ),
-        // === Amazon (Mar 2025+) ===
-        gpt("amazon/nova-2-lite-v1", "Amazon Nova 2 Lite", 1_000_000, 65_535, common_chat),
-        gpt("amazon/nova-premier-v1", "Amazon Nova Premier", 1_000_000, 32_000, common_chat),
-        // === Cohere (Mar 2025+) ===
-        unknown_tok("cohere/command-a", "Cohere Command A", 256_000, 8_192, common_chat),
-        // === IBM (Mar 2025+) ===
-        unknown_tok(
-            "ibm-granite/granite-4.1-8b",
-            "IBM Granite 4.1 8B",
-            131_072,
-            32_768,
-            common_chat,
-        ),
-        // === ByteDance Seed (Mar 2025+) ===
-        unknown_tok(
-            "bytedance-seed/seed-2.0-mini",
-            "ByteDance Seed 2.0 Mini",
-            262_144,
-            131_072,
-            common_chat,
-        ),
-        unknown_tok(
-            "bytedance-seed/seed-2.0-lite",
-            "ByteDance Seed 2.0 Lite",
-            262_144,
-            131_072,
-            common_chat,
-        ),
-    ];
+    // The sole launch model. Context/output limits match the published
+    // Gemma 4 31B IT card; `model_id` doubles as the HuggingFace repo
+    // path (`huggingface.co/google/gemma-4-31b-it`) the provider's
+    // llama.cpp downloader resolves the GGUF from.
+    let mut entries = vec![gemma(
+        "google/gemma-4-31b-it",
+        "Gemma 4 31B IT",
+        262_144,
+        16_384,
+        common_chat,
+    )];
 
     // Future protocol versions extend by pushing new entries or
     // flipping `active`. Keep the function deterministic — no env
@@ -559,32 +222,15 @@ mod tests {
     use crate::{MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION};
 
     #[test]
-    fn registry_for_min_version_has_frontier_seed() {
+    fn registry_for_min_version_is_gemma_only() {
         let r = ModelRegistry::for_version(ProtocolVersion::new(MIN_PROTOCOL_VERSION));
-        assert!(r.entries.len() >= 25, "expected ≥25 entries in v1 seed");
-        // Sample S/M/L coverage across major providers — model IDs
-        // taken verbatim from openrouter.ai/api/v1/models (Mar 2025+).
-        assert!(r.get("anthropic/claude-haiku-4.5").is_some());
-        assert!(r.get("anthropic/claude-sonnet-4.6").is_some());
-        assert!(r.get("anthropic/claude-opus-4.7").is_some());
-        assert!(r.get("openai/gpt-5.4-mini").is_some());
-        assert!(r.get("openai/gpt-5.5").is_some());
-        assert!(r.get("openai/gpt-5.5-pro").is_some());
-        assert!(r.get("google/gemini-3.1-flash-lite").is_some());
-        assert!(r.get("google/gemini-3.1-pro-preview").is_some());
-        assert!(r.get("x-ai/grok-4.3").is_some());
-        assert!(r.get("meta-llama/llama-4-maverick").is_some());
-        assert!(r.get("deepseek/deepseek-v4-pro").is_some());
-        assert!(r.get("moonshotai/kimi-k2.6").is_some());
-        assert!(r.get("qwen/qwen3.6-plus").is_some());
-        assert!(r.get("mistralai/mistral-medium-3-5").is_some());
-        assert!(r.get("minimax/minimax-m2.7").is_some());
-        assert!(r.get("z-ai/glm-5.1").is_some());
-        assert!(r.get("xiaomi/mimo-v2.5-pro").is_some());
-        assert!(r.get("tencent/hy3-preview").is_some());
-        assert!(r.get("nvidia/nemotron-3-super-120b-a12b").is_some());
-        assert!(r.get("amazon/nova-premier-v1").is_some());
-        assert!(r.get("cohere/command-a").is_some());
+        assert_eq!(r.entries.len(), 1, "launch registry holds exactly one model");
+        let gemma = r.get("google/gemma-4-31b-it").expect("gemma is the launch model");
+        assert_eq!(gemma.tokenizer, TokenizerFamily::Gemini);
+        assert_eq!(gemma.display_name, "Gemma 4 31B IT");
+        // Models that used to seed the OpenRouter-era registry are gone.
+        assert!(r.get("anthropic/claude-sonnet-4.6").is_none());
+        assert!(r.get("openai/gpt-5.5").is_none());
     }
 
     #[test]

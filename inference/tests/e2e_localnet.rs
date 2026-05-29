@@ -44,7 +44,7 @@ use inference::channel::{PaymentChannel as _, RunningTab};
 use inference::server::ledger::Ledger;
 use types::effects::TransactionEffectsAPI as _;
 
-const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+const TEST_MODEL: &str = "google/gemma-4-31b-it";
 
 /// Submit a `RegisterOffering` for `payee` against `TEST_MODEL` so the
 /// OpenChannel path can find an offering to snapshot. Idempotent: if
@@ -194,10 +194,12 @@ async fn proxy_provider_full_stack_against_real_chain() {
             api_key_env: Some("OPENROUTER_API_KEY".into()),
             upstream_url: Some(upstream.uri()),
             endpoint_name: None,
+            slots: None,
         },
         auth: Default::default(),
         offerings: vec![card.clone()],
         auto_settle: Default::default(),
+        autoprice: Default::default(),
     };
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();
@@ -470,10 +472,12 @@ async fn stateless_proxy_cold_start_resumes_safely() {
             api_key_env: Some("OPENROUTER_API_KEY".to_string()),
             upstream_url: Some(upstream.uri()),
             endpoint_name: None,
+            slots: None,
         },
         auth: Default::default(),
         offerings: vec![card.clone()],
         auto_settle: Default::default(),
+        autoprice: Default::default(),
     };
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();

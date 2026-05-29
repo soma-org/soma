@@ -40,7 +40,7 @@ use inference::chain::memory::MemoryDiscovery;
 use inference::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
 use inference::channel::{PaymentChannel as _, RunningTab};
 
-const TEST_MODEL: &str = "anthropic/claude-haiku-4.5";
+const TEST_MODEL: &str = "google/gemma-4-31b-it";
 
 fn wallet_for_path(path: &std::path::Path) -> WalletContext {
     WalletContext::new(path).expect("WalletContext from cluster's client.yaml")
@@ -173,10 +173,12 @@ async fn openrouter_full_stack_round_trip() {
             api_key_env: Some("OPENROUTER_API_KEY".into()),
             upstream_url: None, // default https://openrouter.ai/api/v1
             endpoint_name: None,
+            slots: None,
         },
         auth: Default::default(),
         offerings: vec![card.clone()],
         auto_settle: Default::default(),
+        autoprice: Default::default(),
     };
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();

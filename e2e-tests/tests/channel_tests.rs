@@ -88,7 +88,7 @@ async fn sign_voucher(
 /// OpenChannel is already met).
 async fn register_default_offering(test_cluster: &TestCluster, payee: SomaAddress) {
     use types::offering::Offering;
-    let offering_id = Offering::derive_id(payee, "anthropic/claude-sonnet-4.6");
+    let offering_id = Offering::derive_id(payee, "google/gemma-4-31b-it");
     if test_cluster
         .fullnode_handle
         .soma_node
@@ -100,7 +100,7 @@ async fn register_default_offering(test_cluster: &TestCluster, payee: SomaAddres
         test_cluster,
         payee,
         TransactionKind::RegisterOffering(RegisterOfferingArgs {
-            model_id: "anthropic/claude-sonnet-4.6".to_string(),
+            model_id: "google/gemma-4-31b-it".to_string(),
             prompt_micros_per_1k: 3_000,
             completion_micros_per_1k: 15_000,
             cache_read_micros_per_1k: 300,
@@ -138,7 +138,7 @@ async fn open_channel(
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount,
-            model_id: "anthropic/claude-sonnet-4.6".to_string(),
+            model_id: "google/gemma-4-31b-it".to_string(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;

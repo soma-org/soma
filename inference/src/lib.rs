@@ -22,6 +22,7 @@
 pub mod catalog;
 pub mod chain;
 pub mod channel;
+pub mod health;
 pub mod openai;
 pub mod persist;
 pub mod pricing;

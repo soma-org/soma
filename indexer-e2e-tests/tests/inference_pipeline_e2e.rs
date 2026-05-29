@@ -73,7 +73,7 @@ async fn sign_voucher(
     sig.into()
 }
 
-const TEST_MODEL: &str = "anthropic/claude-sonnet-4.6";
+const TEST_MODEL: &str = "google/gemma-4-31b-it";
 
 /// Ensure the payee has an on-chain offering for the test model so
 /// OpenChannel can snapshot it. Idempotent.

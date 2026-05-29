@@ -7,6 +7,7 @@
 //! upstream. The OpenRouter and Vast backends are about ~120 lines each and
 //! make good references.
 
+pub mod llama_cpp;
 pub mod openrouter;
 pub mod vast;
 
@@ -22,6 +23,19 @@ use crate::openai::ChatRequest;
 pub trait Backend: Send + Sync + 'static {
     async fn list_models(&self) -> anyhow::Result<ModelsResponse>;
     async fn health(&self) -> bool;
+
+    /// Current load on the backend, as a fraction in `[0.0, 1.0]`:
+    /// roughly "work in flight divided by serving capacity". `0.0` is
+    /// idle, `1.0` is fully saturated (every slot busy, queue forming).
+    /// Drives both the on-chain price-update loop and the `/health`
+    /// saturation the proxy reads when ranking providers.
+    ///
+    /// `None` means the backend can't measure it — e.g. a remote API
+    /// (OpenRouter, Vast) whose internal queue we don't observe. Such
+    /// backends opt out of utilization-based pricing.
+    async fn saturation(&self) -> Option<f64> {
+        None
+    }
 
     async fn chat_completions_stream(
         &self,

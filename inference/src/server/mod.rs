@@ -6,6 +6,7 @@
 //! HTTP path.
 
 pub mod auth;
+pub mod autoprice;
 pub mod backend;
 pub mod config;
 pub mod handler;
@@ -40,6 +41,7 @@ pub async fn run(
     let backend: Arc<dyn backend::Backend> = match cfg.backend.kind.as_str() {
         "openrouter" => backend::openrouter::OpenRouterBackend::new(&cfg)?,
         "vast" => backend::vast::VastBackend::new(&cfg)?,
+        "llamacpp" | "llama_cpp" | "local" => backend::llama_cpp::LlamaCppBackend::new(&cfg)?,
         other => anyhow::bail!("unsupported backend kind: {other}"),
     };
 
@@ -119,6 +121,22 @@ pub async fn run(
         channel.clone(),
         cfg.auto_settle.interval_secs,
     );
+
+    // Utilization-targeting price controller. Seeded from the same boot
+    // offering prices registered above; steps them toward a target
+    // utilization band each tick using the backend's saturation signal.
+    let price_models: Vec<autoprice::ModelPrice> = cfg
+        .offerings
+        .iter()
+        .map(|card| {
+            autoprice::ModelPrice::new(
+                card.id.clone(),
+                crate::pricing::offering_prices_from_card(card),
+                &cfg.autoprice,
+            )
+        })
+        .collect();
+    autoprice::spawn(wallet.clone(), address, backend.clone(), price_models, cfg.autoprice);
 
     let state = Arc::new(handler::ProviderState {
         chain: chain.clone(),

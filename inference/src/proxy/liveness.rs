@@ -37,6 +37,8 @@ use reqwest::Client;
 use tokio::sync::{RwLock, Semaphore};
 use types::base::SomaAddress;
 
+use crate::health::ProviderHealth;
+
 /// Maximum concurrent `/health` probes inside `probe_all`. Unbounded
 /// `Promise.all`-style fan-out can starve the tokio runtime and the
 /// proxy's other HTTP work; 8 is fast enough for typical provider
@@ -47,6 +49,9 @@ const PROBE_CONCURRENCY: usize = 8;
 struct Entry {
     last_check: Instant,
     is_live: bool,
+    /// Last `saturation` the provider published on its `/health`
+    /// payload (`None` if unreachable or not reported).
+    saturation: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -92,12 +97,20 @@ impl LivenessCache {
                 return e.is_live;
             }
         }
-        let live = self.probe(endpoint).await;
+        let (live, saturation) = self.probe(endpoint).await;
         self.entries
             .write()
             .await
-            .insert(*addr, Entry { last_check: Instant::now(), is_live: live });
+            .insert(*addr, Entry { last_check: Instant::now(), is_live: live, saturation });
         live
+    }
+
+    /// The provider's last-published device saturation in `[0,1]`, as
+    /// seen on its most recent `/health` probe. `None` if the provider
+    /// hasn't been probed, is unreachable, or doesn't report it. The
+    /// router uses this to steer demand away from saturated devices.
+    pub async fn saturation(&self, addr: &SomaAddress) -> Option<f64> {
+        self.entries.read().await.get(addr).and_then(|e| e.saturation)
     }
 
     /// Drop the cache entry for `addr` so the next `is_live` call
@@ -109,13 +122,22 @@ impl LivenessCache {
         self.entries.write().await.remove(addr);
     }
 
-    /// One-shot `/health` probe with the configured timeout.
-    async fn probe(&self, endpoint: &str) -> bool {
+    /// One-shot `/health` probe with the configured timeout. Returns
+    /// liveness plus the provider's published saturation (best-effort —
+    /// a body that doesn't parse still counts as live with `None`).
+    async fn probe(&self, endpoint: &str) -> (bool, Option<f64>) {
         let url = format!("{}/health", endpoint.trim_end_matches('/'));
         match tokio::time::timeout(self.timeout, self.http.get(url).send()).await {
-            Ok(Ok(resp)) => resp.status().is_success(),
+            Ok(Ok(resp)) => {
+                if !resp.status().is_success() {
+                    return (false, None);
+                }
+                let saturation =
+                    resp.json::<ProviderHealth>().await.ok().and_then(|h| h.saturation);
+                (true, saturation)
+            }
             // Timed out, or hit a connect/transport error.
-            _ => false,
+            _ => (false, None),
         }
     }
 
@@ -136,22 +158,27 @@ impl LivenessCache {
             let endpoint = endpoint.clone();
             handles.push(tokio::spawn(async move {
                 let url = format!("{}/health", endpoint.trim_end_matches('/'));
-                let live = match tokio::time::timeout(timeout, http.get(url).send()).await {
-                    Ok(Ok(resp)) => resp.status().is_success(),
-                    _ => false,
-                };
+                let (live, saturation) =
+                    match tokio::time::timeout(timeout, http.get(url).send()).await {
+                        Ok(Ok(resp)) if resp.status().is_success() => {
+                            let sat =
+                                resp.json::<ProviderHealth>().await.ok().and_then(|h| h.saturation);
+                            (true, sat)
+                        }
+                        _ => (false, None),
+                    };
                 drop(permit);
-                (addr, live)
+                (addr, live, saturation)
             }));
         }
         let mut alive = 0;
         let mut entries = self.entries.write().await;
         for h in handles {
-            if let Ok((addr, live)) = h.await {
+            if let Ok((addr, live, saturation)) = h.await {
                 if live {
                     alive += 1;
                 }
-                entries.insert(addr, Entry { last_check: now, is_live: live });
+                entries.insert(addr, Entry { last_check: now, is_live: live, saturation });
             }
         }
         alive
@@ -186,7 +213,7 @@ mod tests {
             .entries
             .write()
             .await
-            .insert(addr(1), Entry { last_check: Instant::now(), is_live: true });
+            .insert(addr(1), Entry { last_check: Instant::now(), is_live: true, saturation: None });
         assert!(cache.is_live(&addr(1), "http://127.0.0.1:1").await); // hits cache
         cache.mark_dead(&addr(1)).await;
         // No cache → probes for real → fails (no listener on :1).
@@ -203,7 +230,7 @@ mod tests {
             .entries
             .write()
             .await
-            .insert(addr(2), Entry { last_check: Instant::now(), is_live: true });
+            .insert(addr(2), Entry { last_check: Instant::now(), is_live: true, saturation: None });
         // Endpoint is intentionally unreachable. If we probed we'd
         // return false; the cache hit must shortcut that.
         assert!(cache.is_live(&addr(2), "http://127.0.0.1:1").await);
@@ -216,7 +243,7 @@ mod tests {
         // Force a stale entry (last_check 1 hour ago).
         cache.entries.write().await.insert(
             addr(3),
-            Entry { last_check: Instant::now() - Duration::from_secs(3600), is_live: true },
+            Entry { last_check: Instant::now() - Duration::from_secs(3600), is_live: true, saturation: None },
         );
         // Stale → re-probe → fails against unreachable endpoint.
         assert!(!cache.is_live(&addr(3), "http://127.0.0.1:1").await);

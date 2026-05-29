@@ -25,9 +25,8 @@ use types::transaction::{
 use utils::logging::init_tracing;
 
 /// A model_id that is guaranteed to exist in the protocol-config
-/// ModelRegistry at MIN protocol version. The frontier seed always
-/// includes Claude Sonnet 4.6.
-const VALID_MODEL: &str = "anthropic/claude-sonnet-4.6";
+/// ModelRegistry at MIN protocol version — the sole launch model.
+const VALID_MODEL: &str = "google/gemma-4-31b-it";
 
 fn read_offering(test_cluster: &TestCluster, id: ObjectID) -> Option<Offering> {
     test_cluster.fullnode_handle.soma_node.with(|node| {

@@ -247,9 +247,9 @@ mod tests {
         ObjectReadResultKind, RegisterOfferingArgs, UpdateOfferingArgs,
     };
 
-    /// First active entry in the v1 ModelRegistry. Used by the
+    /// The sole active entry in the v1 ModelRegistry. Used by the
     /// register tests so we land an offering against a real model.
-    const VALID_MODEL: &str = "anthropic/claude-sonnet-4.6";
+    const VALID_MODEL: &str = "google/gemma-4-31b-it";
 
     fn make_store(clock_ts: u64, offering: Option<Offering>) -> TemporaryStore {
         let mut inputs: Vec<ObjectReadResult> = Vec::new();

@@ -673,7 +673,7 @@ mod tests {
     /// active entry in the protocol-config `ModelRegistry` at
     /// `ProtocolVersion::MIN` so the offering executor's model lookup
     /// would succeed against it.
-    const TEST_MODEL_ID: &str = "anthropic/claude-sonnet-4.6";
+    const TEST_MODEL_ID: &str = "google/gemma-4-31b-it";
 
     /// Build a default `OpenChannelArgs` for the fixture's payee+signer
     /// at the canonical test model. Tests override individual fields
