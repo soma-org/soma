@@ -447,6 +447,13 @@ impl Router {
         let mut candidates: Vec<(ProviderInfo, ModelCard, f64)> = Vec::new();
         for p in &g.providers {
             if let Some(c) = p.catalog.iter().find(|c| c.id == model) {
+                // Never route to our own provider: a user who is both a
+                // provider and a consumer (the day-one model) would otherwise
+                // try to open a payment channel to themselves, which the
+                // executor rejects (`payee must differ from payer`).
+                if p.address == self.client_address {
+                    continue;
+                }
                 // Trusted-providers gate (somacode default). When the
                 // filter is configured but the candidate isn't on the
                 // current authorized snapshot, skip. `is_allowed`
