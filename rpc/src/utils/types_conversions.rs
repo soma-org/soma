@@ -733,6 +733,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::RegisterProvider(args) => {
                 TK::RegisterProvider(types::transaction::RegisterProviderArgs {
                     endpoint: args.endpoint,
+                    iroh_endpoint_id: args.iroh_endpoint_id,
                 })
             }
             TransactionKind::UpdateProvider(args) => {
@@ -741,6 +742,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                         args.provider_id,
                     )),
                     endpoint: args.endpoint,
+                    iroh_endpoint_id: args.iroh_endpoint_id,
                 })
             }
 

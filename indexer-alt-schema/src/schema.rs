@@ -267,6 +267,7 @@ diesel::table! {
     soma_providers (address) {
         address -> Bytea,
         endpoint -> Text,
+        iroh_endpoint_id -> Text,
         last_update_cp -> Int8,
     }
 }

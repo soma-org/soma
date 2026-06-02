@@ -26,6 +26,10 @@ pub enum ProviderCommand {
         /// and /v1/* APIs.
         #[clap(long)]
         endpoint: String,
+        /// The provider's dedicated iroh EndpointId (canonical z-base-32
+        /// string) buyers can dial over iroh. Omit for HTTP-only.
+        #[clap(long)]
+        iroh_endpoint_id: Option<String>,
         /// Override the active wallet address.
         #[clap(long)]
         address: Option<SomaAddress>,
@@ -38,6 +42,9 @@ pub enum ProviderCommand {
     Update {
         #[clap(long)]
         endpoint: String,
+        /// New (or unchanged) iroh EndpointId. Omit for HTTP-only.
+        #[clap(long)]
+        iroh_endpoint_id: Option<String>,
         #[clap(long)]
         address: Option<SomaAddress>,
         #[clap(long)]
@@ -58,15 +65,27 @@ pub enum ProviderCommand {
 impl ProviderCommand {
     pub async fn execute(self) -> Result<()> {
         match self {
-            Self::Register { endpoint, address, client } => {
+            Self::Register { endpoint, iroh_endpoint_id, address, client } => {
                 let (mut ctx, signer) = build_wallet(client, address)?;
-                let id = sdk::provider::register(&mut_owned(&mut ctx), signer, endpoint).await?;
+                let id = sdk::provider::register(
+                    &mut_owned(&mut ctx),
+                    signer,
+                    endpoint,
+                    iroh_endpoint_id.unwrap_or_default(),
+                )
+                .await?;
                 println!("{}", id);
                 Ok(())
             }
-            Self::Update { endpoint, address, client } => {
+            Self::Update { endpoint, iroh_endpoint_id, address, client } => {
                 let (mut ctx, signer) = build_wallet(client, address)?;
-                sdk::provider::update(&mut_owned(&mut ctx), signer, endpoint).await?;
+                sdk::provider::update(
+                    &mut_owned(&mut ctx),
+                    signer,
+                    endpoint,
+                    iroh_endpoint_id.unwrap_or_default(),
+                )
+                .await?;
                 let id = Provider::derive_id(signer);
                 println!("updated {id}");
                 Ok(())

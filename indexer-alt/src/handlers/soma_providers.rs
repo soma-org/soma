@@ -47,6 +47,7 @@ impl Processor for SomaProviders {
             out.push(StoredProvider {
                 address: p.address().to_vec(),
                 endpoint: p.endpoint().to_string(),
+                iroh_endpoint_id: p.iroh_endpoint_id().to_string(),
                 last_update_cp: cp,
             });
         }
@@ -67,6 +68,8 @@ impl Handler for SomaProviders {
             .set((
                 soma_providers::endpoint
                     .eq(diesel::dsl::sql::<diesel::sql_types::Text>("EXCLUDED.endpoint")),
+                soma_providers::iroh_endpoint_id
+                    .eq(diesel::dsl::sql::<diesel::sql_types::Text>("EXCLUDED.iroh_endpoint_id")),
                 soma_providers::last_update_cp
                     .eq(diesel::dsl::sql::<diesel::sql_types::Int8>("EXCLUDED.last_update_cp")),
             ))

@@ -21,7 +21,9 @@ pub struct Config {
 
 #[derive(Debug, Deserialize)]
 pub struct Server {
-    pub listen: String,
+    /// The provider's advertised endpoint string recorded on-chain. With
+    /// iroh-only serving this is informational (buyers dial the iroh
+    /// `EndpointId`); kept for the on-chain `Provider.endpoint` record.
     pub public_endpoint: String,
 }
 

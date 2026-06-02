@@ -33,11 +33,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reqwest::Client;
+use bytes::Bytes;
 use tokio::sync::{RwLock, Semaphore};
 use types::base::SomaAddress;
 
 use crate::health::ProviderHealth;
+use crate::transport::{EndpointAddr, IrohBuyer, WireRequestMeta};
 
 /// Maximum concurrent `/health` probes inside `probe_all`. Unbounded
 /// `Promise.all`-style fan-out can starve the tokio runtime and the
@@ -54,11 +55,11 @@ struct Entry {
     saturation: Option<f64>,
 }
 
-#[derive(Debug)]
 pub struct LivenessCache {
     entries: RwLock<HashMap<SomaAddress, Entry>>,
-    http: Client,
-    /// Per-probe HTTP timeout.
+    /// iroh endpoint used to probe providers' `/health` over iroh.
+    iroh: Arc<IrohBuyer>,
+    /// Per-probe timeout.
     timeout: Duration,
     /// How long a probe result stays fresh in the cache.
     ttl: Duration,
@@ -71,33 +72,52 @@ pub struct LivenessCache {
 }
 
 impl LivenessCache {
-    pub fn new(timeout_ms: u64, refresh_secs: u64) -> Self {
+    pub fn new(iroh: Arc<IrohBuyer>, timeout_ms: u64, refresh_secs: u64) -> Self {
         let timeout = Duration::from_millis(timeout_ms.max(100));
         let refresh = Duration::from_secs(refresh_secs.max(5));
         // A probe's result is "stale" when older than the refresh
         // interval — bounding TTL by refresh keeps the on-demand path
         // self-healing even without a background refresher.
         let ttl = refresh;
-        let http = Client::builder()
-            // Per-request `.timeout(timeout)` overrides this; we set
-            // a connect timeout so a TCP black-hole doesn't sit on the
-            // worker for the full request budget either.
-            .connect_timeout(timeout)
-            .build()
-            .expect("reqwest client");
-        Self { entries: RwLock::new(HashMap::new()), http, timeout, ttl, refresh }
+        Self { entries: RwLock::new(HashMap::new()), iroh, timeout, ttl, refresh }
+    }
+
+    /// Probe a provider's `/health` over iroh. Returns liveness plus the
+    /// provider's published saturation. A provider with no iroh address is
+    /// unreachable (iroh-only), so it probes as not-live.
+    async fn iroh_health(
+        iroh: &IrohBuyer,
+        iroh_addr: Option<&EndpointAddr>,
+        timeout: Duration,
+    ) -> (bool, Option<f64>) {
+        let Some(addr) = iroh_addr else { return (false, None) };
+        let meta = WireRequestMeta {
+            method: "GET".to_string(),
+            path: "/health".to_string(),
+            headers: Vec::new(),
+        };
+        let fut = iroh.post(addr.clone(), meta, Bytes::new());
+        match tokio::time::timeout(timeout, fut).await {
+            Ok(Ok(resp)) if (200..300).contains(&resp.status) => {
+                let body = resp.read_to_end().await.unwrap_or_default();
+                let sat =
+                    serde_json::from_slice::<ProviderHealth>(&body).ok().and_then(|h| h.saturation);
+                (true, sat)
+            }
+            _ => (false, None),
+        }
     }
 
     /// Returns `true` if the provider responded to its `/health`
     /// endpoint within `timeout` on the most recent probe (cached for
     /// `ttl`). Probes synchronously on cache miss / stale entry.
-    pub async fn is_live(&self, addr: &SomaAddress, endpoint: &str) -> bool {
+    pub async fn is_live(&self, addr: &SomaAddress, iroh_addr: Option<&EndpointAddr>) -> bool {
         if let Some(e) = self.entries.read().await.get(addr).copied() {
             if e.last_check.elapsed() < self.ttl {
                 return e.is_live;
             }
         }
-        let (live, saturation) = self.probe(endpoint).await;
+        let (live, saturation) = Self::iroh_health(&self.iroh, iroh_addr, self.timeout).await;
         self.entries
             .write()
             .await
@@ -122,51 +142,24 @@ impl LivenessCache {
         self.entries.write().await.remove(addr);
     }
 
-    /// One-shot `/health` probe with the configured timeout. Returns
-    /// liveness plus the provider's published saturation (best-effort —
-    /// a body that doesn't parse still counts as live with `None`).
-    async fn probe(&self, endpoint: &str) -> (bool, Option<f64>) {
-        let url = format!("{}/health", endpoint.trim_end_matches('/'));
-        match tokio::time::timeout(self.timeout, self.http.get(url).send()).await {
-            Ok(Ok(resp)) => {
-                if !resp.status().is_success() {
-                    return (false, None);
-                }
-                let saturation =
-                    resp.json::<ProviderHealth>().await.ok().and_then(|h| h.saturation);
-                (true, saturation)
-            }
-            // Timed out, or hit a connect/transport error.
-            _ => (false, None),
-        }
-    }
-
     /// Concurrently probe a batch and update the cache. Returns the
     /// number of providers that responded.
-    pub async fn probe_all(&self, providers: &[(SomaAddress, String)]) -> usize {
+    pub async fn probe_all(&self, providers: &[(SomaAddress, Option<EndpointAddr>)]) -> usize {
         if providers.is_empty() {
             return 0;
         }
         let sem = Arc::new(Semaphore::new(PROBE_CONCURRENCY));
         let now = Instant::now();
         let mut handles = Vec::with_capacity(providers.len());
-        for (addr, endpoint) in providers {
+        for (addr, iroh_addr) in providers {
             let permit = sem.clone().acquire_owned().await.expect("semaphore not closed");
-            let http = self.http.clone();
+            let iroh = self.iroh.clone();
             let timeout = self.timeout;
             let addr = *addr;
-            let endpoint = endpoint.clone();
+            let iroh_addr = iroh_addr.clone();
             handles.push(tokio::spawn(async move {
-                let url = format!("{}/health", endpoint.trim_end_matches('/'));
                 let (live, saturation) =
-                    match tokio::time::timeout(timeout, http.get(url).send()).await {
-                        Ok(Ok(resp)) if resp.status().is_success() => {
-                            let sat =
-                                resp.json::<ProviderHealth>().await.ok().and_then(|h| h.saturation);
-                            (true, sat)
-                        }
-                        _ => (false, None),
-                    };
+                    Self::iroh_health(&iroh, iroh_addr.as_ref(), timeout).await;
                 drop(permit);
                 (addr, live, saturation)
             }));
@@ -203,21 +196,21 @@ mod tests {
     }
 
     /// `mark_dead` evicts the entry; the next `is_live` call must
-    /// re-probe (which will fail against a non-routable endpoint).
+    /// re-probe (which fails for a provider with no iroh address).
     #[tokio::test]
     async fn mark_dead_forces_reprobe() {
-        let cache = LivenessCache::new(50, 30);
-        // Seed a "live" entry directly so we can observe eviction
-        // without standing up an HTTP server.
+        let iroh = Arc::new(crate::transport::IrohBuyer::bind_local().await.unwrap());
+        let cache = LivenessCache::new(iroh, 50, 30);
+        // Seed a "live" entry directly so we can observe eviction.
         cache
             .entries
             .write()
             .await
             .insert(addr(1), Entry { last_check: Instant::now(), is_live: true, saturation: None });
-        assert!(cache.is_live(&addr(1), "http://127.0.0.1:1").await); // hits cache
+        assert!(cache.is_live(&addr(1), None).await); // hits cache
         cache.mark_dead(&addr(1)).await;
-        // No cache → probes for real → fails (no listener on :1).
-        assert!(!cache.is_live(&addr(1), "http://127.0.0.1:1").await);
+        // No cache → probes for real → fails (no iroh address to reach).
+        assert!(!cache.is_live(&addr(1), None).await);
     }
 
     /// A fresh cache hit returns the stored value without probing,
@@ -225,21 +218,22 @@ mod tests {
     /// re-probe on every call.
     #[tokio::test]
     async fn fresh_cache_hit_skips_probe() {
-        let cache = LivenessCache::new(50, 30);
+        let iroh = Arc::new(crate::transport::IrohBuyer::bind_local().await.unwrap());
+        let cache = LivenessCache::new(iroh, 50, 30);
         cache
             .entries
             .write()
             .await
             .insert(addr(2), Entry { last_check: Instant::now(), is_live: true, saturation: None });
-        // Endpoint is intentionally unreachable. If we probed we'd
-        // return false; the cache hit must shortcut that.
-        assert!(cache.is_live(&addr(2), "http://127.0.0.1:1").await);
+        // No iroh address would probe false; the cache hit must shortcut that.
+        assert!(cache.is_live(&addr(2), None).await);
     }
 
     /// An entry older than `ttl` is treated as stale and re-probed.
     #[tokio::test]
     async fn stale_entry_reprobes() {
-        let cache = LivenessCache::new(50, 5);
+        let iroh = Arc::new(crate::transport::IrohBuyer::bind_local().await.unwrap());
+        let cache = LivenessCache::new(iroh, 50, 5);
         // Force a stale entry (last_check 1 hour ago).
         cache.entries.write().await.insert(
             addr(3),
@@ -249,7 +243,7 @@ mod tests {
                 saturation: None,
             },
         );
-        // Stale → re-probe → fails against unreachable endpoint.
-        assert!(!cache.is_live(&addr(3), "http://127.0.0.1:1").await);
+        // Stale → re-probe → fails (no iroh address to reach).
+        assert!(!cache.is_live(&addr(3), None).await);
     }
 }

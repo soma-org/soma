@@ -5086,6 +5086,11 @@ pub struct RegisterProvider {
     /// HTTP(S) endpoint for the provider's /soma/info and /v1/* APIs.
     #[prost(string, optional, tag = "1")]
     pub endpoint: ::core::option::Option<::prost::alloc::string::String>,
+    /// The provider's iroh EndpointId (canonical z-base-32 string), or
+    /// empty for HTTP-only providers. A dedicated transport key buyers
+    /// dial over iroh.
+    #[prost(string, optional, tag = "2")]
+    pub iroh_endpoint_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Update the signer's provider record. Doubles as a heartbeat —
 /// the executor stamps `registered_at_ms` from the Clock on every
@@ -5102,6 +5107,10 @@ pub struct UpdateProvider {
     /// New (or unchanged) endpoint URL.
     #[prost(string, optional, tag = "2")]
     pub endpoint: ::core::option::Option<::prost::alloc::string::String>,
+    /// New (or unchanged) iroh EndpointId (canonical z-base-32), or empty
+    /// for HTTP-only. Lets a provider rotate its transport key.
+    #[prost(string, optional, tag = "3")]
+    pub iroh_endpoint_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -31,6 +31,11 @@ use super::TransactionExecutor;
 /// well under 100 chars).
 const PROVIDER_ENDPOINT_MAX_LEN: usize = 1024;
 
+/// Maximum allowed length for `Provider.iroh_endpoint_id`. A canonical iroh
+/// `EndpointId` is 52 z-base-32 chars; 128 is generous headroom. Empty is
+/// allowed (HTTP-only providers).
+const PROVIDER_IROH_ID_MAX_LEN: usize = 128;
+
 pub struct ProviderExecutor;
 
 impl ProviderExecutor {
@@ -60,6 +65,23 @@ impl ProviderExecutor {
         Ok(())
     }
 
+    /// Validate the iroh `EndpointId` string. Empty is allowed (HTTP-only);
+    /// otherwise it's a bounded-length opaque string (the `inference` crate
+    /// does the actual key parsing — the chain layer stays iroh-free).
+    fn validate_iroh_endpoint_id(iroh_endpoint_id: &str) -> ExecutionResult<()> {
+        if iroh_endpoint_id.len() > PROVIDER_IROH_ID_MAX_LEN {
+            return Err(ExecutionFailureStatus::ProviderInvalidEndpoint {
+                reason: format!(
+                    "iroh_endpoint_id exceeds max length {} (got {})",
+                    PROVIDER_IROH_ID_MAX_LEN,
+                    iroh_endpoint_id.len(),
+                ),
+            }
+            .into());
+        }
+        Ok(())
+    }
+
     /// Execute `RegisterProvider`. Hard-fails on duplicate.
     fn execute_register(
         &self,
@@ -69,6 +91,7 @@ impl ProviderExecutor {
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         Self::validate_endpoint(&args.endpoint)?;
+        Self::validate_iroh_endpoint_id(&args.iroh_endpoint_id)?;
 
         // Re-registration check. The Provider object's id is
         // deterministic from the signer's address, so existence is a
@@ -78,7 +101,7 @@ impl ProviderExecutor {
             return Err(ExecutionFailureStatus::ProviderAlreadyExists.into());
         }
 
-        let provider = Provider::new(signer, args.endpoint);
+        let provider = Provider::new(signer, args.endpoint, args.iroh_endpoint_id);
         let provider_object = Object::new_provider(provider, tx_digest);
         store.create_object(provider_object);
         Ok(())
@@ -95,6 +118,7 @@ impl ProviderExecutor {
         _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         Self::validate_endpoint(&args.endpoint)?;
+        Self::validate_iroh_endpoint_id(&args.iroh_endpoint_id)?;
 
         // Reject mismatched provider_id ↔ signer pairs. This is the
         // primary auth check: only the address that registered the
@@ -123,6 +147,7 @@ impl ProviderExecutor {
         }
 
         provider.set_endpoint(args.endpoint);
+        provider.set_iroh_endpoint_id(args.iroh_endpoint_id);
 
         let mut updated = provider_object;
         updated.set_provider_data(&provider);
@@ -217,7 +242,10 @@ mod tests {
         exec.execute_register(
             &mut store,
             signer,
-            RegisterProviderArgs { endpoint: "https://prov.example".into() },
+            RegisterProviderArgs {
+                endpoint: "https://prov.example".into(),
+                iroh_endpoint_id: "k51qzi5uqu5dprovider".into(),
+            },
             TransactionDigest::default(),
         )
         .expect("register succeeds");
@@ -228,12 +256,32 @@ mod tests {
         let p = obj.as_provider().unwrap();
         assert_eq!(p.address(), signer);
         assert_eq!(p.endpoint(), "https://prov.example");
+        assert_eq!(p.iroh_endpoint_id(), "k51qzi5uqu5dprovider");
+    }
+
+    #[test]
+    fn register_rejects_oversized_iroh_id() {
+        let signer = addr(11);
+        let mut store = empty_store();
+        let mut exec = ProviderExecutor::new();
+        let err = exec
+            .execute_register(
+                &mut store,
+                signer,
+                RegisterProviderArgs {
+                    endpoint: "https://prov.example".into(),
+                    iroh_endpoint_id: "x".repeat(PROVIDER_IROH_ID_MAX_LEN + 1),
+                },
+                TransactionDigest::default(),
+            )
+            .expect_err("oversize iroh id must fail");
+        assert!(matches!(err, ExecutionFailureStatus::ProviderInvalidEndpoint { .. }));
     }
 
     #[test]
     fn register_rejects_duplicate() {
         let signer = addr(2);
-        let prov = Provider::new(signer, "https://old.example".into());
+        let prov = Provider::new(signer, "https://old.example".into(), String::new());
         let prov_obj = Object::new_provider_for_testing(prov);
         let mut store = store_with_provider(prov_obj);
 
@@ -242,7 +290,10 @@ mod tests {
             .execute_register(
                 &mut store,
                 signer,
-                RegisterProviderArgs { endpoint: "https://new.example".into() },
+                RegisterProviderArgs {
+                    endpoint: "https://new.example".into(),
+                    iroh_endpoint_id: String::new(),
+                },
                 TransactionDigest::default(),
             )
             .expect_err("duplicate must fail");
@@ -258,7 +309,7 @@ mod tests {
             .execute_register(
                 &mut store,
                 signer,
-                RegisterProviderArgs { endpoint: String::new() },
+                RegisterProviderArgs { endpoint: String::new(), iroh_endpoint_id: String::new() },
                 TransactionDigest::default(),
             )
             .expect_err("empty endpoint must fail");
@@ -275,7 +326,7 @@ mod tests {
             .execute_register(
                 &mut store,
                 signer,
-                RegisterProviderArgs { endpoint: too_long },
+                RegisterProviderArgs { endpoint: too_long, iroh_endpoint_id: String::new() },
                 TransactionDigest::default(),
             )
             .expect_err("oversize endpoint must fail");
@@ -285,7 +336,7 @@ mod tests {
     #[test]
     fn update_changes_endpoint() {
         let signer = addr(5);
-        let prov = Provider::new(signer, "https://old.example".into());
+        let prov = Provider::new(signer, "https://old.example".into(), String::new());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(signer);
         let mut store = store_with_provider(prov_obj);
@@ -294,7 +345,11 @@ mod tests {
         exec.execute_update(
             &mut store,
             signer,
-            UpdateProviderArgs { provider_id, endpoint: "https://new.example".into() },
+            UpdateProviderArgs {
+                provider_id,
+                endpoint: "https://new.example".into(),
+                iroh_endpoint_id: "k51qzi5rotated".into(),
+            },
             TransactionDigest::default(),
         )
         .expect("update succeeds");
@@ -308,7 +363,7 @@ mod tests {
     #[test]
     fn update_with_same_endpoint_succeeds() {
         let signer = addr(6);
-        let prov = Provider::new(signer, "https://stable.example".into());
+        let prov = Provider::new(signer, "https://stable.example".into(), String::new());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(signer);
         let mut store = store_with_provider(prov_obj);
@@ -317,7 +372,11 @@ mod tests {
         exec.execute_update(
             &mut store,
             signer,
-            UpdateProviderArgs { provider_id, endpoint: "https://stable.example".into() },
+            UpdateProviderArgs {
+                provider_id,
+                endpoint: "https://stable.example".into(),
+                iroh_endpoint_id: String::new(),
+            },
             TransactionDigest::default(),
         )
         .expect("same-endpoint update succeeds");
@@ -330,7 +389,7 @@ mod tests {
     fn update_rejects_wrong_signer() {
         let owner = addr(7);
         let attacker = addr(8);
-        let prov = Provider::new(owner, "https://prov.example".into());
+        let prov = Provider::new(owner, "https://prov.example".into(), String::new());
         let prov_obj = Object::new_provider_for_testing(prov);
         let provider_id = Provider::derive_id(owner);
         let mut store = store_with_provider(prov_obj);
@@ -340,7 +399,11 @@ mod tests {
             .execute_update(
                 &mut store,
                 attacker,
-                UpdateProviderArgs { provider_id, endpoint: "https://hijacked.example".into() },
+                UpdateProviderArgs {
+                    provider_id,
+                    endpoint: "https://hijacked.example".into(),
+                    iroh_endpoint_id: String::new(),
+                },
                 TransactionDigest::default(),
             )
             .expect_err("wrong signer must fail");
@@ -358,7 +421,11 @@ mod tests {
             .execute_update(
                 &mut store,
                 signer,
-                UpdateProviderArgs { provider_id, endpoint: "https://prov.example".into() },
+                UpdateProviderArgs {
+                    provider_id,
+                    endpoint: "https://prov.example".into(),
+                    iroh_endpoint_id: String::new(),
+                },
                 TransactionDigest::default(),
             )
             .expect_err("not-registered must fail");

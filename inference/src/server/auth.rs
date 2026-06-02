@@ -45,6 +45,10 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Response {
     let (parts, body) = req.into_parts();
+    // The authenticated iroh peer, present only when the request arrived
+    // over the iroh transport (the bridge inserts it). Used below to bind
+    // the transport key to the channel's `authorized_signer`.
+    let peer = parts.extensions.get::<crate::transport::PeerEndpointId>().copied();
     let bytes = match to_bytes(body, MAX_BODY).await {
         Ok(b) => b,
         Err(_) => return err_response(StatusCode::BAD_REQUEST, "body_too_large", "body too large"),
@@ -195,6 +199,31 @@ pub async fn auth_middleware(
 
     let guard = slot.lock_owned().await;
     let mut slot_inner = guard;
+
+    // Transport-identity binding. When the request arrived over iroh, the
+    // authenticated peer key must equal the channel's `authorized_signer`
+    // — connection identity can't diverge from payment identity. Plain HTTP
+    // requests carry no peer, so this only constrains iroh transport.
+    if let Some(crate::transport::PeerEndpointId(endpoint_id)) = peer {
+        match crate::transport::soma_address_from_endpoint_id(&endpoint_id) {
+            Ok(peer_addr) if peer_addr == slot_inner.state.authorized_signer => {}
+            Ok(_) => {
+                return err_response(
+                    StatusCode::UNAUTHORIZED,
+                    "peer_mismatch",
+                    "iroh peer key does not match the channel's authorized_signer",
+                );
+            }
+            Err(_) => {
+                return err_response(
+                    StatusCode::UNAUTHORIZED,
+                    "peer_invalid",
+                    "iroh peer key is not a valid ed25519 identity",
+                );
+            }
+        }
+    }
+
     let result = state
         .channel
         .pre_flight(&mut slot_inner.state, &somapay_str, &onchain_sig, &meta, worst_case)

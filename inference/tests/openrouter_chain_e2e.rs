@@ -28,6 +28,7 @@ use std::time::Duration;
 
 use sdk::wallet_context::WalletContext;
 use serde_json::json;
+use soma_keys::keystore::AccountKeystore as _;
 use tempfile::TempDir;
 use test_cluster::TestClusterBuilder;
 use types::base::SomaAddress;
@@ -102,7 +103,8 @@ async fn openrouter_full_stack_round_trip() {
 
     // 2. In-memory provider discovery so the proxy can find the
     //    provider without standing up an indexer.
-    let registry: Arc<dyn ProviderRegistry> = Arc::new(MemoryDiscovery::new());
+    let discovery = MemoryDiscovery::new();
+    let registry: Arc<dyn ProviderRegistry> = Arc::new(discovery.clone());
 
     // 3. Register the on-chain offering before booting the provider —
     //    OpenChannel snapshots it onto the channel.
@@ -154,20 +156,9 @@ async fn openrouter_full_stack_round_trip() {
 
     let provider_port = pick_free_port();
     let provider_endpoint = format!("http://127.0.0.1:{provider_port}");
-    registry
-        .register_provider(ProviderRecord {
-            address: provider_addr,
-            pubkey_hex: String::new(),
-            endpoint: provider_endpoint.clone(),
-        })
-        .await
-        .unwrap();
 
     let prov_cfg = inference::server::Config {
-        server: inference::server::config::Server {
-            listen: format!("127.0.0.1:{provider_port}"),
-            public_endpoint: provider_endpoint.clone(),
-        },
+        server: inference::server::config::Server { public_endpoint: provider_endpoint.clone() },
         backend: inference::server::config::Backend {
             kind: "openrouter".into(),
             api_key_env: Some("OPENROUTER_API_KEY".into()),
@@ -180,16 +171,46 @@ async fn openrouter_full_stack_round_trip() {
         auto_settle: Default::default(),
         autoprice: Default::default(),
     };
+    // Boot the provider (iroh-only inference, HTTP /health), then register
+    // its iroh dial info so the proxy reaches it over iroh.
+    let (iroh_tx, iroh_rx) = tokio::sync::oneshot::channel();
     let prov_handle = tokio::spawn({
         let ledger_path = ledger_dir.path().to_path_buf();
         let provider_wallet = provider_wallet.clone();
         async move {
-            inference::server::run(prov_cfg, provider_wallet, provider_addr, ledger_path)
-                .await
-                .ok();
+            inference::server::run_reporting_addr(
+                prov_cfg,
+                provider_wallet,
+                provider_addr,
+                ledger_path,
+                Some(iroh_tx),
+            )
+            .await
+            .ok();
         }
     });
-    wait_for_url(&format!("{provider_endpoint}/health")).await;
+    {
+        // Readiness: the provider reports its iroh sockets once serving.
+        let sockets = iroh_rx.await.expect("provider reports iroh sockets");
+        let keypair = provider_wallet.config.keystore.export(&provider_addr).unwrap();
+        let secret = inference::transport::iroh_secret_from_keypair(&keypair).unwrap();
+        discovery
+            .register_with_catalog(
+                ProviderRecord {
+                    address: provider_addr,
+                    pubkey_hex: String::new(),
+                    endpoint: provider_endpoint.clone(),
+                    iroh_endpoint_id: inference::transport::endpoint_id_string(&secret.public()),
+                    iroh_direct_addrs: sockets
+                        .iter()
+                        .filter(|s| s.is_ipv4())
+                        .map(|s| format!("127.0.0.1:{}", s.port()))
+                        .collect(),
+                },
+                vec![card.clone()],
+            )
+            .await;
+    }
 
     // 5. Proxy.
     let proxy_port = pick_free_port();

@@ -27,7 +27,10 @@ async fn submit_register(test_cluster: &TestCluster, signer: SomaAddress, endpoi
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         signer,
-        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint: endpoint.to_string() }),
+        TransactionKind::RegisterProvider(RegisterProviderArgs {
+            endpoint: endpoint.to_string(),
+            iroh_endpoint_id: String::new(),
+        }),
     );
     match test_cluster
         .wallet
@@ -56,6 +59,7 @@ async fn submit_update(test_cluster: &TestCluster, signer: SomaAddress, endpoint
         TransactionKind::UpdateProvider(UpdateProviderArgs {
             provider_id,
             endpoint: endpoint.to_string(),
+            iroh_endpoint_id: String::new(),
         }),
     );
     match test_cluster

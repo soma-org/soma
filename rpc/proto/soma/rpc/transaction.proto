@@ -688,6 +688,10 @@ message DeactivateOffering {
 message RegisterProvider {
   // HTTP(S) endpoint for the provider's /soma/info and /v1/* APIs.
   optional string endpoint = 1;
+  // The provider's iroh EndpointId (canonical z-base-32 string), or
+  // empty for HTTP-only providers. A dedicated transport key buyers
+  // dial over iroh.
+  optional string iroh_endpoint_id = 2;
 }
 
 // Update the signer's provider record. Doubles as a heartbeat —
@@ -701,4 +705,7 @@ message UpdateProvider {
   optional string provider_id = 1;
   // New (or unchanged) endpoint URL.
   optional string endpoint = 2;
+  // New (or unchanged) iroh EndpointId (canonical z-base-32), or empty
+  // for HTTP-only. Lets a provider rotate its transport key.
+  optional string iroh_endpoint_id = 3;
 }

@@ -23,6 +23,14 @@ pub struct ProviderRecord {
     pub address: SomaAddress,
     pub pubkey_hex: String,
     pub endpoint: String,
+    /// The provider's iroh `EndpointId` (canonical z-base-32 string) from
+    /// its on-chain record, or empty for providers not reachable over iroh.
+    #[serde(default)]
+    pub iroh_endpoint_id: String,
+    /// Optional direct socket addresses for same-host / test dialing. Empty
+    /// in production — buyers resolve the `EndpointId` via discovery.
+    #[serde(default)]
+    pub iroh_direct_addrs: Vec<String>,
 }
 
 /// Computed channel status for client/provider display. Derived from

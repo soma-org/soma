@@ -16,6 +16,7 @@ use crate::chain::types::*;
 #[derive(Default)]
 struct State {
     providers: HashMap<SomaAddress, ProviderRecord>,
+    catalogs: HashMap<SomaAddress, Vec<crate::catalog::ModelCard>>,
 }
 
 #[derive(Default, Clone)]
@@ -26,6 +27,18 @@ pub struct MemoryDiscovery {
 impl MemoryDiscovery {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Register a provider together with its model catalog. The proxy's
+    /// router reads the catalog directly (no indexer needed).
+    pub async fn register_with_catalog(
+        &self,
+        record: ProviderRecord,
+        catalog: Vec<crate::catalog::ModelCard>,
+    ) {
+        let mut g = self.inner.write().await;
+        g.catalogs.insert(record.address, catalog);
+        g.providers.insert(record.address, record);
     }
 }
 
@@ -38,5 +51,9 @@ impl ProviderRegistry for MemoryDiscovery {
     async fn register_provider(&self, record: ProviderRecord) -> Result<(), ChainError> {
         self.inner.write().await.providers.insert(record.address, record);
         Ok(())
+    }
+
+    async fn catalogs(&self) -> Option<HashMap<SomaAddress, Vec<crate::catalog::ModelCard>>> {
+        Some(self.inner.read().await.catalogs.clone())
     }
 }

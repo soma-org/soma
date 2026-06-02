@@ -24,11 +24,30 @@ use std::time::Duration;
 use ::types::base::SomaAddress;
 use anyhow::Context as _;
 use sdk::wallet_context::WalletContext;
+use soma_keys::keystore::AccountKeystore as _;
 
 pub use config::Config;
 
 use crate::chain::chain::ChainChannelSurface;
 use crate::chain::{ChannelSurface, ProviderRegistry};
+
+/// Build the proxy's iroh buyer endpoint, using the **voucher-signing key**
+/// as the iroh identity (n0 discovery). Because the proxy opens channels with
+/// `authorized_signer = its own address`, dialing with this same key makes
+/// the provider-side `peer == authorized_signer` binding pass.
+async fn build_iroh_buyer(
+    wallet: &WalletContext,
+    address: SomaAddress,
+) -> anyhow::Result<Arc<crate::transport::IrohBuyer>> {
+    let keypair = wallet
+        .config
+        .keystore
+        .export(&address)
+        .with_context(|| format!("export signing key for {address}"))?;
+    let secret = crate::transport::iroh_secret_from_keypair(keypair)?;
+    let endpoint = crate::transport::build_n0_endpoint(secret, false).await?;
+    Ok(Arc::new(crate::transport::IrohBuyer::new(endpoint)))
+}
 
 /// Run the proxy until shutdown.
 pub async fn run(
@@ -49,8 +68,25 @@ pub async fn run(
     let store = state::ClientStore::new();
     let channel = Arc::new(crate::channel::RunningTab::for_client(wallet.clone(), address));
 
-    let inner_router =
-        Arc::new(router::Router::new(registry.clone(), chain.clone(), store, cfg.clone(), address));
+    // iroh buyer endpoint (identity = voucher-signing key). Used both to
+    // relay chat requests and to probe provider `/health` over iroh. Falls
+    // back to a loopback endpoint if the n0 endpoint can't be brought up.
+    let iroh = match build_iroh_buyer(&wallet, address).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(err = %e, "iroh buyer endpoint failed; falling back to loopback");
+            Arc::new(crate::transport::IrohBuyer::bind_local().await?)
+        }
+    };
+
+    let inner_router = Arc::new(router::Router::new(
+        registry.clone(),
+        chain.clone(),
+        store,
+        cfg.clone(),
+        address,
+        iroh.clone(),
+    ));
     inner_router.spawn_liveness_refresher();
 
     // D. Warm the discovery cache + per-provider HTTP/2 connections
@@ -119,8 +155,14 @@ pub async fn run(
     }
 
     let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
-    let relay_ctx =
-        relay::RelayCtx { channel: channel.clone(), http, wallet: wallet.clone(), signer: address };
+
+    let relay_ctx = relay::RelayCtx {
+        channel: channel.clone(),
+        http,
+        iroh: iroh.clone(),
+        wallet: wallet.clone(),
+        signer: address,
+    };
 
     let cs = Arc::new(server::ClientState { router: inner_router, relay: relay_ctx });
     let app = server::build_router(cs, cfg.local_token.clone());

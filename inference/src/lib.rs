@@ -30,6 +30,7 @@ pub mod proxy;
 pub mod reputation;
 pub mod server;
 pub mod tokenizer;
+pub mod transport;
 
 pub mod http_util;
 

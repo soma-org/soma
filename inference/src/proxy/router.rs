@@ -126,7 +126,35 @@ pub struct ProviderInfo {
     pub address: SomaAddress,
     pub pubkey_hex: String,
     pub endpoint: String,
+    /// Parsed iroh dial address if the provider advertises an `EndpointId`.
+    /// When set, the relay dials this provider over iroh instead of HTTP.
+    pub iroh_addr: Option<crate::transport::EndpointAddr>,
     pub catalog: Vec<ModelCard>,
+}
+
+/// Assemble a [`ProviderInfo`] from a discovery record + its model catalog,
+/// parsing the iroh dial address (id + optional direct addrs).
+fn provider_info_from(rec: &ProviderRecord, catalog: Vec<ModelCard>) -> ProviderInfo {
+    let iroh_addr = if rec.iroh_endpoint_id.is_empty() {
+        None
+    } else {
+        let direct: Vec<std::net::SocketAddr> =
+            rec.iroh_direct_addrs.iter().filter_map(|a| a.parse().ok()).collect();
+        match crate::transport::dial_addr(&rec.iroh_endpoint_id, &direct) {
+            Ok(addr) => Some(addr),
+            Err(e) => {
+                tracing::debug!(provider = %rec.address, err = %e, "ignoring malformed iroh_endpoint_id");
+                None
+            }
+        }
+    };
+    ProviderInfo {
+        address: rec.address,
+        pubkey_hex: String::new(),
+        endpoint: rec.endpoint.clone(),
+        iroh_addr,
+        catalog,
+    }
 }
 
 /// Typed error returned by [`Router::ensure_channel`] when an
@@ -217,6 +245,7 @@ impl Router {
         store: ClientStore,
         cfg: Arc<Config>,
         client_address: SomaAddress,
+        iroh: Arc<crate::transport::IrohBuyer>,
     ) -> Self {
         let http =
             Client::builder().timeout(Duration::from_secs(120)).build().expect("build http client");
@@ -235,6 +264,7 @@ impl Router {
         };
         let liveness = if cfg.probe_liveness {
             Some(Arc::new(crate::proxy::LivenessCache::new(
+                iroh,
                 cfg.liveness_timeout_ms,
                 cfg.liveness_refresh_secs,
             )))
@@ -255,12 +285,14 @@ impl Router {
         }
     }
 
-    /// Snapshot every known provider's `(address, endpoint)` for the
+    /// Snapshot every known provider's `(address, iroh_addr)` for the
     /// liveness refresher. Returns an empty vec if the cache hasn't
     /// been populated yet (refresher will retry on the next tick).
-    async fn provider_endpoints_snapshot(&self) -> Vec<(SomaAddress, String)> {
+    async fn provider_endpoints_snapshot(
+        &self,
+    ) -> Vec<(SomaAddress, Option<crate::transport::EndpointAddr>)> {
         let g = self.cache.read().await;
-        g.providers.iter().map(|p| (p.address, p.endpoint.clone())).collect()
+        g.providers.iter().map(|p| (p.address, p.iroh_addr.clone())).collect()
     }
 
     /// Start the background liveness refresher, if liveness probing is
@@ -297,10 +329,20 @@ impl Router {
 
     pub async fn refresh_providers(&self) -> anyhow::Result<()> {
         let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
-        let providers = self
-            .refresh_via_offerings(&recs)
-            .await
-            .context("refresh_via_offerings (indexer-driven discovery)")?;
+        // Non-indexer registries (tests) supply catalogs directly; production
+        // resolves offerings via the indexer GraphQL.
+        let providers = if let Some(catalogs) = self.registry.catalogs().await {
+            recs.iter()
+                .filter_map(|rec| {
+                    let catalog = catalogs.get(&rec.address).cloned().unwrap_or_default();
+                    (!catalog.is_empty()).then(|| provider_info_from(rec, catalog))
+                })
+                .collect()
+        } else {
+            self.refresh_via_offerings(&recs)
+                .await
+                .context("refresh_via_offerings (indexer-driven discovery)")?
+        };
         let mut g = self.cache.write().await;
         g.providers = providers;
         g.last_refresh = Some(Instant::now());
@@ -407,12 +449,7 @@ impl Router {
             if catalog.is_empty() {
                 continue;
             }
-            out.push(ProviderInfo {
-                address: rec.address,
-                pubkey_hex: String::new(),
-                endpoint: rec.endpoint.clone(),
-                catalog,
-            });
+            out.push(provider_info_from(&rec, catalog));
         }
         Ok(out)
     }
@@ -466,7 +503,7 @@ impl Router {
                 }
                 let mut saturation = 0.0;
                 if let Some(l) = &self.liveness {
-                    if !l.is_live(&p.address, &p.endpoint).await {
+                    if !l.is_live(&p.address, p.iroh_addr.as_ref()).await {
                         continue;
                     }
                     // `is_live` just populated the cache entry, so this

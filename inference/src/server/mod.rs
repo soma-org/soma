@@ -18,6 +18,7 @@ use std::sync::Arc;
 use ::types::base::SomaAddress;
 use anyhow::Context as _;
 use sdk::wallet_context::WalletContext;
+use soma_keys::keystore::AccountKeystore as _;
 
 pub use config::Config;
 
@@ -35,6 +36,20 @@ pub async fn run(
     wallet: Arc<WalletContext>,
     address: SomaAddress,
     soma_home: PathBuf,
+) -> anyhow::Result<()> {
+    run_reporting_addr(cfg, wallet, address, soma_home, None).await
+}
+
+/// Like [`run`], but reports the provider's bound iroh socket addresses over
+/// `iroh_addr_report` once the endpoint is up. Tests use this to wire
+/// direct-address dialing (no n0 discovery needed on a single host); the
+/// provider's `EndpointId` is derived from its signing key.
+pub async fn run_reporting_addr(
+    cfg: Config,
+    wallet: Arc<WalletContext>,
+    address: SomaAddress,
+    soma_home: PathBuf,
+    iroh_addr_report: Option<tokio::sync::oneshot::Sender<Vec<std::net::SocketAddr>>>,
 ) -> anyhow::Result<()> {
     tracing::info!(address = %address, "loaded provider identity");
 
@@ -55,6 +70,24 @@ pub async fn run(
         Arc::new(ChainChannelSurface::new(wallet.clone(), address));
 
     let channel = Arc::new(RunningTab::for_provider(cfg.auth.clock_skew_tolerance_secs));
+
+    // Bring up the iroh transport *before* on-chain registration so the
+    // live EndpointId is what gets advertised. The provider's iroh identity
+    // is derived from its own (payee) signing key — the same key buyers will
+    // see and that signs settlements — so there's no separate key to manage.
+    // `presets::N0` publishes to n0 discovery so buyers can dial the key.
+    let iroh_secret = {
+        let keypair = wallet
+            .config
+            .keystore
+            .export(&address)
+            .with_context(|| format!("export provider signing key for {address}"))?;
+        crate::transport::iroh_secret_from_keypair(keypair)?
+    };
+    let iroh_endpoint = crate::transport::build_n0_endpoint(iroh_secret, true).await?;
+    let iroh_endpoint_id = crate::transport::endpoint_id_string(&iroh_endpoint.id());
+    tracing::info!(iroh_endpoint_id = %iroh_endpoint_id, "iroh transport enabled");
+
     let ledger = ledger::Ledger::new(soma_home);
 
     // On-chain registry + offerings, in parallel. Both go through the
@@ -67,9 +100,19 @@ pub async fn run(
     let provider_fut = {
         let wallet = wallet.clone();
         let endpoint = cfg.server.public_endpoint.clone();
+        // The provider's dedicated iroh transport key (canonical EndpointId
+        // string), advertised so buyers can dial it over iroh. The live
+        // endpoint id when serving over iroh, else the configured value
+        // (empty for HTTP-only).
+        let iroh_endpoint_id = iroh_endpoint_id.clone();
         async move {
-            if let Err(e) =
-                sdk::provider::register_or_update_no_wait(&wallet, address, endpoint).await
+            if let Err(e) = sdk::provider::register_or_update_no_wait(
+                &wallet,
+                address,
+                endpoint,
+                iroh_endpoint_id,
+            )
+            .await
             {
                 tracing::warn!(err = %e, "on-chain provider register/update failed (continuing)");
             }
@@ -108,6 +151,7 @@ pub async fn run(
         wallet.clone(),
         address,
         cfg.server.public_endpoint.clone(),
+        iroh_endpoint_id.clone(),
         HEARTBEAT_INTERVAL_SECS,
     );
 
@@ -146,15 +190,19 @@ pub async fn run(
         catalog,
     });
 
+    // Everything — chat (`/v1/...`, streaming and not) and `/health` — is
+    // served over iroh. The provider binds no HTTP/TCP listener; buyers reach
+    // it purely by its EndpointId.
     let app = handler::build_router(state);
-    let listener = tokio::net::TcpListener::bind(&cfg.server.listen)
-        .await
-        .with_context(|| format!("bind {}", cfg.server.listen))?;
-    tracing::info!(addr = %cfg.server.listen, "inference server listening");
+    let iroh_provider = crate::transport::IrohProvider::serve_axum(iroh_endpoint, app);
+    if let Some(tx) = iroh_addr_report {
+        let _ = tx.send(iroh_provider.bound_sockets());
+    }
+    tracing::info!("inference API (incl. /health) listening over iroh");
 
-    let serve = axum::serve(listener, app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal(chain.clone(), ledger.clone(), channel.clone()));
-    serve.await?;
+    // Block until shutdown, then settle open channels.
+    shutdown_signal(chain.clone(), ledger.clone(), channel.clone()).await;
+    drop(iroh_provider);
     Ok(())
 }
 
@@ -175,6 +223,7 @@ fn spawn_heartbeat(
     wallet: Arc<WalletContext>,
     address: SomaAddress,
     endpoint: String,
+    iroh_endpoint_id: String,
     interval_secs: u64,
 ) {
     if interval_secs == 0 {
@@ -191,8 +240,13 @@ fn spawn_heartbeat(
             // Finality-only — like boot, the heartbeat has no read-
             // after-write dependency on the indexer and shouldn't be
             // paying the up-to-30s checkpoint-inclusion wait.
-            match sdk::provider::register_or_update_no_wait(&wallet, address, endpoint.clone())
-                .await
+            match sdk::provider::register_or_update_no_wait(
+                &wallet,
+                address,
+                endpoint.clone(),
+                iroh_endpoint_id.clone(),
+            )
+            .await
             {
                 Ok(()) => tracing::debug!("provider heartbeat sent"),
                 Err(e) => tracing::warn!(err = %e, "provider heartbeat failed (will retry)"),

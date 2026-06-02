@@ -837,12 +837,14 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
 
             // Provider registry tx kinds.
-            K::RegisterProvider(args) => {
-                Kind::RegisterProvider(RegisterProvider { endpoint: Some(args.endpoint) })
-            }
+            K::RegisterProvider(args) => Kind::RegisterProvider(RegisterProvider {
+                endpoint: Some(args.endpoint),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id),
+            }),
             K::UpdateProvider(args) => Kind::UpdateProvider(UpdateProvider {
                 provider_id: Some(args.provider_id.to_string()),
                 endpoint: Some(args.endpoint),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id),
             }),
 
             // Per-(provider, model) offering tx kinds.

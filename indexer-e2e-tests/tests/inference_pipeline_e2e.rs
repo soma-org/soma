@@ -159,7 +159,10 @@ async fn register_provider(
     let tx_data = e2e_tests::stateless_tx_data(
         test_cluster,
         signer,
-        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint: endpoint.to_string() }),
+        TransactionKind::RegisterProvider(RegisterProviderArgs {
+            endpoint: endpoint.to_string(),
+            iroh_endpoint_id: "k51qzitestproviderkey".to_string(),
+        }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok(), "RegisterProvider must succeed");
@@ -178,6 +181,7 @@ async fn update_provider(
         TransactionKind::UpdateProvider(UpdateProviderArgs {
             provider_id,
             endpoint: endpoint.to_string(),
+            iroh_endpoint_id: String::new(),
         }),
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -274,15 +278,21 @@ async fn test_provider_registry_indexed() {
     cluster.wait_for_indexer(cp1, Duration::from_secs(60)).await.expect("indexer reaches cp1");
 
     let mut conn = cluster.db().connect().await.unwrap();
-    let row: (Vec<u8>, String, i64) = soma_providers::table
-        .select((soma_providers::address, soma_providers::endpoint, soma_providers::last_update_cp))
+    let row: (Vec<u8>, String, String, i64) = soma_providers::table
+        .select((
+            soma_providers::address,
+            soma_providers::endpoint,
+            soma_providers::iroh_endpoint_id,
+            soma_providers::last_update_cp,
+        ))
         .filter(soma_providers::address.eq(signer.to_vec()))
         .first(conn.deref_mut())
         .await
         .expect("provider row present after RegisterProvider");
     assert_eq!(row.0, signer.to_vec());
     assert_eq!(row.1, "https://prov-v1.example");
-    let cp_at_register = row.2;
+    assert_eq!(row.2, "k51qzitestproviderkey", "iroh_endpoint_id mirrored to db");
+    let cp_at_register = row.3;
 
     update_provider(&test_cluster, signer, "https://prov-v2.example").await;
     let cp2 = current_cp(&test_cluster).await;

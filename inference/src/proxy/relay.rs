@@ -26,11 +26,83 @@ use ::types::transaction::RatingReasonCode;
 pub struct RelayCtx {
     pub channel: Arc<RunningTab>,
     pub http: reqwest::Client,
+    /// iroh buyer endpoint. Used to dial providers that advertise an
+    /// `iroh_endpoint_id`; providers without one are reached over `http`.
+    pub iroh: Arc<crate::transport::IrohBuyer>,
     /// Wallet used to submit `RateChannel(reason_code=...)` txs when the
     /// relay detects a TTFT or TTOT SLA breach. The payer is also the
     /// only allowed rater on-chain, so this is also the rating signer.
     pub wallet: Arc<sdk::wallet_context::WalletContext>,
     pub signer: ::types::base::SomaAddress,
+}
+
+/// Unified upstream response, abstracting over the HTTP (`reqwest`) and iroh
+/// transports so the streaming / 402 / reconcile logic below is
+/// transport-agnostic — it operates on a byte stream, exactly as it did when
+/// only `reqwest` existed.
+struct UpstreamResponse {
+    status: http::StatusCode,
+    headers: HeaderMap,
+    body: futures::stream::BoxStream<'static, std::io::Result<Bytes>>,
+}
+
+/// Send the (already authorized) request to `provider` over whichever
+/// transport it advertises: iroh when it has an `iroh_endpoint_id`, else
+/// HTTP. Returns a uniform streaming response.
+async fn send_upstream(
+    ctx: &RelayCtx,
+    provider: &ProviderInfo,
+    path: &str,
+    headers: HeaderMap,
+    body: &Bytes,
+) -> anyhow::Result<UpstreamResponse> {
+    if let Some(addr) = &provider.iroh_addr {
+        let wire_headers: Vec<(String, String)> = headers
+            .iter()
+            .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), v.to_string())))
+            .collect();
+        let meta = crate::transport::WireRequestMeta {
+            method: "POST".to_string(),
+            path: path.to_string(),
+            headers: wire_headers,
+        };
+        let resp = ctx.iroh.post(addr.clone(), meta, body.clone()).await?;
+        let status =
+            http::StatusCode::from_u16(resp.status).unwrap_or(http::StatusCode::BAD_GATEWAY);
+        let mut hmap = HeaderMap::new();
+        for (k, v) in &resp.headers {
+            if let (Ok(name), Ok(val)) =
+                (http::HeaderName::from_bytes(k.as_bytes()), http::HeaderValue::from_str(v))
+            {
+                hmap.insert(name, val);
+            }
+        }
+        Ok(UpstreamResponse { status, headers: hmap, body: resp.body.boxed() })
+    } else {
+        let url = format!("{}{}", provider.endpoint.trim_end_matches('/'), path);
+        let resp = ctx.http.post(&url).headers(headers).body(body.clone()).send().await?;
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp
+            .bytes_stream()
+            .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+            .boxed();
+        Ok(UpstreamResponse { status, headers, body })
+    }
+}
+
+/// Drain a body stream into one buffer (non-streaming + error paths).
+async fn collect_body(
+    mut body: futures::stream::BoxStream<'static, std::io::Result<Bytes>>,
+) -> Bytes {
+    let mut buf = Vec::new();
+    while let Some(item) = body.next().await {
+        match item {
+            Ok(b) => buf.extend_from_slice(&b),
+            Err(_) => break,
+        }
+    }
+    Bytes::from(buf)
 }
 
 pub struct RelayedResponse {
@@ -127,7 +199,6 @@ pub async fn forward_chat_completion(
                 .context("authorize")?
         };
 
-        let url = format!("{}{}", provider.endpoint.trim_end_matches('/'), path);
         let mut h = pass_inbound(inbound_headers);
         // The combined value is `<somapay-header>||<onchain-sig-b64>`.
         // We send both in the Authorization header; the server splits.
@@ -143,10 +214,8 @@ pub async fn forward_chat_completion(
         // path the "first byte" equals end-of-body, so TTFT/TTOT
         // collapse into a single latency.
         let t0 = now_ms();
-        let resp = ctx.http.post(&url).headers(h).body(inbound_body.clone()).send().await?;
-
-        let status = resp.status();
-        let resp_headers = resp.headers().clone();
+        let UpstreamResponse { status, headers: resp_headers, body: upstream_body } =
+            send_upstream(ctx, provider, path, h, inbound_body).await?;
 
         if status.as_u16() == 402 && attempts == 1 {
             let need: u64 = resp_headers
@@ -169,7 +238,7 @@ pub async fn forward_chat_completion(
         }
 
         if !status.is_success() {
-            let body = resp.bytes().await.unwrap_or_default();
+            let body = collect_body(upstream_body).await;
             return Ok(RelayedResponse {
                 status,
                 headers: resp_headers,
@@ -180,7 +249,7 @@ pub async fn forward_chat_completion(
 
         if is_stream {
             let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(64);
-            let mut s = resp.bytes_stream();
+            let mut s = upstream_body;
             let card = card.clone();
             let slot = slot.clone();
             let channel = ctx.channel.clone();
@@ -207,9 +276,7 @@ pub async fn forward_chat_completion(
                     let bytes = match item {
                         Ok(b) => b,
                         Err(e) => {
-                            let _ = tx
-                                .send(Err(std::io::Error::new(std::io::ErrorKind::Other, e)))
-                                .await;
+                            let _ = tx.send(Err(e)).await;
                             return;
                         }
                     };
@@ -300,7 +367,7 @@ pub async fn forward_chat_completion(
         }
 
         // Non-streaming.
-        let body = resp.bytes().await?;
+        let body = collect_body(upstream_body).await;
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body) {
             if let Some(u) = v.get("usage") {
                 if let Ok(openai_usage) = serde_json::from_value::<crate::openai::Usage>(u.clone())

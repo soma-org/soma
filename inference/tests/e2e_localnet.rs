@@ -29,6 +29,7 @@ use std::time::Duration;
 
 use sdk::wallet_context::WalletContext;
 use serde_json::json;
+use soma_keys::keystore::AccountKeystore as _;
 use tempfile::TempDir;
 use test_cluster::TestClusterBuilder;
 use types::base::SomaAddress;
@@ -115,7 +116,8 @@ async fn proxy_provider_full_stack_against_real_chain() {
 
     // --- 3. Provider config (in-memory ledger + MemoryDiscovery for registry) -
     let ledger_dir = TempDir::new().unwrap();
-    let registry: Arc<dyn ProviderRegistry> = Arc::new(MemoryDiscovery::new());
+    let discovery = MemoryDiscovery::new();
+    let registry: Arc<dyn ProviderRegistry> = Arc::new(discovery.clone());
 
     let provider_wallet = Arc::new(wallet_for_path(&wallet_conf_path));
     let provider_chain: Arc<dyn ChannelSurface> =
@@ -163,14 +165,8 @@ async fn proxy_provider_full_stack_against_real_chain() {
     //        can find it. (One PR away from being on-chain.) ----------------
     let provider_port = pick_free_port();
     let provider_endpoint = format!("http://127.0.0.1:{provider_port}");
-    registry
-        .register_provider(ProviderRecord {
-            address: provider_addr,
-            pubkey_hex: String::new(),
-            endpoint: provider_endpoint.clone(),
-        })
-        .await
-        .unwrap();
+    // The provider is registered in discovery by `boot_provider_iroh` below,
+    // once it reports its bound iroh address.
 
     // Register an on-chain offering for the provider against TEST_MODEL —
     // OpenChannel's executor reads it to snapshot prices + SLA bounds onto
@@ -185,10 +181,7 @@ async fn proxy_provider_full_stack_against_real_chain() {
         std::env::set_var("OPENROUTER_API_KEY", "test-key");
     }
     let prov_cfg = inference::server::Config {
-        server: inference::server::config::Server {
-            listen: format!("127.0.0.1:{provider_port}"),
-            public_endpoint: provider_endpoint.clone(),
-        },
+        server: inference::server::config::Server { public_endpoint: provider_endpoint.clone() },
         backend: inference::server::config::Backend {
             kind: "openrouter".into(),
             api_key_env: Some("OPENROUTER_API_KEY".into()),
@@ -201,18 +194,16 @@ async fn proxy_provider_full_stack_against_real_chain() {
         auto_settle: Default::default(),
         autoprice: Default::default(),
     };
-    let prov_handle = tokio::spawn({
-        let ledger_path = ledger_dir.path().to_path_buf();
-        let provider_wallet = provider_wallet.clone();
-        async move {
-            inference::server::run(prov_cfg, provider_wallet, provider_addr, ledger_path)
-                .await
-                .ok();
-        }
-    });
-
-    // Wait for /health.
-    wait_for_url(&format!("{provider_endpoint}/health")).await;
+    let prov_handle = boot_provider_iroh(
+        prov_cfg,
+        provider_wallet.clone(),
+        provider_addr,
+        ledger_dir.path().to_path_buf(),
+        &discovery,
+        &provider_endpoint,
+        vec![card.clone()],
+    )
+    .await;
 
     // --- 7. Boot the proxy ---------------------------------------------------
     let proxy_port = pick_free_port();
@@ -226,11 +217,10 @@ async fn proxy_provider_full_stack_against_real_chain() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
-        // Liveness probing is off in localnet e2e — the provider's /health
-        // is wired up after the proxy boots, so probing during cold-start
-        // would false-negative and flake the test. Production defaults
-        // (probe_liveness: true) are exercised by the unit tests.
-        probe_liveness: false,
+        // Liveness probing ON: the provider is registered (with its iroh
+        // address) before the proxy boots, and the probe goes over iroh to
+        // the provider's `/health` — exercising the iroh liveness path.
+        probe_liveness: true,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
         local_token: None,
@@ -263,8 +253,9 @@ async fn proxy_provider_full_stack_against_real_chain() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200, "chat must succeed");
+    let status = resp.status().as_u16();
     let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(status, 200, "chat must succeed: {body}");
     assert_eq!(body["choices"][0]["message"]["content"].as_str(), Some("pong"),);
 
     // --- 9. Assert the proxy lazily opened a channel on-chain ---------------
@@ -338,6 +329,57 @@ fn read_first_provider_slot(
     None
 }
 
+/// Boot a provider (iroh-only inference, HTTP `/health`), wait for it to be
+/// ready, then register its iroh dial info (EndpointId derived from its
+/// signing key + bound direct sockets) in `registry` so the proxy reaches it
+/// over iroh. Returns the provider task handle.
+async fn boot_provider_iroh(
+    prov_cfg: inference::server::Config,
+    provider_wallet: Arc<WalletContext>,
+    provider_addr: SomaAddress,
+    ledger_path: std::path::PathBuf,
+    discovery: &MemoryDiscovery,
+    provider_endpoint: &str,
+    catalog: Vec<inference::catalog::ModelCard>,
+) -> tokio::task::JoinHandle<()> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn({
+        let provider_wallet = provider_wallet.clone();
+        async move {
+            inference::server::run_reporting_addr(
+                prov_cfg,
+                provider_wallet,
+                provider_addr,
+                ledger_path,
+                Some(tx),
+            )
+            .await
+            .ok();
+        }
+    });
+    // Readiness: the provider reports its iroh sockets once it's serving.
+    let sockets = rx.await.expect("provider reports its iroh sockets");
+    let keypair = provider_wallet.config.keystore.export(&provider_addr).unwrap();
+    let secret = inference::transport::iroh_secret_from_keypair(&keypair).unwrap();
+    let iroh_endpoint_id = inference::transport::endpoint_id_string(&secret.public());
+    // The endpoint binds to 0.0.0.0; rewrite to loopback for same-host dial.
+    let iroh_direct_addrs: Vec<String> =
+        sockets.iter().filter(|s| s.is_ipv4()).map(|s| format!("127.0.0.1:{}", s.port())).collect();
+    discovery
+        .register_with_catalog(
+            ProviderRecord {
+                address: provider_addr,
+                pubkey_hex: String::new(),
+                endpoint: provider_endpoint.to_string(),
+                iroh_endpoint_id,
+                iroh_direct_addrs,
+            },
+            catalog,
+        )
+        .await;
+    handle
+}
+
 async fn wait_for_url(url: &str) {
     for _ in 0..200 {
         if reqwest::get(url).await.map(|r| r.status().is_success()).unwrap_or(false) {
@@ -403,7 +445,8 @@ async fn stateless_proxy_cold_start_resumes_safely() {
 
     // --- 3. Shared registry + provider state ------------------------------
     let ledger_dir = TempDir::new().unwrap();
-    let registry: Arc<dyn ProviderRegistry> = Arc::new(MemoryDiscovery::new());
+    let discovery = MemoryDiscovery::new();
+    let registry: Arc<dyn ProviderRegistry> = Arc::new(discovery.clone());
     let provider_wallet = Arc::new(wallet_for_path(&wallet_conf_path));
     let provider_chain: Arc<dyn ChannelSurface> =
         Arc::new(ChainChannelSurface::new(provider_wallet.clone(), provider_addr));
@@ -448,14 +491,6 @@ async fn stateless_proxy_cold_start_resumes_safely() {
     // --- 5. Provider seed in registry + boot --------------------------------
     let provider_port = pick_free_port();
     let provider_endpoint = format!("http://127.0.0.1:{provider_port}");
-    registry
-        .register_provider(ProviderRecord {
-            address: provider_addr,
-            pubkey_hex: String::new(),
-            endpoint: provider_endpoint.clone(),
-        })
-        .await
-        .unwrap();
     register_test_offering(&test_cluster, provider_addr).await;
 
     // SAFETY: tests are single-threaded WRT env vars at this point.
@@ -463,10 +498,7 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         std::env::set_var("OPENROUTER_API_KEY", "test-key");
     }
     let prov_cfg = inference::server::Config {
-        server: inference::server::config::Server {
-            listen: format!("127.0.0.1:{provider_port}"),
-            public_endpoint: provider_endpoint.clone(),
-        },
+        server: inference::server::config::Server { public_endpoint: provider_endpoint.clone() },
         backend: inference::server::config::Backend {
             kind: "openrouter".to_string(),
             api_key_env: Some("OPENROUTER_API_KEY".to_string()),
@@ -479,16 +511,16 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         auto_settle: Default::default(),
         autoprice: Default::default(),
     };
-    let prov_handle = tokio::spawn({
-        let ledger_path = ledger_dir.path().to_path_buf();
-        let provider_wallet = provider_wallet.clone();
-        async move {
-            inference::server::run(prov_cfg, provider_wallet, provider_addr, ledger_path)
-                .await
-                .ok();
-        }
-    });
-    wait_for_url(&format!("{provider_endpoint}/health")).await;
+    let prov_handle = boot_provider_iroh(
+        prov_cfg,
+        provider_wallet.clone(),
+        provider_addr,
+        ledger_dir.path().to_path_buf(),
+        &discovery,
+        &provider_endpoint,
+        vec![card.clone()],
+    )
+    .await;
 
     // --- 6. Proxy v1: send 2 requests --------------------------------------
     let proxy_v1_port = pick_free_port();
@@ -502,11 +534,10 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
-        // Liveness probing is off in localnet e2e — the provider's /health
-        // is wired up after the proxy boots, so probing during cold-start
-        // would false-negative and flake the test. Production defaults
-        // (probe_liveness: true) are exercised by the unit tests.
-        probe_liveness: false,
+        // Liveness probing ON: the provider is registered (with its iroh
+        // address) before the proxy boots, and the probe goes over iroh to
+        // the provider's `/health` — exercising the iroh liveness path.
+        probe_liveness: true,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
         local_token: None,
@@ -591,11 +622,10 @@ async fn stateless_proxy_cold_start_resumes_safely() {
         trusted_providers_url: None,
         trusted_providers_refresh_secs: 600,
         prewarm_model: None,
-        // Liveness probing is off in localnet e2e — the provider's /health
-        // is wired up after the proxy boots, so probing during cold-start
-        // would false-negative and flake the test. Production defaults
-        // (probe_liveness: true) are exercised by the unit tests.
-        probe_liveness: false,
+        // Liveness probing ON: the provider is registered (with its iroh
+        // address) before the proxy boots, and the probe goes over iroh to
+        // the provider's `/health` — exercising the iroh liveness path.
+        probe_liveness: true,
         liveness_refresh_secs: 30,
         liveness_timeout_ms: 1_500,
         local_token: None,

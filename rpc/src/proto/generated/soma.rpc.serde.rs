@@ -14712,9 +14712,15 @@ impl serde::Serialize for RegisterProvider {
         if self.endpoint.is_some() {
             len += 1;
         }
+        if self.iroh_endpoint_id.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RegisterProvider", len)?;
         if let Some(v) = self.endpoint.as_ref() {
             struct_ser.serialize_field("endpoint", v)?;
+        }
+        if let Some(v) = self.iroh_endpoint_id.as_ref() {
+            struct_ser.serialize_field("irohEndpointId", v)?;
         }
         struct_ser.end()
     }
@@ -14727,11 +14733,14 @@ impl<'de> serde::Deserialize<'de> for RegisterProvider {
     {
         const FIELDS: &[&str] = &[
             "endpoint",
+            "iroh_endpoint_id",
+            "irohEndpointId",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Endpoint,
+            IrohEndpointId,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -14755,6 +14764,7 @@ impl<'de> serde::Deserialize<'de> for RegisterProvider {
                     {
                         match value {
                             "endpoint" => Ok(GeneratedField::Endpoint),
+                            "irohEndpointId" | "iroh_endpoint_id" => Ok(GeneratedField::IrohEndpointId),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -14777,6 +14787,7 @@ impl<'de> serde::Deserialize<'de> for RegisterProvider {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut endpoint__ = None;
+                let mut iroh_endpoint_id__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Endpoint => {
@@ -14785,6 +14796,12 @@ impl<'de> serde::Deserialize<'de> for RegisterProvider {
                             }
                             endpoint__ = map_.next_value()?;
                         }
+                        GeneratedField::IrohEndpointId => {
+                            if iroh_endpoint_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("irohEndpointId"));
+                            }
+                            iroh_endpoint_id__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -14792,6 +14809,7 @@ impl<'de> serde::Deserialize<'de> for RegisterProvider {
                 }
                 Ok(RegisterProvider {
                     endpoint: endpoint__,
+                    iroh_endpoint_id: iroh_endpoint_id__,
                 })
             }
         }
@@ -21754,12 +21772,18 @@ impl serde::Serialize for UpdateProvider {
         if self.endpoint.is_some() {
             len += 1;
         }
+        if self.iroh_endpoint_id.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateProvider", len)?;
         if let Some(v) = self.provider_id.as_ref() {
             struct_ser.serialize_field("providerId", v)?;
         }
         if let Some(v) = self.endpoint.as_ref() {
             struct_ser.serialize_field("endpoint", v)?;
+        }
+        if let Some(v) = self.iroh_endpoint_id.as_ref() {
+            struct_ser.serialize_field("irohEndpointId", v)?;
         }
         struct_ser.end()
     }
@@ -21774,12 +21798,15 @@ impl<'de> serde::Deserialize<'de> for UpdateProvider {
             "provider_id",
             "providerId",
             "endpoint",
+            "iroh_endpoint_id",
+            "irohEndpointId",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ProviderId,
             Endpoint,
+            IrohEndpointId,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -21804,6 +21831,7 @@ impl<'de> serde::Deserialize<'de> for UpdateProvider {
                         match value {
                             "providerId" | "provider_id" => Ok(GeneratedField::ProviderId),
                             "endpoint" => Ok(GeneratedField::Endpoint),
+                            "irohEndpointId" | "iroh_endpoint_id" => Ok(GeneratedField::IrohEndpointId),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -21827,6 +21855,7 @@ impl<'de> serde::Deserialize<'de> for UpdateProvider {
             {
                 let mut provider_id__ = None;
                 let mut endpoint__ = None;
+                let mut iroh_endpoint_id__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ProviderId => {
@@ -21841,6 +21870,12 @@ impl<'de> serde::Deserialize<'de> for UpdateProvider {
                             }
                             endpoint__ = map_.next_value()?;
                         }
+                        GeneratedField::IrohEndpointId => {
+                            if iroh_endpoint_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("irohEndpointId"));
+                            }
+                            iroh_endpoint_id__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -21849,6 +21884,7 @@ impl<'de> serde::Deserialize<'de> for UpdateProvider {
                 Ok(UpdateProvider {
                     provider_id: provider_id__,
                     endpoint: endpoint__,
+                    iroh_endpoint_id: iroh_endpoint_id__,
                 })
             }
         }

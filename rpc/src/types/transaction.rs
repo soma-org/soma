@@ -354,12 +354,14 @@ pub struct RateChannelArgs {
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RegisterProviderArgs {
     pub endpoint: String,
+    pub iroh_endpoint_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct UpdateProviderArgs {
     pub provider_id: Address,
     pub endpoint: String,
+    pub iroh_endpoint_id: String,
 }
 
 // Per-(provider, model) offering arg types

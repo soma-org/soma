@@ -21,6 +21,10 @@ tokio.workspace = true
 tokio-stream.workspace = true
 bcs.workspace = true
 
+# P2P transport (buyer <-> provider hop)
+iroh = "0.98"
+tower.workspace = true
+
 # Serde + persistence
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -28,6 +32,7 @@ toml.workspace = true
 
 # Crypto
 fastcrypto.workspace = true
+soma-keys.workspace = true
 sha2 = "0.10"
 base64.workspace = true
 

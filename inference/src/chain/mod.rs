@@ -37,6 +37,15 @@ pub trait ProviderRegistry: Send + Sync + 'static {
     fn indexer_url(&self) -> Option<&str> {
         None
     }
+
+    /// Per-provider model catalogs, for registries not backed by the
+    /// indexer-driven offerings query (tests). `None` means "resolve
+    /// offerings via the indexer" (production).
+    async fn catalogs(
+        &self,
+    ) -> Option<std::collections::HashMap<SomaAddress, Vec<crate::catalog::ModelCard>>> {
+        None
+    }
 }
 
 /// On-chain payment-channel surface. Wraps the SDK's `sdk::channel`

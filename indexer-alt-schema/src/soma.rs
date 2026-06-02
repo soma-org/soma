@@ -170,6 +170,7 @@ pub struct StoredBridgeDeposit {
 pub struct StoredProvider {
     pub address: Vec<u8>,
     pub endpoint: String,
+    pub iroh_endpoint_id: String,
     pub last_update_cp: i64,
 }
 

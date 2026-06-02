@@ -28,8 +28,10 @@ pub async fn register(
     ctx: &WalletContext,
     sender: SomaAddress,
     endpoint: String,
+    iroh_endpoint_id: String,
 ) -> anyhow::Result<ObjectID> {
-    let kind = TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint });
+    let kind =
+        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint, iroh_endpoint_id });
     let tx = build_signed(ctx, sender, kind).await?;
     ctx.execute_transaction_require_success(tx).await?;
     Ok(Provider::derive_id(sender))
@@ -42,9 +44,14 @@ pub async fn update(
     ctx: &WalletContext,
     sender: SomaAddress,
     endpoint: String,
+    iroh_endpoint_id: String,
 ) -> anyhow::Result<()> {
     let provider_id = Provider::derive_id(sender);
-    let kind = TransactionKind::UpdateProvider(UpdateProviderArgs { provider_id, endpoint });
+    let kind = TransactionKind::UpdateProvider(UpdateProviderArgs {
+        provider_id,
+        endpoint,
+        iroh_endpoint_id,
+    });
     let tx = build_signed(ctx, sender, kind).await?;
     ctx.execute_transaction_require_success(tx).await?;
     Ok(())
@@ -81,11 +88,12 @@ pub async fn register_or_update(
     ctx: &WalletContext,
     sender: SomaAddress,
     endpoint: String,
+    iroh_endpoint_id: String,
 ) -> anyhow::Result<()> {
     if get(ctx, sender).await?.is_some() {
-        update(ctx, sender, endpoint).await
+        update(ctx, sender, endpoint, iroh_endpoint_id).await
     } else {
-        register(ctx, sender, endpoint).await.map(|_| ())
+        register(ctx, sender, endpoint, iroh_endpoint_id).await.map(|_| ())
     }
 }
 
@@ -98,14 +106,16 @@ pub async fn register_or_update_no_wait(
     ctx: &WalletContext,
     sender: SomaAddress,
     endpoint: String,
+    iroh_endpoint_id: String,
 ) -> anyhow::Result<()> {
     let kind = if get(ctx, sender).await?.is_some() {
         TransactionKind::UpdateProvider(UpdateProviderArgs {
             provider_id: Provider::derive_id(sender),
             endpoint,
+            iroh_endpoint_id,
         })
     } else {
-        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint })
+        TransactionKind::RegisterProvider(RegisterProviderArgs { endpoint, iroh_endpoint_id })
     };
     let tx = build_signed(ctx, sender, kind).await?;
     ctx.execute_transaction_finality_only_require_success(tx).await?;
@@ -125,20 +135,28 @@ impl ProviderClient {
         Self { ctx, sender }
     }
 
-    pub async fn register(&self, endpoint: String) -> anyhow::Result<ObjectID> {
-        register(&self.ctx, self.sender, endpoint).await
+    pub async fn register(
+        &self,
+        endpoint: String,
+        iroh_endpoint_id: String,
+    ) -> anyhow::Result<ObjectID> {
+        register(&self.ctx, self.sender, endpoint, iroh_endpoint_id).await
     }
 
-    pub async fn update(&self, endpoint: String) -> anyhow::Result<()> {
-        update(&self.ctx, self.sender, endpoint).await
+    pub async fn update(&self, endpoint: String, iroh_endpoint_id: String) -> anyhow::Result<()> {
+        update(&self.ctx, self.sender, endpoint, iroh_endpoint_id).await
     }
 
     pub async fn get(&self) -> anyhow::Result<Option<Provider>> {
         get(&self.ctx, self.sender).await
     }
 
-    pub async fn register_or_update(&self, endpoint: String) -> anyhow::Result<()> {
-        register_or_update(&self.ctx, self.sender, endpoint).await
+    pub async fn register_or_update(
+        &self,
+        endpoint: String,
+        iroh_endpoint_id: String,
+    ) -> anyhow::Result<()> {
+        register_or_update(&self.ctx, self.sender, endpoint, iroh_endpoint_id).await
     }
 }
 

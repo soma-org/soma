@@ -466,10 +466,12 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             // Provider registry
             RegisterProvider(args) => Kind::RegisterProvider(super::RegisterProvider {
                 endpoint: Some(args.endpoint.clone()),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id.clone()),
             }),
             UpdateProvider(args) => Kind::UpdateProvider(super::UpdateProvider {
                 provider_id: Some(args.provider_id.to_string()),
                 endpoint: Some(args.endpoint.clone()),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id.clone()),
             }),
 
             Settlement(settlement) => Kind::Settlement(super::Settlement {
@@ -1089,6 +1091,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .endpoint
                         .clone()
                         .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
+                    iroh_endpoint_id: args.iroh_endpoint_id.clone().unwrap_or_default(),
                 })
             }
 
@@ -1103,6 +1106,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .endpoint
                     .clone()
                     .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
+                iroh_endpoint_id: args.iroh_endpoint_id.clone().unwrap_or_default(),
             }),
 
             Kind::Settlement(settlement) => {

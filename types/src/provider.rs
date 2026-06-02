@@ -56,12 +56,23 @@ pub struct ProviderV1 {
     /// `/soma/info` and the OpenAI-compatible `/v1/...` endpoints.
     /// Buyers' proxies dial this URL.
     pub endpoint: String,
+
+    /// The provider's iroh `EndpointId` in canonical (z-base-32) form,
+    /// or empty if the provider only serves over HTTP. This is a
+    /// **dedicated** transport key — distinct from the provider's
+    /// account/`payee` key — bound to this provider record by the fact
+    /// that `RegisterProvider`/`UpdateProvider` are signed by `address`.
+    /// Buyers dial this key over iroh; reputation lives on `address`, so
+    /// the transport key can be rotated via `UpdateProvider` without
+    /// affecting standing. Stored as an opaque string so the chain
+    /// crates need no iroh dependency — the `inference` crate parses it.
+    pub iroh_endpoint_id: String,
 }
 
 impl Provider {
     /// Construct a fresh v1 `Provider` for `RegisterProvider` execution.
-    pub fn new(address: SomaAddress, endpoint: String) -> Self {
-        Self::V1(ProviderV1 { address, endpoint })
+    pub fn new(address: SomaAddress, endpoint: String, iroh_endpoint_id: String) -> Self {
+        Self::V1(ProviderV1 { address, endpoint, iroh_endpoint_id })
     }
 
     pub fn address(&self) -> SomaAddress {
@@ -76,9 +87,23 @@ impl Provider {
         }
     }
 
+    /// The provider's iroh `EndpointId` (canonical string), or `""` if the
+    /// provider is HTTP-only.
+    pub fn iroh_endpoint_id(&self) -> &str {
+        match self {
+            Self::V1(p) => &p.iroh_endpoint_id,
+        }
+    }
+
     pub fn set_endpoint(&mut self, endpoint: String) {
         match self {
             Self::V1(p) => p.endpoint = endpoint,
+        }
+    }
+
+    pub fn set_iroh_endpoint_id(&mut self, iroh_endpoint_id: String) {
+        match self {
+            Self::V1(p) => p.iroh_endpoint_id = iroh_endpoint_id,
         }
     }
 
@@ -173,10 +198,12 @@ mod tests {
 
     #[test]
     fn provider_bcs_round_trip() {
-        let p = Provider::new(addr(7), "https://example.com".to_string());
+        let p =
+            Provider::new(addr(7), "https://example.com".to_string(), "k51qzi5uqu5d".to_string());
         let bytes = bcs::to_bytes(&p).expect("serializes");
         let decoded: Provider = bcs::from_bytes(&bytes).expect("deserializes");
         assert_eq!(decoded, p);
+        assert_eq!(decoded.iroh_endpoint_id(), "k51qzi5uqu5d");
     }
 
     /// `derive_id` is deterministic and bijective from address.
@@ -204,7 +231,7 @@ mod tests {
 
     #[test]
     fn object_provider_helpers() {
-        let p = Provider::new(addr(3), "https://prov.test".to_string());
+        let p = Provider::new(addr(3), "https://prov.test".to_string(), String::new());
         let obj = Object::new_provider_for_testing(p.clone());
         assert_eq!(obj.id(), Provider::derive_id(p.address()));
         assert_eq!(*obj.type_(), ObjectType::Provider);
@@ -214,14 +241,16 @@ mod tests {
 
     #[test]
     fn set_provider_data_round_trips() {
-        let p1 = Provider::new(addr(4), "https://old.example".to_string());
+        let p1 = Provider::new(addr(4), "https://old.example".to_string(), String::new());
         let mut obj = Object::new_provider_for_testing(p1);
         let mut p2 = obj.as_provider().unwrap();
         p2.set_endpoint("https://new.example".to_string());
+        p2.set_iroh_endpoint_id("k51qzi5newkey".to_string());
         obj.set_provider_data(&p2);
         assert_eq!(*obj.type_(), ObjectType::Provider, "type must not change");
         let read_back = obj.as_provider().unwrap();
         assert_eq!(read_back.endpoint(), "https://new.example");
+        assert_eq!(read_back.iroh_endpoint_id(), "k51qzi5newkey");
     }
 
     #[test]

@@ -52,7 +52,7 @@ pub fn build_router(state: Arc<ProviderState>) -> Router {
     Router::new().route("/health", get(health)).merge(v1).with_state(state)
 }
 
-async fn health(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
+pub async fn health(State(state): State<Arc<ProviderState>>) -> impl IntoResponse {
     let healthy = state.backend.health().await;
     let saturation = state.backend.saturation().await;
     Json(crate::health::ProviderHealth {

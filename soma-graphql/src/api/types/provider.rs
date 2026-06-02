@@ -20,6 +20,7 @@ use crate::db::PgReader;
 pub struct Provider {
     pub address: Vec<u8>,
     pub endpoint: String,
+    pub iroh_endpoint_id: String,
     pub last_update_cp: i64,
 }
 
@@ -64,6 +65,12 @@ impl Provider {
     /// HTTP(S) endpoint for `/soma/info` and `/v1/...` APIs.
     async fn endpoint(&self) -> &str {
         &self.endpoint
+    }
+
+    /// The provider's iroh `EndpointId` (canonical z-base-32 string) buyers
+    /// dial over iroh, or empty if the provider has no iroh identity.
+    async fn iroh_endpoint_id(&self) -> &str {
+        &self.iroh_endpoint_id
     }
 
     /// Most recent checkpoint at which the provider record changed.

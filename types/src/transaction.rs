@@ -482,6 +482,10 @@ pub struct RegisterProviderArgs {
     /// and the OpenAI-compatible `/v1/...` endpoints. Validated for
     /// non-empty + length cap by the executor.
     pub endpoint: String,
+    /// The provider's iroh `EndpointId` (canonical z-base-32 string), or
+    /// empty for HTTP-only providers. A dedicated transport key buyers
+    /// dial over iroh; bounded-length validated by the executor.
+    pub iroh_endpoint_id: String,
 }
 
 /// Args for `UpdateProvider`. Changes the advertised `endpoint` on an
@@ -498,6 +502,10 @@ pub struct RegisterProviderArgs {
 pub struct UpdateProviderArgs {
     pub provider_id: ObjectID,
     pub endpoint: String,
+    /// New (or unchanged) iroh `EndpointId` (canonical z-base-32), or empty
+    /// for HTTP-only. Lets a provider rotate its transport key without
+    /// losing reputation (which lives on `address`).
+    pub iroh_endpoint_id: String,
 }
 
 /// Args for `RegisterOffering`. Signer becomes the offering's

@@ -52,7 +52,7 @@ impl ProviderRegistry for IndexerProviderRegistry {
         let query = r#"
             query Providers {
                 providers(first: 50) {
-                    edges { node { address endpoint } }
+                    edges { node { address endpoint irohEndpointId } }
                 }
             }
         "#;
@@ -97,6 +97,10 @@ impl ProviderRegistry for IndexerProviderRegistry {
                 address,
                 pubkey_hex: String::new(),
                 endpoint: parsed.endpoint,
+                iroh_endpoint_id: parsed.iroh_endpoint_id,
+                // Production dials by EndpointId via n0 discovery — no direct
+                // addresses needed here.
+                iroh_direct_addrs: Vec::new(),
             });
         }
         Ok(out)
@@ -120,4 +124,6 @@ impl ProviderRegistry for IndexerProviderRegistry {
 struct GqlProvider {
     address: String,
     endpoint: String,
+    #[serde(default)]
+    iroh_endpoint_id: String,
 }

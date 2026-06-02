@@ -1338,11 +1338,12 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_providers;
 
-        type Row = (Vec<u8>, String, i64);
+        type Row = (Vec<u8>, String, String, i64);
         let row: Option<Row> = soma_providers::table
             .select((
                 soma_providers::address,
                 soma_providers::endpoint,
+                soma_providers::iroh_endpoint_id,
                 soma_providers::last_update_cp,
             ))
             .filter(soma_providers::address.eq(addr_bytes))
@@ -1351,7 +1352,12 @@ impl Query {
             .optional()
             .map_err(|e| Error::new(e.to_string()))?;
 
-        Ok(row.map(|r| GqlProvider { address: r.0, endpoint: r.1, last_update_cp: r.2 }))
+        Ok(row.map(|r| GqlProvider {
+            address: r.0,
+            endpoint: r.1,
+            iroh_endpoint_id: r.2,
+            last_update_cp: r.3,
+        }))
     }
 
     /// List providers, ordered by most recent registration / endpoint
@@ -1372,11 +1378,12 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_providers;
 
-        type Row = (Vec<u8>, String, i64);
+        type Row = (Vec<u8>, String, String, i64);
         let mut query = soma_providers::table
             .select((
                 soma_providers::address,
                 soma_providers::endpoint,
+                soma_providers::iroh_endpoint_id,
                 soma_providers::last_update_cp,
             ))
             .order(soma_providers::last_update_cp.desc())
@@ -1400,7 +1407,12 @@ impl Query {
             let cursor = format!("0x{}", hex::encode(&r.0));
             connection.edges.push(Edge::new(
                 cursor,
-                GqlProvider { address: r.0, endpoint: r.1, last_update_cp: r.2 },
+                GqlProvider {
+                    address: r.0,
+                    endpoint: r.1,
+                    iroh_endpoint_id: r.2,
+                    last_update_cp: r.3,
+                },
             ));
         }
         Ok(connection)

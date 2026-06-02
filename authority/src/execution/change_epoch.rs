@@ -146,7 +146,25 @@ impl TransactionExecutor for ChangeEpochExecutor {
                                 .iter()
                                 .find(|v| v.metadata.soma_address == validator)
                         })
-                        .map(|v| &v.staking_pool);
+                        .map(|v| &v.staking_pool)
+                        // A validator that earns commission in the same
+                        // epoch boundary it departs has already been moved
+                        // into `inactive_validators` by the preceding
+                        // `process_validator_transitions`. Without this
+                        // fallback `pool_view` is `None`, the commission
+                        // `reward.principal` (already minted into the pool's
+                        // aggregate by `advance_epoch`) is never folded into
+                        // the validator's delegation row, and the
+                        // pool-aggregate vs. per-staker rows permanently
+                        // desync. Mirrors the `WithdrawStake` lookup at
+                        // execution/staking.rs.
+                        .or_else(|| {
+                            state
+                                .validators()
+                                .inactive_validators
+                                .get(&pool_id)
+                                .map(|v| &v.staking_pool)
+                        });
 
                     // 1. Compute the new row state.
                     let mut row =

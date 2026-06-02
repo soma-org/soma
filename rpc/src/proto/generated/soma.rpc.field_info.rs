@@ -10032,9 +10032,18 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
+        pub const IROH_ENDPOINT_ID_FIELD: &'static MessageField = &MessageField {
+            name: "iroh_endpoint_id",
+            json_name: "irohEndpointId",
+            number: 2i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for RegisterProvider {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ENDPOINT_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::ENDPOINT_FIELD,
+            Self::IROH_ENDPOINT_ID_FIELD,
+        ];
     }
     impl RegisterProvider {
         pub fn path_builder() -> RegisterProviderFieldPathBuilder {
@@ -10060,6 +10069,10 @@ mod _field_impls {
             self.path.push(RegisterProvider::ENDPOINT_FIELD.name);
             self.finish()
         }
+        pub fn iroh_endpoint_id(mut self) -> String {
+            self.path.push(RegisterProvider::IROH_ENDPOINT_ID_FIELD.name);
+            self.finish()
+        }
     }
     impl UpdateProvider {
         pub const PROVIDER_ID_FIELD: &'static MessageField = &MessageField {
@@ -10074,11 +10087,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const IROH_ENDPOINT_ID_FIELD: &'static MessageField = &MessageField {
+            name: "iroh_endpoint_id",
+            json_name: "irohEndpointId",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for UpdateProvider {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::PROVIDER_ID_FIELD,
             Self::ENDPOINT_FIELD,
+            Self::IROH_ENDPOINT_ID_FIELD,
         ];
     }
     impl UpdateProvider {
@@ -10107,6 +10127,10 @@ mod _field_impls {
         }
         pub fn endpoint(mut self) -> String {
             self.path.push(UpdateProvider::ENDPOINT_FIELD.name);
+            self.finish()
+        }
+        pub fn iroh_endpoint_id(mut self) -> String {
+            self.path.push(UpdateProvider::IROH_ENDPOINT_ID_FIELD.name);
             self.finish()
         }
     }

@@ -7252,7 +7252,10 @@ mod _getter_impls {
     }
     impl RegisterProvider {
         pub const fn const_default() -> Self {
-            Self { endpoint: None }
+            Self {
+                endpoint: None,
+                iroh_endpoint_id: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -7263,12 +7266,17 @@ mod _getter_impls {
             self.endpoint = Some(field.into());
             self
         }
+        pub fn with_iroh_endpoint_id(mut self, field: String) -> Self {
+            self.iroh_endpoint_id = Some(field.into());
+            self
+        }
     }
     impl UpdateProvider {
         pub const fn const_default() -> Self {
             Self {
                 provider_id: None,
                 endpoint: None,
+                iroh_endpoint_id: None,
             }
         }
         #[doc(hidden)]
@@ -7282,6 +7290,10 @@ mod _getter_impls {
         }
         pub fn with_endpoint(mut self, field: String) -> Self {
             self.endpoint = Some(field.into());
+            self
+        }
+        pub fn with_iroh_endpoint_id(mut self, field: String) -> Self {
+            self.iroh_endpoint_id = Some(field.into());
             self
         }
     }
