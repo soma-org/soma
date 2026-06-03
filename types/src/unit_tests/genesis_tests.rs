@@ -1023,10 +1023,11 @@ fn test_genesis_creates_balance_accumulator_objects() {
         assert!(acc_obj.owner().is_accumulator());
         let payload =
             acc_obj.as_balance_accumulator().expect("genesis BalanceAccumulator must deserialize");
-        assert_eq!(payload.owner, owner);
-        assert_eq!(payload.coin_type, coin_type);
+        assert_eq!(payload.owner(), owner);
+        assert_eq!(payload.coin_type(), coin_type);
         assert_eq!(
-            payload.balance, expected_balance,
+            payload.balance(),
+            expected_balance,
             "BalanceAccumulator object payload must equal the CF entry",
         );
     }
@@ -1074,16 +1075,16 @@ fn test_genesis_creates_delegation_accumulator_objects() {
         let payload = acc_obj
             .as_delegation_accumulator()
             .expect("genesis DelegationAccumulator must deserialize");
-        assert_eq!(payload.pool_id, pool_id);
-        assert_eq!(payload.staker, staker);
-        assert_eq!(payload.principal, expected_principal);
+        assert_eq!(payload.pool_id(), pool_id);
+        assert_eq!(payload.staker(), staker);
+        assert_eq!(payload.principal(), expected_principal);
         assert_eq!(
-            payload.index_at_last_collect,
+            payload.index_at_last_collect(),
             crate::system_state::staking::F1_INDEX_SCALE,
             "genesis stakers baseline at the pool's initial cumulative_index",
         );
-        assert_eq!(payload.pending_principal, 0);
-        assert_eq!(payload.pending_added_at_epoch, 0);
+        assert_eq!(payload.pending_principal(), 0);
+        assert_eq!(payload.pending_added_at_epoch(), 0);
     }
 }
 

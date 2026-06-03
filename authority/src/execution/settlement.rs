@@ -168,25 +168,27 @@ fn apply_settlement_to_object_inputs(
 
             let new_balance = match change {
                 BalanceEvent::Deposit { .. } => {
-                    acc.balance.checked_add(magnitude).ok_or_else(|| {
+                    acc.balance().checked_add(magnitude).ok_or_else(|| {
                         ExecutionFailureStatus::SomaError(SomaError::from(format!(
                             "Settlement deposit overflow on ({owner:?}, {coin_type:?}): \
                              current={} + delta={} overflows u64",
-                            acc.balance, magnitude
+                            acc.balance(),
+                            magnitude
                         )))
                     })?
                 }
                 BalanceEvent::Withdraw { .. } => {
-                    acc.balance.checked_sub(magnitude).ok_or_else(|| {
+                    acc.balance().checked_sub(magnitude).ok_or_else(|| {
                         ExecutionFailureStatus::SomaError(SomaError::from(format!(
                             "Settlement withdraw underflow on ({owner:?}, {coin_type:?}): \
                              current={} - delta={} underflows u64",
-                            acc.balance, magnitude
+                            acc.balance(),
+                            magnitude
                         )))
                     })?
                 }
             };
-            acc.balance = new_balance;
+            acc.set_balance(new_balance);
 
             let mut new_obj = existing.clone();
             new_obj.set_balance_accumulator(&acc);
@@ -514,7 +516,7 @@ mod tests {
             .get(&acc_id)
             .expect("new accumulator object must be in written set");
         let acc = created.as_balance_accumulator().expect("created object is a BalanceAccumulator");
-        assert_eq!(acc.balance, 500);
+        assert_eq!(acc.balance(), 500);
     }
 
     /// Stage 14d safety. First-touch *withdraw* must error loudly
@@ -581,10 +583,10 @@ mod tests {
             .expect("new delegation accumulator must be in written set");
         let acc =
             created.as_delegation_accumulator().expect("created object is a DelegationAccumulator");
-        assert_eq!(acc.principal, 1_000);
-        assert_eq!(acc.index_at_last_collect, 42);
-        assert_eq!(acc.pending_principal, 250);
-        assert_eq!(acc.pending_added_at_epoch, 7);
+        assert_eq!(acc.principal(), 1_000);
+        assert_eq!(acc.index_at_last_collect(), 42);
+        assert_eq!(acc.pending_principal(), 250);
+        assert_eq!(acc.pending_added_at_epoch(), 7);
     }
 
     /// First-touch delegation with `new_state = None` is an invariant

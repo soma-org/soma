@@ -1352,7 +1352,7 @@ impl AuthorityStore {
         let id = BalanceAccumulator::derive_id(owner, coin_type);
         match self.perpetual_tables.get_object_fallible(&id)? {
             None => Ok(0),
-            Some(obj) => obj.as_balance_accumulator().map(|acc| acc.balance).ok_or_else(|| {
+            Some(obj) => obj.as_balance_accumulator().map(|acc| acc.balance()).ok_or_else(|| {
                 SomaError::from(format!(
                     "Object at deterministic accumulator ID {id:?} for \
                      ({owner:?}, {coin_type:?}) is not a BalanceAccumulator — \
@@ -1566,10 +1566,10 @@ impl AuthorityStore {
             None => Ok(Delegation::default()),
             Some(obj) => match obj.as_delegation_accumulator() {
                 Some(acc) => Ok(Delegation {
-                    principal: acc.principal,
-                    index_at_last_collect: acc.index_at_last_collect,
-                    pending_principal: acc.pending_principal,
-                    pending_added_at_epoch: acc.pending_added_at_epoch,
+                    principal: acc.principal(),
+                    index_at_last_collect: acc.index_at_last_collect(),
+                    pending_principal: acc.pending_principal(),
+                    pending_added_at_epoch: acc.pending_added_at_epoch(),
                 }),
                 None => Err(SomaError::from(format!(
                     "Object at deterministic accumulator ID {id:?} for \

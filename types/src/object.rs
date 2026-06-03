@@ -393,8 +393,8 @@ impl Object {
         previous_transaction: TransactionDigest,
     ) -> Self {
         let id = crate::accumulator::BalanceAccumulator::derive_id(
-            accumulator.owner,
-            accumulator.coin_type,
+            accumulator.owner(),
+            accumulator.coin_type(),
         );
         let data = ObjectData::new_with_id(
             id,
@@ -412,8 +412,8 @@ impl Object {
         previous_transaction: TransactionDigest,
     ) -> Self {
         let id = crate::accumulator::DelegationAccumulator::derive_id(
-            accumulator.pool_id,
-            accumulator.staker,
+            accumulator.pool_id(),
+            accumulator.staker(),
         );
         let data = ObjectData::new_with_id(
             id,

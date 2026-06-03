@@ -71,8 +71,17 @@ const DELEGATION_ACCUMULATOR_DOMAIN_TAG: &[u8] = b"soma/delegation-accumulator/v
 ///
 /// [`Object`]: crate::object::Object
 /// [`ObjectType::BalanceAccumulator`]: crate::object::ObjectType::BalanceAccumulator
+/// Versioned wrapper for the balance-accumulator payload. All
+/// serialization goes through this enum; a future schema change adds a
+/// `V2(BalanceAccumulatorV2)` variant. `V1` must never be mutated in
+/// place once a network has persisted it (the BCS layout is frozen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BalanceAccumulator {
+pub enum BalanceAccumulator {
+    V1(BalanceAccumulatorV1),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BalanceAccumulatorV1 {
     pub owner: SomaAddress,
     pub coin_type: CoinType,
     pub balance: u64,
@@ -81,7 +90,35 @@ pub struct BalanceAccumulator {
 impl BalanceAccumulator {
     /// Construct a fresh accumulator at the given balance.
     pub const fn new(owner: SomaAddress, coin_type: CoinType, balance: u64) -> Self {
-        Self { owner, coin_type, balance }
+        Self::V1(BalanceAccumulatorV1 { owner, coin_type, balance })
+    }
+
+    /// The account this balance row belongs to.
+    pub fn owner(&self) -> SomaAddress {
+        match self {
+            Self::V1(a) => a.owner,
+        }
+    }
+
+    /// The coin denomination of this balance row.
+    pub fn coin_type(&self) -> CoinType {
+        match self {
+            Self::V1(a) => a.coin_type,
+        }
+    }
+
+    /// The current balance, in the coin's smallest unit.
+    pub fn balance(&self) -> u64 {
+        match self {
+            Self::V1(a) => a.balance,
+        }
+    }
+
+    /// Overwrite the balance.
+    pub fn set_balance(&mut self, balance: u64) {
+        match self {
+            Self::V1(a) => a.balance = balance,
+        }
     }
 
     /// Derive the canonical [`ObjectID`] for the `(owner, coin_type)`
@@ -115,8 +152,17 @@ impl BalanceAccumulator {
 ///
 /// [`Object`]: crate::object::Object
 /// [`ObjectType::DelegationAccumulator`]: crate::object::ObjectType::DelegationAccumulator
+/// Versioned wrapper for the delegation-row payload. All serialization
+/// goes through this enum; a future schema change adds a
+/// `V2(DelegationAccumulatorV2)` variant. `V1` must never be mutated in
+/// place once a network has persisted it (the BCS layout is frozen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DelegationAccumulator {
+pub enum DelegationAccumulator {
+    V1(DelegationAccumulatorV1),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DelegationAccumulatorV1 {
     pub pool_id: ObjectID,
     pub staker: SomaAddress,
     pub principal: u64,
@@ -126,6 +172,7 @@ pub struct DelegationAccumulator {
 }
 
 impl DelegationAccumulator {
+    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         pool_id: ObjectID,
         staker: SomaAddress,
@@ -134,13 +181,55 @@ impl DelegationAccumulator {
         pending_principal: u64,
         pending_added_at_epoch: u64,
     ) -> Self {
-        Self {
+        Self::V1(DelegationAccumulatorV1 {
             pool_id,
             staker,
             principal,
             index_at_last_collect,
             pending_principal,
             pending_added_at_epoch,
+        })
+    }
+
+    /// The staking pool this delegation row belongs to.
+    pub fn pool_id(&self) -> ObjectID {
+        match self {
+            Self::V1(d) => d.pool_id,
+        }
+    }
+
+    /// The staker who owns this delegation row.
+    pub fn staker(&self) -> SomaAddress {
+        match self {
+            Self::V1(d) => d.staker,
+        }
+    }
+
+    /// Active principal staked.
+    pub fn principal(&self) -> u64 {
+        match self {
+            Self::V1(d) => d.principal,
+        }
+    }
+
+    /// F1 cumulative-index mark at last reward collection.
+    pub fn index_at_last_collect(&self) -> u128 {
+        match self {
+            Self::V1(d) => d.index_at_last_collect,
+        }
+    }
+
+    /// Principal added this epoch, not yet earning (pending activation).
+    pub fn pending_principal(&self) -> u64 {
+        match self {
+            Self::V1(d) => d.pending_principal,
+        }
+    }
+
+    /// Epoch in which `pending_principal` was added.
+    pub fn pending_added_at_epoch(&self) -> u64 {
+        match self {
+            Self::V1(d) => d.pending_added_at_epoch,
         }
     }
 
