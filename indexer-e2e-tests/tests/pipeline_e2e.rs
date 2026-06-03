@@ -63,21 +63,32 @@ async fn test_transfer_coin_indexed() {
     assert!(response.effects.status().is_ok());
     let expected_digest = *response.effects.transaction_digest();
 
-    // Wait for the indexer to catch up (generous timeout for TestCluster startup)
-    cluster
-        .wait_for_indexer(1, Duration::from_secs(120))
-        .await
-        .expect("Indexer did not reach checkpoint 1 within timeout");
-
     let mut conn = cluster.db().connect().await.unwrap();
 
-    // Verify kv_transactions has the transaction
-    let tx_count: i64 = kv_transactions::table
-        .filter(kv_transactions::tx_digest.eq(expected_digest.inner().to_vec()))
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    // Wait until *this* transaction is indexed into kv_transactions. Polling
+    // for the specific digest (rather than wait_for_indexer(1) followed by a
+    // single read) avoids a checkpoint race: the tx can land in checkpoint 2+
+    // depending on timing, so waiting for a fixed checkpoint number then
+    // asserting once is flaky (it failed once timing shifted under heavier
+    // build deps). Once the digest is present, its whole checkpoint is indexed,
+    // so the downstream assertions below hold too.
+    let expected_digest_bytes = expected_digest.inner().to_vec();
+    let tx_count: i64 = tokio::time::timeout(Duration::from_secs(120), async {
+        loop {
+            let count: i64 = kv_transactions::table
+                .filter(kv_transactions::tx_digest.eq(expected_digest_bytes.as_slice()))
+                .count()
+                .get_result(conn.deref_mut())
+                .await
+                .unwrap();
+            if count > 0 {
+                break count;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("Transaction not indexed into kv_transactions within 120s");
     assert!(tx_count > 0, "Transaction not found in kv_transactions");
 
     // Verify tx_digests has entries
