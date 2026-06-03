@@ -1284,6 +1284,16 @@ pub enum ExecutionFailureStatus {
     ChannelOfferingMissing { payee: SomaAddress, model_id: String },
 
     //
+    // Funds withdraw scheduler
+    //
+    /// The pre-execution funds-withdraw scheduler determined this transaction's
+    /// declared maximum balance withdrawal cannot be covered at a settled
+    /// version. The transaction fails early (gas is still smashed) without
+    /// executing its body. Mirrors Sui's `InsufficientFundsForWithdraw`.
+    #[error("Insufficient funds for declared balance withdrawal")]
+    InsufficientFundsForWithdraw,
+
+    //
     // Post-execution errors
     //
     /// Generic SOMA error that wraps other error types

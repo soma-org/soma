@@ -1461,6 +1461,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::InsufficientCoinBalance => {
                 Self::InsufficientCoinBalance
             }
+            types::effects::ExecutionFailureStatus::InsufficientFundsForWithdraw => {
+                Self::InsufficientCoinBalance
+            }
             types::effects::ExecutionFailureStatus::CoinBalanceOverflow => {
                 Self::CoinBalanceOverflow
             }

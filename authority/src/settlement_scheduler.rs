@@ -64,17 +64,23 @@
 //! [`AuthorityPerEpochStore::notify_settlement_transactions_ready`]: crate::authority_per_epoch_store::AuthorityPerEpochStore::notify_settlement_transactions_ready
 //! [`AuthorityPerEpochStore::wait_for_settlement_transactions`]: crate::authority_per_epoch_store::AuthorityPerEpochStore::wait_for_settlement_transactions
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use futures::StreamExt;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 use types::digests::TransactionDigest;
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::transaction::VerifiedExecutableTransaction;
 
 use crate::authority::ExecutionEnv;
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::execution_scheduler::ExecutionScheduler;
+use crate::funds_withdraw_scheduler::{
+    AccountKey, ScheduleStatus, TxFundsWithdraw, WithdrawReservations,
+};
 use crate::shared_obj_version_manager::{Schedulable, SettlementBatchInfo};
 
 /// One unit of settlement work — a placeholder enqueued by the
@@ -125,22 +131,53 @@ impl SettlementScheduler {
         Self { execution_scheduler, queue_sender: Arc::new(Mutex::new(None)) }
     }
 
-    /// Route `certs` between the main scheduler and the settlement
-    /// queue. Mirrors Sui's `SettlementScheduler::enqueue` — drop-in
-    /// replacement for callers that previously called
-    /// `execution_scheduler.enqueue` directly.
+    /// Route `certs` three ways:
+    ///   * **ordinary** txs (no balance withdrawal) → straight to the main
+    ///     [`ExecutionScheduler`];
+    ///   * **withdrawal** txs (declare a balance reservation — in Soma that's
+    ///     essentially everything, since gas is balance-mode) → through the
+    ///     per-epoch funds-withdraw scheduler, which decides sufficiency
+    ///     deterministically across not-yet-settled commits and only then
+    ///     re-enqueues them for execution (Sufficient normally, Insufficient
+    ///     with the fail-early flag);
+    ///   * `AccumulatorSettlement` placeholders → the settlement queue.
+    ///
+    /// `request_version` is the packed `(epoch, R_prev)` baseline this commit's
+    /// withdrawals read against. Mirrors Sui's `SettlementScheduler::enqueue`
+    /// classification by `has_funds_withdrawals()`.
     pub fn enqueue(
         &self,
         certs: Vec<(Schedulable, ExecutionEnv)>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
+        request_version: u64,
     ) {
+        let unit_fee = epoch_store.epoch_start_state().fee_parameters().unit_fee;
         let mut ordinary = Vec::with_capacity(certs.len());
+        // (tx, env, per-account aggregated reservation) preserved in consensus
+        // order — the funds scheduler decides cumulatively in this order.
+        let mut withdraws: Vec<(VerifiedExecutableTransaction, ExecutionEnv, TxFundsWithdraw)> =
+            Vec::new();
         let mut settlements = Vec::new();
 
         for (schedulable, env) in certs {
             match schedulable {
                 Schedulable::Transaction(tx) => {
-                    ordinary.push((Schedulable::Transaction(tx), env));
+                    let reservations = tx.transaction_data().reservations(unit_fee);
+                    if reservations.is_empty() {
+                        // No balance withdrawal (system txs like the consensus
+                        // commit prologue) — execute immediately.
+                        ordinary.push((Schedulable::Transaction(tx), env));
+                    } else {
+                        // Aggregate per `(owner, coin_type)`; saturating add is
+                        // conservative (over-reserve only ever fails early).
+                        let mut map: BTreeMap<AccountKey, u64> = BTreeMap::new();
+                        for r in reservations {
+                            let e = map.entry((r.owner, r.coin_type)).or_insert(0);
+                            *e = e.saturating_add(r.amount);
+                        }
+                        let txfw = TxFundsWithdraw { tx_digest: *tx.digest(), reservations: map };
+                        withdraws.push((tx, env, txfw));
+                    }
                 }
                 Schedulable::AccumulatorSettlement(info) => {
                     settlements.push(SettlementWorkItem { batch_info: *info, env });
@@ -153,12 +190,75 @@ impl SettlementScheduler {
         // awaits those effects.
         self.execution_scheduler.enqueue(ordinary, epoch_store);
 
+        if !withdraws.is_empty() {
+            self.route_withdraws(withdraws, request_version, epoch_store);
+        }
+
         if !settlements.is_empty() {
             let queue = self.get_or_start_queue(epoch_store);
             for item in settlements {
                 queue.send(item);
             }
         }
+    }
+
+    /// Submit a commit's withdrawal batch to the funds-withdraw scheduler and,
+    /// in a detached task, re-enqueue each tx for execution as its verdict
+    /// arrives: `SufficientFunds` → execute normally; `InsufficientFunds` →
+    /// execute with the fail-early flag (produces a failed effect, no body run);
+    /// `SkipSchedule` → execute normally (only reachable on catch-up paths that
+    /// don't go through this router, so effectively unreachable here). The task
+    /// exits when the scheduler closes (epoch teardown) or all verdicts arrive.
+    /// Re-enqueue order doesn't affect determinism: settlement nets balance
+    /// events commutatively, and the verdicts themselves are deterministic.
+    fn route_withdraws(
+        &self,
+        withdraws: Vec<(VerifiedExecutableTransaction, ExecutionEnv, TxFundsWithdraw)>,
+        request_version: u64,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) {
+        let Some(funds_scheduler) = epoch_store.funds_withdraw_scheduler() else {
+            // No scheduler on this node (doesn't process consensus) — execute
+            // directly rather than stranding the txs.
+            let direct = withdraws.into_iter().map(|(tx, env, _)| (tx, env)).collect();
+            self.execution_scheduler.enqueue_transactions(direct, epoch_store);
+            return;
+        };
+
+        let mut cert_map: BTreeMap<
+            TransactionDigest,
+            (VerifiedExecutableTransaction, ExecutionEnv),
+        > = BTreeMap::new();
+        let mut tx_withdraws = Vec::with_capacity(withdraws.len());
+        for (tx, env, txfw) in withdraws {
+            cert_map.insert(*tx.digest(), (tx, env));
+            tx_withdraws.push(txfw);
+        }
+
+        let receivers = funds_scheduler.schedule_withdraws(WithdrawReservations {
+            version: request_version,
+            withdraws: tx_withdraws,
+        });
+
+        let scheduler = self.execution_scheduler.clone();
+        let epoch_store = epoch_store.clone();
+        tokio::spawn(async move {
+            let mut receivers = receivers;
+            let mut cert_map = cert_map;
+            while let Some(result) = receivers.next().await {
+                let (digest, status) = match result {
+                    Ok(v) => v,
+                    // Sender dropped (epoch teardown) — stop routing this batch.
+                    Err(_) => break,
+                };
+                let Some((tx, env)) = cert_map.remove(&digest) else { continue };
+                let env = match status {
+                    ScheduleStatus::SufficientFunds | ScheduleStatus::SkipSchedule => env,
+                    ScheduleStatus::InsufficientFunds => env.with_insufficient_funds(),
+                };
+                scheduler.enqueue_transactions(vec![(tx, env)], &epoch_store);
+            }
+        });
     }
 
     /// Lazy queue startup. The first `AccumulatorSettlement` placeholder

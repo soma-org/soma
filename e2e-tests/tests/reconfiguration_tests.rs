@@ -155,6 +155,9 @@ async fn do_test_reconfig_with_committee_change_stress() {
         .with_num_validators(7)
         .with_validator_candidates(addresses)
         // .with_num_unpruned_validators(2)
+        // Genesis validators need USDC to pay balance-mode gas for the
+        // stake/removal txs this stress test submits from their addresses.
+        .with_usdc_for_validators(DEFAULT_GAS_AMOUNT)
         .build()
         .await;
 
@@ -227,6 +230,9 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         }])
         .with_num_validators(initial_num_validators)
         .with_validator_candidates([address])
+        // Genesis validators need USDC to pay balance-mode gas for the
+        // stake/removal txs this test submits from their addresses.
+        .with_usdc_for_validators(DEFAULT_GAS_AMOUNT)
         .build()
         .await;
 
@@ -394,6 +400,9 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
         }])
         .with_num_validators(initial_num_validators)
         .with_validator_candidates([address])
+        // Genesis validators need USDC to pay balance-mode gas for the
+        // stake/removal txs this test submits from their addresses.
+        .with_usdc_for_validators(DEFAULT_GAS_AMOUNT)
         .build()
         .await;
 
@@ -592,8 +601,15 @@ async fn test_inactive_validator_pool_read() {
     init_tracing();
 
     let initial_num_validators = 5;
-    let test_cluster =
-        TestClusterBuilder::new().with_num_validators(initial_num_validators).build().await;
+    // Validator-management txs (RemoveValidator) pay balance-mode USDC gas,
+    // but genesis never mints USDC. Seed the genesis validators' accounts
+    // with test-only USDC so the removed validator can pay for its own
+    // RemoveValidator tx.
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(initial_num_validators)
+        .with_usdc_for_validators(DEFAULT_GAS_AMOUNT)
+        .build()
+        .await;
 
     // Pick the first validator to remove.
     let first_validator_handle = test_cluster.all_validator_handles().into_iter().next().unwrap();

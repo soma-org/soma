@@ -124,6 +124,161 @@ async fn test_balance_transfer_two_recipients_succeeds() {
     );
 }
 
+/// Release regression for bug #1's `ConsensusFundsReservations` gate.
+///
+/// The gate records each accepted withdrawal in `reserved` and must RELEASE it
+/// once that commit's settlement persists (the released amount is by then baked
+/// into the store balance). If release failed to fire, `reserved` would
+/// double-count and wrongly block later legitimate spends from the same sender.
+///
+/// This test sizes two SEQUENTIAL transfers (each fully finalized+settled
+/// before the next is submitted) so the second is affordable from the real,
+/// reduced balance but would be REJECTED if the first's reservation were still
+/// held: with each transfer ≈40% of the balance, after tx1 settles the store
+/// holds ≈60%, but `store - reserved_tx1` would be only ≈20% < 40%. Both
+/// succeeding proves the settlement hook releases reservations correctly.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_sequential_transfers_release_reservations() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+
+    let sender = test_cluster.get_addresses()[0];
+    let recipient = SomaAddress::random();
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
+
+    let initial = read_usdc(&test_cluster, sender);
+    assert!(initial > 10_000_000, "sender needs a sizable balance for this test");
+
+    // Each transfer ≈40% of the starting balance. Sum (≈80%) is affordable
+    // sequentially (each settles, freeing its reservation) but `store - reserved`
+    // would block the second if release were broken.
+    let amount = (initial / 100) * 40;
+
+    let make_tx = |nonce: u32| {
+        TransactionData::new_with_expiration(
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: CoinType::Usdc,
+                transfers: vec![(recipient, amount)],
+            }),
+            sender,
+            Vec::new(),
+            TransactionExpiration::ValidDuring {
+                min_epoch: Some(0),
+                max_epoch: Some(1),
+                chain,
+                nonce,
+            },
+        )
+    };
+
+    // tx1: finalize + settle (sign_and_execute waits for effects, which for
+    // balance-mode means settlement landed — cp signing blocks on it).
+    let r1 = test_cluster.sign_and_execute_transaction(&make_tx(0)).await;
+    assert!(r1.effects.status().is_ok(), "first transfer must succeed: {:?}", r1.effects.status());
+    let after_first = read_usdc(&test_cluster, sender);
+
+    // tx2: must succeed against the reduced real balance. If the gate failed to
+    // release tx1's reservation, the effective balance would be
+    // `after_first - amount` < amount and this would be dropped/rejected.
+    let r2 = test_cluster.sign_and_execute_transaction(&make_tx(1)).await;
+    assert!(
+        r2.effects.status().is_ok(),
+        "second sequential transfer must succeed once tx1's reservation is released \
+         (got {:?}); a failure here means the settlement release hook did not fire",
+        r2.effects.status(),
+    );
+
+    let after_second = read_usdc(&test_cluster, sender);
+    assert_eq!(read_usdc(&test_cluster, recipient), amount * 2, "recipient got both transfers");
+    assert!(after_second < after_first, "sender balance must drop after the second transfer");
+    info!(initial, after_first, after_second, amount, "sequential transfers released correctly");
+}
+
+/// Deposit-then-withdraw end-to-end (residual 1 of bug #1).
+///
+/// An account receives funds (a deposit) and then spends them — including more
+/// than it held before the deposit. The funds-withdraw scheduler must let the
+/// recipient spend the received funds: it tracks the deposit via the settlement
+/// delta and (if the spend is scheduled before the deposit settles) holds it
+/// Pending until settlement, then approves it. Under the OLD synchronous gate
+/// this cross-account deposit→withdraw could be dropped/forked on settlement
+/// timing; now it resolves deterministically.
+///
+/// Here: A is funded with just enough for gas + a small base; a large transfer
+/// lands in A; then A forwards (base + most of the deposit) to B. The forward
+/// is only affordable because of the deposit — proving received funds are
+/// spendable.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_deposit_then_withdraw_spends_received_funds() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+
+    use fastcrypto::ed25519::Ed25519KeyPair;
+
+    let funder = test_cluster.get_addresses()[0];
+    // A is a fresh, wallet-unmanaged account; sign its own spend manually.
+    let (a, a_kp): (SomaAddress, Ed25519KeyPair) = types::crypto::get_key_pair();
+    let b = SomaAddress::random();
+    let chain =
+        test_cluster.fullnode_handle.soma_node.with(|node| node.state().get_chain_identifier());
+
+    let fee = unit_fee(&test_cluster);
+    // Seed A with enough for its forward's gas (fee_units = 1 + 1 recipient = 2)
+    // plus a tiny base, but NOT enough to forward a large amount — that must
+    // come from the deposit.
+    let a_seed = fee * 2 + 1_000;
+    let deposit = 5_000_000u64;
+
+    let mk = |sender, recipient, amount, nonce| {
+        TransactionData::new_with_expiration(
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: CoinType::Usdc,
+                transfers: vec![(recipient, amount)],
+            }),
+            sender,
+            Vec::new(),
+            TransactionExpiration::ValidDuring {
+                min_epoch: Some(0),
+                max_epoch: Some(1),
+                chain,
+                nonce,
+            },
+        )
+    };
+
+    // Fund A's gas base (from the wallet-managed funder).
+    let r = test_cluster.sign_and_execute_transaction(&mk(funder, a, a_seed, 0)).await;
+    assert!(r.effects.status().is_ok(), "seed A: {:?}", r.effects.status());
+    // Deposit a large amount into A.
+    let r = test_cluster.sign_and_execute_transaction(&mk(funder, a, deposit, 1)).await;
+    assert!(r.effects.status().is_ok(), "deposit to A: {:?}", r.effects.status());
+
+    assert_eq!(read_usdc(&test_cluster, a), a_seed + deposit, "A holds seed + deposit");
+
+    // A forwards most of the deposit to B — only possible because the deposit
+    // was credited and is spendable. Signed with A's own key.
+    let forward = deposit; // more than A's pre-deposit balance
+    let signed =
+        types::transaction::Transaction::from_data_and_signer(mk(a, b, forward, 0), vec![&a_kp]);
+    let r = test_cluster
+        .wallet
+        .execute_transaction_may_fail(signed)
+        .await
+        .expect("A's forward should finalize");
+    assert!(
+        r.effects.status().is_ok(),
+        "A must be able to spend received funds (deposit-then-withdraw): {:?}",
+        r.effects.status()
+    );
+    assert_eq!(read_usdc(&test_cluster, b), forward, "B received the forwarded deposit");
+    info!(a_seed, deposit, forward, "deposit-then-withdraw spent received funds");
+}
+
 /// A self-transfer (sender == recipient) is rejected at execution
 /// time by the executor's invariant — it's always a no-op or a wallet
 /// bug. The tx still consumes its gas (by Soma's failed-effect

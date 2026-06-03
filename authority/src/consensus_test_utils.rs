@@ -36,7 +36,7 @@ use crate::shared_obj_version_manager::{AssignedTxAndVersions, Schedulable};
 
 /// Thread-safe buffer capturing what the ConsensusHandler sends to the execution scheduler.
 pub(crate) type CapturedTransactions =
-    Arc<Mutex<Vec<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource)>>>;
+    Arc<Mutex<Vec<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource, u64)>>>;
 
 /// A mock consensus commit that implements `ConsensusCommitAPI`.
 ///
@@ -137,8 +137,12 @@ pub(crate) async fn setup_consensus_handler_for_testing(
         Arc::clone(&epoch_store_guard);
 
     // Create a channel to capture transactions sent to the execution scheduler
-    let (tx_sender, mut tx_receiver) =
-        mpsc::unbounded_channel::<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource)>();
+    let (tx_sender, mut tx_receiver) = mpsc::unbounded_channel::<(
+        Vec<Schedulable>,
+        AssignedTxAndVersions,
+        SchedulingSource,
+        u64,
+    )>();
 
     let captured_transactions: CapturedTransactions = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured_transactions.clone();

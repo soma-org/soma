@@ -25,11 +25,11 @@ use crate::test_authority_builder::TestAuthorityBuilder;
 // =============================================================================
 
 #[tokio::test]
-async fn test_change_epoch_system_transaction_executes() {
-    // FINDING: ChangeEpoch is a system-only transaction conceptually, but the authority
-    // pipeline does NOT explicitly reject it when submitted by a user. In production,
-    // only the consensus handler creates ChangeEpoch transactions, so user submission
-    // is prevented at the network layer. This test documents the current behavior.
+async fn test_user_submitted_change_epoch_rejected_at_verify() {
+    // Security (C1): a user-submitted internal system transaction (here
+    // ChangeEpoch) must be rejected at `verify_transaction` — the sole
+    // verification path for externally-submitted txs — never reaching
+    // execution. Mirrors Sui's "users cannot send system transactions".
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
     let gas_ref = gas.compute_object_reference();
@@ -50,14 +50,11 @@ async fn test_change_epoch_system_transaction_executes() {
     );
     let tx = to_sender_signed_transaction(data, &key);
 
-    // ChangeEpoch accesses SystemState (shared object), so with_shared: true
-    let result = send_and_confirm_transaction_(&authority_state, None, tx, true).await;
-    // Currently succeeds — system transaction rejection is enforced at network layer,
-    // not in the execution pipeline itself.
+    let epoch_store = authority_state.load_epoch_store_one_call_per_task();
+    let result = epoch_store.verify_transaction(tx);
     assert!(
-        result.is_ok(),
-        "ChangeEpoch should reach execution (rejection is at network layer): {:?}",
-        result.err()
+        result.is_err(),
+        "user-submitted ChangeEpoch must be rejected at verify_transaction (C1)",
     );
 }
 
@@ -100,15 +97,11 @@ async fn test_user_submitted_consensus_commit_prologue_rejected() {
     );
     let tx = to_sender_signed_transaction(data, &key);
 
-    let (_cert, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
-        .await
-        .expect("cert is built; rejection happens at the executor level");
-
-    assert!(
-        !effects.status().is_ok(),
-        "user-signed CCP must fail at execution; got status={:?}",
-        effects.status(),
-    );
+    // C1: rejected at verify_transaction (before a cert is ever built), so the
+    // Clock can never advance from a user-submitted CCP.
+    let epoch_store = authority_state.load_epoch_store_one_call_per_task();
+    let result = epoch_store.verify_transaction(tx);
+    assert!(result.is_err(), "user-signed CCP must be rejected at verify_transaction (C1)",);
 
     // And the Clock must NOT have advanced.
     let clock =

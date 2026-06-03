@@ -1100,6 +1100,16 @@ impl ObjectCacheRead for WritebackCache {
         self.store.get_balance(owner, coin_type).unwrap_or(0)
     }
 
+    fn get_balance_with_version(
+        &self,
+        owner: types::base::SomaAddress,
+        coin_type: types::object::CoinType,
+    ) -> (u64, u64) {
+        // Cold path (funds-withdraw scheduler seed, once per account per
+        // epoch). Straight to the perpetual store, same as `get_balance`.
+        self.store.get_balance_with_version(owner, coin_type).unwrap_or((0, 0))
+    }
+
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
         match self.get_object_by_key_cache_only(object_id, version) {
             CacheResult::Hit(object) => Some(object),

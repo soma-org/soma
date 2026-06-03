@@ -99,6 +99,8 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ModelCommissionRateTooHigh => (ExecutionErrorKind::ModelCommissionRateTooHigh, None),
             E::ModelMinStakeNotMet => (ExecutionErrorKind::ModelMinStakeNotMet, None),
             E::InsufficientCoinBalance => (ExecutionErrorKind::InsufficientCoinBalance, None),
+            // No dedicated proto variant; surfaced as an insufficient-balance error.
+            E::InsufficientFundsForWithdraw => (ExecutionErrorKind::InsufficientCoinBalance, None),
             E::CoinBalanceOverflow => (ExecutionErrorKind::CoinBalanceOverflow, None),
             E::ValidatorNotFound => (ExecutionErrorKind::ValidatorNotFound, None),
             E::StakingPoolNotFound => (ExecutionErrorKind::StakingPoolNotFound, None),

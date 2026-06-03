@@ -95,6 +95,22 @@ pub struct ExecutionResults {
     pub deleted_object_ids: BTreeSet<ObjectID>,
 }
 
+/// Snapshot of a `TemporaryStore`'s mutable execution state, taken after
+/// gas preparation and before executor dispatch. Used to revert a failed
+/// transaction's non-gas changes (objects AND emitted balance/delegation/
+/// accumulator events) while preserving the up-front gas deduction. See
+/// `TemporaryStore::execution_revert_snapshot`.
+#[derive(Debug, Clone)]
+pub struct ExecutionRevertSnapshot {
+    written_objects: BTreeMap<ObjectID, Object>,
+    deleted_object_ids: BTreeSet<ObjectID>,
+    modified_objects: BTreeSet<ObjectID>,
+    created_object_ids: BTreeSet<ObjectID>,
+    balance_events: Vec<BalanceEvent>,
+    delegation_events: Vec<DelegationEvent>,
+    accumulator_writes: BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1>,
+}
+
 /// # DynamicallyLoadedObjectMetadata
 ///
 /// Metadata for objects that are dynamically loaded during transaction execution.
@@ -481,6 +497,43 @@ impl TemporaryStore {
         &self,
     ) -> &BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1> {
         &self.accumulator_writes
+    }
+
+    /// Snapshot the mutable execution state that a failed transaction must
+    /// be reverted to. Captured *after* gas preparation (which emits the
+    /// up-front fee deduction) and *before* the executor runs, so reverting
+    /// to it preserves the gas fee while discarding everything the executor
+    /// produced.
+    ///
+    /// Crucially this includes `balance_events` / `delegation_events` /
+    /// `accumulator_writes` — `into_effects` folds these into the tx's
+    /// effects regardless of status, and the per-commit Settlement applies
+    /// them with no status gate, so a failed tx that emitted any of them
+    /// would otherwise mint/burn balance out of nothing (the "revert leak").
+    pub fn execution_revert_snapshot(&self) -> ExecutionRevertSnapshot {
+        ExecutionRevertSnapshot {
+            written_objects: self.execution_results.written_objects.clone(),
+            deleted_object_ids: self.execution_results.deleted_object_ids.clone(),
+            modified_objects: self.execution_results.modified_objects.clone(),
+            created_object_ids: self.execution_results.created_object_ids.clone(),
+            balance_events: self.balance_events.clone(),
+            delegation_events: self.delegation_events.clone(),
+            accumulator_writes: self.accumulator_writes.clone(),
+        }
+    }
+
+    /// Restore the mutable execution state to a snapshot taken with
+    /// [`Self::execution_revert_snapshot`], undoing all of a failed
+    /// transaction's non-gas changes — including emitted balance /
+    /// delegation / accumulator events.
+    pub fn revert_to_execution_snapshot(&mut self, snapshot: ExecutionRevertSnapshot) {
+        self.execution_results.written_objects = snapshot.written_objects;
+        self.execution_results.deleted_object_ids = snapshot.deleted_object_ids;
+        self.execution_results.modified_objects = snapshot.modified_objects;
+        self.execution_results.created_object_ids = snapshot.created_object_ids;
+        self.balance_events = snapshot.balance_events;
+        self.delegation_events = snapshot.delegation_events;
+        self.accumulator_writes = snapshot.accumulator_writes;
     }
 
     pub fn update_object_version_and_prev_tx(&mut self) {

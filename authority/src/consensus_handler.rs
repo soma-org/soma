@@ -97,6 +97,15 @@ impl ConsensusHandlerInitializer {
             (*self.state.execution_scheduler).clone(),
         );
 
+        // Construct this epoch's address-funds withdraw scheduler, seeding its
+        // per-account balances from the object cache. Done here (not in the
+        // epoch-store constructor) because the cache reader is only available on
+        // the consensus path; nodes that don't process consensus never call
+        // this, leaving `funds_withdraw_scheduler()` as `None`.
+        self.epoch_store.init_funds_withdraw_scheduler(std::sync::Arc::new(CacheFundsRead(
+            self.state.get_object_cache_reader().clone(),
+        )));
+
         ConsensusHandler::new(
             self.epoch_store.clone(),
             self.checkpoint_service.clone(),
@@ -112,6 +121,22 @@ impl ConsensusHandlerInitializer {
 
     pub(crate) fn backpressure_subscriber(&self) -> BackpressureSubscriber {
         self.backpressure_manager.subscribe()
+    }
+}
+
+/// Adapts the object cache reader to the funds-withdraw scheduler's
+/// [`AccountFundsRead`] seam: reads `(balance, version)` from the balance store
+/// to seed an account the first time the scheduler sees it.
+///
+/// [`AccountFundsRead`]: crate::funds_withdraw_scheduler::AccountFundsRead
+struct CacheFundsRead(Arc<dyn crate::cache::ObjectCacheRead>);
+
+impl crate::funds_withdraw_scheduler::AccountFundsRead for CacheFundsRead {
+    fn balance_and_version(
+        &self,
+        account: &crate::funds_withdraw_scheduler::AccountKey,
+    ) -> (u64, u64) {
+        self.0.get_balance_with_version(account.0, account.1)
     }
 }
 
@@ -600,10 +625,21 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         let mut schedulables = schedulables;
 
+        // Funds-withdraw request version: the packed `(epoch, R_prev)` baseline
+        // this commit's withdrawals read against — `last_committed_round` is the
+        // previous commit's round (R_prev), read before this commit advanced it.
+        // A short withdrawal becomes finally-decidable once settlement reaches
+        // this version (i.e. the prior commit has settled); until then it waits.
+        // For the first commit of the epoch, R_prev is the epoch-start baseline,
+        // matching the scheduler's starting version `pack_version(epoch, 0)`.
+        let request_version =
+            crate::funds_withdraw_scheduler::pack_version(epoch, last_committed_round);
+
         self.execution_scheduler_sender.send(
             schedulables,
             assigned_versions,
             SchedulingSource::NonFastPath,
+            request_version,
         );
 
         self.send_end_of_publish_if_needed().await;
@@ -691,20 +727,17 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let protocol_config = self.epoch_store.protocol_config();
         let epoch = self.epoch_store.epoch();
 
-        // Stage 6d: scheduler reservation pre-pass. Drop balance-mode
-        // txs whose declared `WithdrawalReservation`s exceed the
-        // sender's pre-commit accumulator balance. This is the
-        // parallel-safety primitive (multiple txs from one sender in
-        // a single commit can each individually pass `prepare_gas`'s
-        // balance read, but their cumulative withdraws would underflow
-        // settlement; the pre-pass deterministically drops the later
-        // ones).
-        //
-        // For now no kind reserves anything except gas (Stage 6c+).
-        // Coin-mode txs return [] from `reservations()` and fall
-        // through unaffected.
-        let unit_fee = self.epoch_store.epoch_start_state().fee_parameters().unit_fee;
-        let transactions_to_schedule = self.run_reservation_prepass(user_transactions, unit_fee);
+        // SIP-58 include-and-fail-early: every user tx — including balance-mode
+        // withdrawals that may turn out underfunded — becomes a checkpoint root
+        // and is scheduled. Withdrawal sufficiency is decided OUT of the
+        // consensus loop by the per-epoch funds-withdraw scheduler (in
+        // `SettlementScheduler::enqueue`), which approves, defers (Pending), or
+        // fails-early each withdrawal deterministically across not-yet-settled
+        // commits. This replaces the old synchronous drop-in-pre-pass model,
+        // whose live-store read forked on cross-commit deposit/withdraw timing.
+        // Keeping all txs as roots makes checkpoint contents independent of the
+        // funds decision (Sui's model).
+        let transactions_to_schedule = user_transactions;
 
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
             state,
@@ -772,61 +805,6 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         self.epoch_store.process_user_signatures(schedulables.iter());
 
         (schedulables, assigned_versions)
-    }
-
-    /// Stage 6d: deterministic reservation pre-pass.
-    ///
-    /// Walks `txs` in commit order, asks each for its
-    /// `WithdrawalReservation`s, and uses the pure
-    /// `check_reservations` to maintain running tentative balances
-    /// per `(owner, coin_type)`. Txs whose reservations would
-    /// underflow are filtered out — they will not reach execution.
-    ///
-    /// Determinism: the running tentatives are seeded from
-    /// `cache_reader.get_balance` (which all validators see
-    /// identically as of pre-commit state), and the pure check is
-    /// itself deterministic. Every validator drops the same set.
-    fn run_reservation_prepass(
-        &self,
-        txs: Vec<VerifiedExecutableTransaction>,
-        unit_fee: u64,
-    ) -> Vec<VerifiedExecutableTransaction> {
-        // Pre-compute reservations once per tx; pure function over
-        // immutable tx data, no IO.
-        let per_tx_reservations: Vec<Vec<types::balance::WithdrawalReservation>> =
-            txs.iter().map(|tx| tx.transaction_data().reservations(unit_fee)).collect();
-
-        // Fast path: if no tx declares any reservation, nothing to
-        // check. Saves the cache_reader hit for the common (current)
-        // case where all txs are coin-mode.
-        if per_tx_reservations.iter().all(|r| r.is_empty()) {
-            return txs;
-        }
-
-        let reservation_refs: Vec<&[types::balance::WithdrawalReservation]> =
-            per_tx_reservations.iter().map(|v| v.as_slice()).collect();
-
-        let cache_reader = self.cache_reader.clone();
-        let decisions =
-            types::balance::check_reservations(&reservation_refs, |owner, coin_type| {
-                cache_reader.get_balance(owner, coin_type)
-            });
-
-        // Filter txs by Accept; log Drops for observability.
-        txs.into_iter()
-            .zip(decisions)
-            .filter_map(|(tx, decision)| match decision {
-                types::balance::ReservationDecision::Accept => Some(tx),
-                types::balance::ReservationDecision::Drop { reason } => {
-                    debug!(
-                        digest = ?tx.digest(),
-                        ?reason,
-                        "reservation pre-pass dropping underfunded tx"
-                    );
-                    None
-                }
-            })
-            .collect()
     }
 
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update
@@ -1193,6 +1171,23 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                     match consensus_transaction.kind {
                         // === User transactions ===
                         ConsensusTransactionKind::CertifiedTransaction(cert) => {
+                            // Defense in depth: an internal system-kind tx
+                            // (settlement/change-epoch/etc.) must never be
+                            // executed as a user transaction (it would skip the
+                            // signer/auth checks the executors rely on). The
+                            // ingress guard in `verify_transaction` already
+                            // rejects these before they could be signed/certified,
+                            // so this should be unreachable — drop + warn loudly
+                            // if it ever isn't. Deterministic across validators.
+                            // Bridge system kinds are allowed (cert-authenticated).
+                            if cert.data().transaction_data().kind().is_internal_system_tx() {
+                                warn!(
+                                    digest = ?cert.digest(),
+                                    "dropping consensus CertifiedTransaction with internal system \
+                                     kind (must not be user-submitted)"
+                                );
+                                continue;
+                            }
                             // Safe because signatures are verified when consensus called into TxValidator::validate_batch.
                             let cert = VerifiedCertificate::new_unchecked(*cert);
                             let transaction =
@@ -1200,6 +1195,21 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                             commit_handler_input.user_transactions.push(transaction);
                         }
                         ConsensusTransactionKind::UserTransaction(tx) => {
+                            // Defense in depth: see the CertifiedTransaction arm —
+                            // a forged sender==ZERO internal system tx (e.g.
+                            // Settlement) submitted as a UserTransaction must
+                            // never reach execution. The ingress guard in
+                            // `verify_transaction` (run on the consensus vote
+                            // path) rejects it first; this is the last-line
+                            // backstop. Bridge system kinds are allowed.
+                            if tx.data().transaction_data().kind().is_internal_system_tx() {
+                                warn!(
+                                    digest = ?tx.digest(),
+                                    "dropping consensus UserTransaction with internal system \
+                                     kind (must not be user-submitted)"
+                                );
+                                continue;
+                            }
                             // Safe because transactions are certified by consensus.
                             let tx = VerifiedTransaction::new_unchecked(*tx);
                             // TODO(fastpath): accept position in consensus, after plumbing consensus round, authority index, and transaction index here.
@@ -1256,13 +1266,17 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
     }
 }
 
+// Tuple sent to the execution-scheduler router. The trailing `u64` is the
+// funds-withdraw scheduler's REQUEST VERSION for this commit's withdrawals —
+// the packed `(epoch, previous-commit-round)` baseline the withdrawals read
+// against (a withdrawal becomes finally-decidable once settlement reaches it).
+type ScheduleBatch = (Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource, u64);
+
 /// Sends transactions to the execution scheduler in a separate task,
 /// to avoid blocking consensus handler.
-#[derive(Clone)]
 pub(crate) struct ExecutionSchedulerSender {
     // Using unbounded channel to avoid blocking consensus commit and transaction handler.
-    // Tuple: (transactions, assigned_versions, scheduling_source)
-    sender: mpsc::UnboundedSender<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource)>,
+    sender: mpsc::UnboundedSender<ScheduleBatch>,
 }
 
 impl ExecutionSchedulerSender {
@@ -1275,9 +1289,7 @@ impl ExecutionSchedulerSender {
         Self { sender }
     }
 
-    pub(crate) fn new_for_testing(
-        sender: mpsc::UnboundedSender<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource)>,
-    ) -> Self {
+    pub(crate) fn new_for_testing(sender: mpsc::UnboundedSender<ScheduleBatch>) -> Self {
         Self { sender }
     }
 
@@ -1286,8 +1298,10 @@ impl ExecutionSchedulerSender {
         transactions: Vec<Schedulable>,
         assigned_versions: AssignedTxAndVersions,
         scheduling_source: SchedulingSource,
+        request_version: u64,
     ) {
-        let _ = self.sender.send((transactions, assigned_versions, scheduling_source));
+        let _ =
+            self.sender.send((transactions, assigned_versions, scheduling_source, request_version));
     }
 
     /// Stage 14c.5e: routes through `SettlementScheduler::enqueue`,
@@ -1295,15 +1309,13 @@ impl ExecutionSchedulerSender {
     /// and `Schedulable::AccumulatorSettlement` placeholders to the
     /// dedicated settlement queue.
     async fn run(
-        mut recv: mpsc::UnboundedReceiver<(
-            Vec<Schedulable>,
-            AssignedTxAndVersions,
-            SchedulingSource,
-        )>,
+        mut recv: mpsc::UnboundedReceiver<ScheduleBatch>,
         settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
-        while let Some((transactions, assigned_versions, scheduling_source)) = recv.recv().await {
+        while let Some((transactions, assigned_versions, scheduling_source, request_version)) =
+            recv.recv().await
+        {
             let assigned_versions = assigned_versions.into_map();
             let txns = transactions
                 .into_iter()
@@ -1317,7 +1329,7 @@ impl ExecutionSchedulerSender {
                     (txn, env)
                 })
                 .collect();
-            settlement_scheduler.enqueue(txns, &epoch_store);
+            settlement_scheduler.enqueue(txns, &epoch_store, request_version);
         }
     }
 }

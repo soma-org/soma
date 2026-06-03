@@ -725,8 +725,6 @@ fn test_genesis_unsigned_serialization_roundtrip() {
 // (deleted in Stage 13) AND we mirror every fungible allocation into the
 // `balances` map so the balance column family is non-empty from epoch 0.
 
-const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000;
-
 /// Stage 13a: unstaked SOMA allocations land in the accumulator
 /// only. No Coin objects are produced.
 #[test]
@@ -829,19 +827,16 @@ fn test_genesis_balances_usdc_allocation() {
 }
 
 #[test]
-fn test_genesis_balances_validator_starter_usdc() {
+fn test_genesis_no_validator_starter_usdc() {
+    // Validators must NOT be auto-seeded any USDC at genesis — USDC is a
+    // bridged asset and minting it here would be unbacked ghost USDC.
     let (unsigned, configs) = build_unsigned_genesis_with_validators(4);
 
     for config in &configs {
         let addr = SomaAddress::from(&config.account_key_pair.public());
-        let bal = unsigned
-            .balances()
-            .get(&(addr, CoinType::Usdc))
-            .copied()
-            .expect("each validator must receive a starter USDC balance");
-        assert_eq!(
-            bal, VALIDATOR_GENESIS_USDC,
-            "validator starter USDC balance must match the constant"
+        assert!(
+            unsigned.balances().get(&(addr, CoinType::Usdc)).is_none(),
+            "validator must not receive any genesis USDC (ghost USDC)"
         );
     }
 }
@@ -891,24 +886,16 @@ fn test_genesis_balances_repeated_recipient_summed() {
 
 #[test]
 fn test_genesis_balances_zero_when_no_schedule() {
-    // No token distribution schedule = no allocations to process. Validators
-    // still get their starter USDC, so the table is not strictly empty.
+    // No token distribution schedule = no allocations to process, and
+    // validators are no longer auto-seeded any USDC, so the genesis
+    // balance map must be empty.
     let configs = make_validator_configs(2);
-    let unsigned =
-        GenesisBuilder::new().with_validator_configs(configs.clone()).build_unsigned_genesis();
+    let unsigned = GenesisBuilder::new().with_validator_configs(configs).build_unsigned_genesis();
 
-    assert_eq!(
-        unsigned.balances().len(),
-        configs.len(),
-        "without a schedule, only validator USDC starters should populate the balance map"
+    assert!(
+        unsigned.balances().is_empty(),
+        "without a schedule the genesis balance map must be empty (no ghost USDC)"
     );
-    for config in &configs {
-        let addr = SomaAddress::from(&config.account_key_pair.public());
-        assert_eq!(
-            unsigned.balances().get(&(addr, CoinType::Usdc)).copied(),
-            Some(VALIDATOR_GENESIS_USDC),
-        );
-    }
 }
 
 /// Stage 13a invariant: genesis allocations land entirely in the

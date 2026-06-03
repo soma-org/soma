@@ -130,6 +130,13 @@ pub trait ObjectCacheRead: Send + Sync {
     /// (matching the same convention as `AuthorityStore::get_balance`).
     fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> u64;
 
+    /// Read `(balance, version)` for an account, where `version` is the
+    /// globally-monotonic settlement version the balance reflects (the packed
+    /// `(epoch, height)` written by settlement). Used to seed the funds-withdraw
+    /// scheduler. Returns `(0, 0)` for accounts that have never held this
+    /// currency. See [`crate::funds_withdraw_scheduler::pack_version`].
+    fn get_balance_with_version(&self, owner: SomaAddress, coin_type: CoinType) -> (u64, u64);
+
     fn get_objects(&self, objects: &[ObjectID]) -> Vec<Option<Object>> {
         let mut ret = Vec::with_capacity(objects.len());
         for object_id in objects {

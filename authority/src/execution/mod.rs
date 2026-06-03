@@ -354,9 +354,13 @@ pub fn execute_transaction(
         );
     }
 
-    // Save a snapshot of current object state for potential reversion
-    let pre_execution_objects = temporary_store.execution_results.written_objects.clone();
-    let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
+    // Save a snapshot of current mutable state for potential reversion.
+    // Taken AFTER gas preparation (so the up-front fee deduction is
+    // preserved) and BEFORE the executor runs. Captures emitted
+    // balance/delegation/accumulator events too — otherwise a failed tx's
+    // events leak into its effects and the per-commit Settlement applies
+    // them, minting/burning balance on a failed transaction.
+    let revert_snapshot = temporary_store.execution_revert_snapshot();
 
     // Execute the transaction
     let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
@@ -365,12 +369,8 @@ pub fn execute_transaction(
     let (mut execution_status, mut execution_error) = match result {
         Ok(()) => (ExecutionStatus::Success, None),
         Err(err) => {
-            // Execution failed, revert non-gas changes
-            revert_non_gas_changes(
-                &mut temporary_store,
-                pre_execution_objects.clone(),
-                pre_execution_deleted.clone(),
-            );
+            // Execution failed, revert all non-gas changes.
+            temporary_store.revert_to_execution_snapshot(revert_snapshot.clone());
 
             (ExecutionStatus::Failure { error: err.clone() }, Some(ExecutionError::new(err, None)))
         }
@@ -388,11 +388,7 @@ pub fn execute_transaction(
             temporary_store.check_ownership_invariants(&signer, &mutable_inputs, is_epoch_change)
         {
             // Ownership invariant check failed, revert to post-gas changes state
-            revert_non_gas_changes(
-                &mut temporary_store,
-                pre_execution_objects,
-                pre_execution_deleted,
-            );
+            temporary_store.revert_to_execution_snapshot(revert_snapshot);
 
             let error_msg = format!("Ownership invariant violated: {}", err);
             let error_status = ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
@@ -478,16 +474,6 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
 }
 
 // Helper function to revert non-gas changes after failed execution
-fn revert_non_gas_changes(
-    store: &mut TemporaryStore,
-    pre_execution_objects: BTreeMap<ObjectID, Object>,
-    pre_execution_deleted: BTreeSet<ObjectID>,
-) {
-    // Replace written objects with our reverted state
-    store.execution_results.written_objects = pre_execution_objects;
-    store.execution_results.deleted_object_ids = pre_execution_deleted;
-}
-
 /// Detects if a transaction has shared objects with assigned versions
 fn has_assigned_shared_versions(
     store: &dyn ObjectStore,
@@ -556,9 +542,10 @@ fn handle_shared_object_transaction(
     mut temporary_store: TemporaryStore,
     gas_result: GasPreparationResult,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
-    // Save pre-execution state for potential reversion
-    let pre_execution_objects = temporary_store.execution_results.written_objects.clone();
-    let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
+    // Save pre-execution state for potential reversion (objects AND emitted
+    // balance/delegation/accumulator events — see the main pipeline for why
+    // the events must be reverted too).
+    let revert_snapshot = temporary_store.execution_revert_snapshot();
 
     // Load all required shared objects
     if let Err(err) = load_shared_objects(store, &mut temporary_store, &shared_objects_to_load) {
@@ -597,11 +584,7 @@ fn handle_shared_object_transaction(
         Ok(()) => (ExecutionStatus::Success, None),
         Err(err) => {
             // Execution failed, revert to post-gas state
-            revert_non_gas_changes(
-                &mut temporary_store,
-                pre_execution_objects.clone(),
-                pre_execution_deleted.clone(),
-            );
+            temporary_store.revert_to_execution_snapshot(revert_snapshot);
 
             // Return with failure status but keep gas changes
             let execution_status = ExecutionStatus::Failure { error: err.clone() };

@@ -645,6 +645,27 @@ impl TransactionKind {
         )
     }
 
+    /// True for system transactions that are ONLY ever injected internally
+    /// (genesis, the commit prologue, epoch change, per-commit settlement)
+    /// and must NEVER be accepted from an external submitter.
+    ///
+    /// These skip envelope-signature verification (see
+    /// `verify_sender_signed_data_message_signatures`) AND their executors
+    /// perform no sender authentication — `Settlement`/`ChangeEpoch` simply
+    /// trust `signer == ZERO`. So a user-submitted one is fully
+    /// unauthenticated and can mint balances / drive epoch transitions. The
+    /// ingress guard in `AuthorityPerEpochStore::verify_transaction` rejects
+    /// exactly this set.
+    ///
+    /// Bridge "system" kinds (deposit/pause/unpause/attach-sigs/blocklist)
+    /// are deliberately EXCLUDED: they are submitted by relayers through the
+    /// normal ingress and authenticated by an embedded committee quorum
+    /// certificate verified in their executor (`verify_committee_signatures`),
+    /// not by being unforgeable at the envelope layer.
+    pub fn is_internal_system_tx(&self) -> bool {
+        self.is_system_tx() && !self.is_bridge_tx()
+    }
+
     /// True for the per-commit balance settlement transaction. Used by
     /// the perpetual store to gate the balance-write path: only this
     /// kind's `TransactionOutputs.balance_events` are applied as

@@ -144,6 +144,7 @@ fn test_transaction_kind_classification() {
     // System transactions
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
     assert!(genesis.is_system_tx());
+    assert!(genesis.is_internal_system_tx());
     assert!(!genesis.is_validator_tx());
     assert!(!genesis.is_staking_tx());
 
@@ -156,6 +157,7 @@ fn test_transaction_kind_classification() {
         additional_state_digest: AdditionalConsensusStateDigest::new([0; 32]),
     });
     assert!(ccp.is_system_tx());
+    assert!(ccp.is_internal_system_tx());
 
     let change_epoch = TransactionKind::ChangeEpoch(ChangeEpoch {
         epoch: 1,
@@ -165,7 +167,37 @@ fn test_transaction_kind_classification() {
         epoch_randomness: vec![],
     });
     assert!(change_epoch.is_system_tx());
+    assert!(change_epoch.is_internal_system_tx());
     assert!(change_epoch.is_end_of_epoch_tx());
+
+    // Settlement: an internal system tx (never user-submittable).
+    let settlement = TransactionKind::Settlement(SettlementTransaction {
+        epoch: 0,
+        round: 0,
+        sub_dag_index: None,
+        changes: vec![],
+        delegation_changes: vec![],
+    });
+    assert!(settlement.is_system_tx());
+    assert!(settlement.is_internal_system_tx());
+
+    // SECURITY BOUNDARY (finding C1): bridge "system" kinds ARE system txs
+    // (they skip envelope signatures) but are NOT internal — they are
+    // relayed through the normal ingress and authenticated by an embedded
+    // committee certificate in their executor. They must therefore pass the
+    // `verify_transaction` guard. If a future change makes a bridge kind
+    // report `is_internal_system_tx()`, relayed bridge ops would break; if a
+    // new no-auth internal kind fails to report it, the C1 mint hole reopens.
+    let bridge_pause = TransactionKind::BridgeEmergencyPause(BridgeEmergencyPauseArgs {
+        nonce: 0,
+        signatures: std::collections::BTreeMap::new(),
+    });
+    assert!(bridge_pause.is_system_tx());
+    assert!(bridge_pause.is_bridge_tx());
+    assert!(
+        !bridge_pause.is_internal_system_tx(),
+        "bridge system kinds must remain user/relayer-submittable through ingress"
+    );
 
     // Validator transactions
     let add_val = TransactionKind::AddValidator(AddValidatorArgs {
@@ -213,8 +245,13 @@ fn test_transaction_kind_classification() {
         transfers: vec![(SomaAddress::random(), 100)],
     });
     assert!(!transfer_coin.is_system_tx());
+    assert!(!transfer_coin.is_internal_system_tx());
     assert!(!transfer_coin.is_validator_tx());
     assert!(!transfer_coin.is_staking_tx());
+
+    // Non-system kinds are never internal-system either.
+    assert!(!add_val.is_internal_system_tx());
+    assert!(!add_stake.is_internal_system_tx());
 }
 
 // ---------------------------------------------------------------------------

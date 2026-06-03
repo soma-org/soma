@@ -140,6 +140,14 @@ pub struct ExecutionEnv {
     ///
     /// [`SettlementScheduler`]: crate::settlement_scheduler::SettlementScheduler
     pub pre_loaded_accumulators: Vec<types::object::Object>,
+
+    /// Result of the pre-execution address-funds withdraw scheduler. Set to
+    /// [`FundsWithdrawStatus::Insufficient`] (via [`Self::with_insufficient_funds`])
+    /// when the scheduler determined the tx's declared maximum withdrawal is
+    /// unaffordable at a settled version — execution then fails it early with
+    /// `InsufficientFundsForWithdraw` without running the body. Defaults to
+    /// `MaybeSufficient` (execute normally) for every other tx.
+    pub funds_withdraw_status: types::execution::FundsWithdrawStatus,
 }
 
 impl Default for ExecutionEnv {
@@ -150,6 +158,7 @@ impl Default for ExecutionEnv {
             scheduling_source: SchedulingSource::NonFastPath,
             barrier_dependencies: Default::default(),
             pre_loaded_accumulators: Vec::new(),
+            funds_withdraw_status: types::execution::FundsWithdrawStatus::MaybeSufficient,
         }
     }
 }
@@ -192,6 +201,14 @@ impl ExecutionEnv {
         accumulators: Vec<types::object::Object>,
     ) -> Self {
         self.pre_loaded_accumulators = accumulators;
+        self
+    }
+
+    /// Mark this transaction as having failed the address-funds withdraw
+    /// scheduler — it will fail early with `InsufficientFundsForWithdraw`
+    /// without executing its body. Mirrors Sui's `with_insufficient_funds`.
+    pub fn with_insufficient_funds(mut self) -> Self {
+        self.funds_withdraw_status = types::execution::FundsWithdrawStatus::Insufficient;
         self
     }
 }
@@ -936,6 +953,7 @@ impl AuthorityState {
         // non-transient (transaction input is invalid, move vm errors). However, all errors from
         // this function occur before we have written anything to the db, so we commit the tx
         // guard and rely on the client to retry the tx (if it was transient).
+        let funds_withdraw_status = execution_env.funds_withdraw_status;
         self.execute_certificate(
             execution_guard,
             certificate,
@@ -943,6 +961,7 @@ impl AuthorityState {
             expected_effects_digest,
             epoch_store,
             execution_env.pre_loaded_accumulators,
+            funds_withdraw_status,
         )
     }
 
@@ -985,6 +1004,7 @@ impl AuthorityState {
         expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         pre_loaded_accumulators: Vec<types::object::Object>,
+        funds_withdraw_status: types::execution::FundsWithdrawStatus,
     ) -> ExecutionOutput<(TransactionOutputs, Option<ExecutionError>)> {
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1018,6 +1038,7 @@ impl AuthorityState {
             &tx_digest,
             &input_objects,
             self.config.certificate_deny_config.certificate_deny_set(),
+            funds_withdraw_status,
         );
         let execution_params = match early_execution_error {
             Some(error) => ExecutionOrEarlyError::Err(error),
@@ -1217,6 +1238,9 @@ impl AuthorityState {
             &transaction.digest(),
             &checked_input_objects,
             self.config.certificate_deny_config.certificate_deny_set(),
+            // Simulation models withdrawal sufficiency via `reservation_error`
+            // (the pre-pass), not the async scheduler flag.
+            types::execution::FundsWithdrawStatus::MaybeSufficient,
         )
         .or(reservation_error);
         let execution_params = match early_execution_error {
@@ -2519,6 +2543,7 @@ impl AuthorityState {
                 None,
                 epoch_store,
                 Vec::new(),
+                types::execution::FundsWithdrawStatus::MaybeSufficient,
             )
             .unwrap();
         let system_obj = get_system_state(&transaction_outputs.written)

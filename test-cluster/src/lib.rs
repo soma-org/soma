@@ -25,9 +25,10 @@ use tokio::time::timeout;
 use tracing::{error, info};
 use types::base::{AuthorityName, ConciseableName, SomaAddress};
 use types::checksum::Checksum;
-use types::committee::{CommitteeTrait, EpochId};
+use types::committee::{Committee, CommitteeTrait, EpochId};
 use types::config::genesis_config::{
     AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, ValidatorGenesisConfig,
+    ValidatorGenesisConfigBuilder,
 };
 use types::config::network_config::{
     NetworkConfig, ProtocolVersionsConfig, SupportedProtocolVersionsCallback,
@@ -637,6 +638,63 @@ impl TestClusterBuilder {
         let (committee, keypairs) = types::bridge::generate_test_bridge_committee(num_members);
         self.bridge_keypairs = keypairs;
         self.get_or_init_genesis_config().bridge_committee = Some(committee);
+        self
+    }
+
+    /// Pre-generate the initial (genesis) validators and seed each one's
+    /// account with `amount_microdollars` of USDC, so validator-management
+    /// txs — which pay balance-mode USDC gas (Stage 13c) — can be submitted
+    /// from a genesis validator's own address in tests.
+    ///
+    /// Genesis never mints USDC for production: it is a *bridged* asset and
+    /// may only enter circulation via backed bridge deposits (see
+    /// `genesis_builder`). This is a TEST-ONLY allocation via the same
+    /// `AccountConfig.usdc_amounts` path used by `with_usdc_for_accounts`
+    /// and `with_validator_candidates`; it does not touch the bridge.
+    ///
+    /// `committee_size` generates validators with random account keys during
+    /// `build()`, so their addresses can't be known in advance to fund them.
+    /// This method instead generates the validator set eagerly — mirroring
+    /// the `committee_size` path's fixed test protocol keys + rng-generated
+    /// account keys — so the addresses are available to fund at genesis. It
+    /// uses `with_num_validators` for the count and overrides any validator
+    /// set previously configured; call it after `with_num_validators`.
+    ///
+    /// Ordering: this reads the configured validator set and *extends* the
+    /// genesis accounts, so call it AFTER `with_validators` /
+    /// `with_num_validators` / `with_accounts` (i.e. last in the chain).
+    pub fn with_usdc_for_validators(mut self, amount_microdollars: u64) -> Self {
+        // Use the explicitly-configured validators if present; otherwise
+        // pre-generate the `with_num_validators` count so the addresses are
+        // known. Pre-generation mirrors the `committee_size` path: fixed test
+        // protocol keys (kept deterministic so cert-forging helpers still
+        // work) plus rng-generated account keys.
+        let validators: Vec<ValidatorGenesisConfig> = match self.validators.take() {
+            Some(v) => v,
+            None => {
+                let count = self.num_validators.unwrap_or(NUM_VALIDATORS);
+                let (_, protocol_keys) = Committee::new_simple_test_committee_of_size(count);
+                let mut rng = OsRng;
+                protocol_keys
+                    .into_iter()
+                    .map(|protocol_key| {
+                        ValidatorGenesisConfigBuilder::new()
+                            .with_protocol_key_pair(protocol_key)
+                            .build(&mut rng)
+                    })
+                    .collect()
+            }
+        };
+        let accounts: Vec<AccountConfig> = validators
+            .iter()
+            .map(|v| AccountConfig {
+                address: Some((&v.account_key_pair.public()).into()),
+                gas_amounts: vec![],
+                usdc_amounts: vec![amount_microdollars],
+            })
+            .collect();
+        self.get_or_init_genesis_config().accounts.extend(accounts);
+        self.validators = Some(validators);
         self
     }
 

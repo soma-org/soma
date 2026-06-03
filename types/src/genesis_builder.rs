@@ -563,23 +563,23 @@ impl GenesisBuilder {
             }
         }
 
-        // Stage 13a: validator starter USDC also lands in the
-        // accumulator only. Validators submit balance-mode txs (gas
-        // is debited from this USDC balance directly) so they don't
-        // need a Coin object hand-out. USDC is a bridged token with
-        // its own supply path, so seeding here is fine.
-        // SOMA total supply is fixed (TOTAL_SUPPLY_SHANNONS) and
-        // accounted for by the genesis schedule, so we do NOT seed
-        // unstaked SOMA into validators here — tests that need a
-        // validator with spendable SOMA should allocate it via the
-        // genesis schedule.
-        const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
-        for v in &self.validators {
-            let entry = balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
-            *entry = entry
-                .checked_add(VALIDATOR_GENESIS_USDC)
-                .expect("genesis validator USDC balance overflow");
-        }
+        // Validators are NOT auto-seeded any tokens at genesis.
+        //
+        // SOMA total supply is fixed (TOTAL_SUPPLY_SHANNONS) and is
+        // allocated entirely via the genesis schedule (staked to
+        // validators + the emission fund); we never seed unstaked SOMA
+        // into validators here.
+        //
+        // USDC is a *bridged* asset and may ONLY enter circulation via
+        // real bridge deposits that are backed by USDC locked in the Eth
+        // vault (each deposit increments `BridgeState.total_usdc_supply`).
+        // Minting USDC at genesis would be unbacked "ghost" USDC that
+        // violates the bridge solvency invariant
+        // (`total_usdc_supply <= Σ USDC locked on Eth`) — so genesis
+        // produces ZERO USDC. Any account (validator or otherwise) that
+        // needs USDC to pay balance-mode gas in a test must allocate it
+        // explicitly via the genesis config
+        // (`AccountConfig.usdc_amounts` / `TokenDistributionSchedule`).
 
         // Set voting power and build committee
         system_state.validators_mut().set_voting_power();

@@ -107,7 +107,7 @@ async fn test_consensus_handler_processes_user_transaction() {
     assert!(!captured.is_empty(), "Expected at least one batch of transactions to be scheduled");
     // The first batch should contain at least the user transaction
     // (plus possibly a ConsensusCommitPrologueV1 system transaction)
-    let (schedulables, _assigned_versions, _source) = &captured[0];
+    let (schedulables, _assigned_versions, _source, _req_version) = &captured[0];
     assert!(!schedulables.is_empty(), "Expected at least one schedulable transaction");
 }
 
@@ -143,7 +143,7 @@ async fn test_consensus_handler_deduplication() {
 
     // Count total schedulable transactions across all batches
     let total_schedulables: usize =
-        captured.iter().map(|(schedulables, _, _)| schedulables.len()).sum();
+        captured.iter().map(|(schedulables, _, _, _)| schedulables.len()).sum();
 
     // commit1: 1 CCP + 1 user tx + 1 Settlement = 3
     // commit2: 1 CCP + 0 user tx (deduped) + 1 Settlement = 2
@@ -182,7 +182,7 @@ async fn test_consensus_handler_shared_object_version_assignment() {
     // The assigned versions should be non-empty because shared objects
     // were involved (SystemState for AddStake, plus ConsensusCommitPrologueV1
     // also touches SystemState).
-    let (_, assigned_versions, _) = &captured[0];
+    let (_, assigned_versions, _, _) = &captured[0];
     let versions_map = assigned_versions.0.clone();
     assert!(
         !versions_map.is_empty(),
@@ -244,12 +244,101 @@ async fn test_consensus_handler_multiple_transactions_in_commit() {
 
     // Count total schedulable transactions (including ConsensusCommitPrologueV1)
     let total_schedulables: usize =
-        captured.iter().map(|(schedulables, _, _)| schedulables.len()).sum();
+        captured.iter().map(|(schedulables, _, _, _)| schedulables.len()).sum();
 
     // Should have at least 3 user transactions + 1 ConsensusCommitPrologueV1 = 4
     assert!(
         total_schedulables >= 4,
         "Expected at least 4 schedulable transactions (3 user + 1 system), got {}",
         total_schedulables
+    );
+}
+
+/// Architecture test for the cross-commit double-spend fix (#1): the consensus
+/// handler now uses **include-and-fail-early**, not drop.
+///
+/// Under the full Sui-style funds-withdraw scheduler, the consensus handler no
+/// longer decides withdrawal sufficiency inline; it includes ALL user txs as
+/// checkpoint roots and forwards them to the execution-path router
+/// (`SettlementScheduler::enqueue`), which routes withdrawals through the
+/// per-epoch `FundsWithdrawScheduler` (approve / fail-early / defer-Pending).
+/// This test's harness captures at the consensus→scheduler channel, *before*
+/// that routing, so it verifies the handler-layer contract: both cross-commit
+/// transfers are passed through as schedulables (neither is silently dropped).
+///
+/// The actual cross-commit overspend BLOCKING is verified deterministically by
+/// the scheduler unit tests (`funds_withdraw_scheduler::tests::
+/// coordinator_blocks_cross_commit_double_spend` and the interleaving-invariance
+/// tests) and end-to-end by `e2e-tests/.../balance_transfer_tests.rs`.
+#[tokio::test]
+async fn cross_commit_withdrawals_are_included_not_dropped() {
+    use types::object::CoinType;
+    use types::transaction::{BalanceTransferArgs, TransactionExpiration};
+
+    let authority = TestAuthorityBuilder::new().build().await;
+    let mut setup = setup_consensus_handler_for_testing(&authority).await;
+
+    let chain = authority.get_chain_identifier();
+    let epoch_store = authority.load_epoch_store_one_call_per_task();
+    let epoch_start_ts = epoch_store.epoch_start_state().epoch_start_timestamp_ms();
+
+    // One sender, funded with exactly 100M USDC (covers gas + transfers).
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let balance: u64 = 100_000_000;
+    authority.database_for_testing().set_balance(sender, CoinType::Usdc, balance).unwrap();
+
+    // Two transfers of 60M each, to distinct recipients, distinct nonces →
+    // distinct digests. Each is individually affordable; together 120M > 100M.
+    let amount: u64 = 60_000_000;
+    let make_tx = |nonce: u32| {
+        let (recipient, _): (_, Ed25519KeyPair) = get_key_pair();
+        let data = TransactionData::new_with_expiration(
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: CoinType::Usdc,
+                transfers: vec![(recipient, amount)],
+            }),
+            sender,
+            Vec::new(), // balance-mode gas
+            TransactionExpiration::ValidDuring {
+                min_epoch: Some(0),
+                max_epoch: Some(1),
+                chain,
+                nonce,
+            },
+        );
+        let tx = to_sender_signed_transaction(data, &sender_key);
+        let digest = *tx.digest();
+        (ConsensusTransaction::new_user_transaction_message(&authority.name, tx), digest)
+    };
+
+    let (tx_a, digest_a) = make_tx(0);
+    let (tx_b, digest_b) = make_tx(1);
+
+    // Commit 1: tx A (spend 60M). Commit 2: tx B (spend 60M).
+    let commit1 = TestConsensusCommit::new(vec![tx_a], 1, epoch_start_ts, 1);
+    let commit2 = TestConsensusCommit::new(vec![tx_b], 2, epoch_start_ts + 1000, 2);
+    setup.consensus_handler.handle_consensus_commit_for_test(commit1).await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit2).await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Collect the digests of all user transactions the handler forwarded as
+    // schedulables (the 4th tuple element is the funds request version).
+    let captured = setup.captured_transactions.lock();
+    let scheduled: std::collections::BTreeSet<_> = captured
+        .iter()
+        .flat_map(|(schedulables, _, _, _)| schedulables.iter())
+        .filter_map(|s| s.as_tx().map(|t| *t.digest()))
+        .collect();
+
+    // Include-and-fail-early: BOTH transfers are forwarded as roots. Neither is
+    // dropped at the handler layer — the funds scheduler downstream decides
+    // sufficiency (one Sufficient, the overspender Insufficient → failed effect).
+    assert!(scheduled.contains(&digest_a), "first transfer must be included as a root");
+    assert!(
+        scheduled.contains(&digest_b),
+        "second transfer must ALSO be included as a root (include-and-fail-early); \
+         the cross-commit overspend is blocked downstream by the funds-withdraw \
+         scheduler, not by dropping it here"
     );
 }

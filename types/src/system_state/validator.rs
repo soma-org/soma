@@ -913,7 +913,12 @@ impl ValidatorSet {
         total_adjustment: u64,
         individual_adjustments: &BTreeMap<usize, u64>,
     ) -> Vec<u64> {
-        let total_unslashed_voting_power = total_voting_power - total_slashed_voting_power;
+        // `saturating_sub`: slashed power can never legitimately exceed
+        // total power, but a stale/duplicated voting-power sum upstream
+        // must not underflow into a huge value (which would zero out every
+        // bonus) — and with overflow-checks it would otherwise panic.
+        let total_unslashed_voting_power =
+            total_voting_power.saturating_sub(total_slashed_voting_power);
         let mut adjusted_rewards = Vec::with_capacity(self.validators.len());
 
         for i in 0..self.validators.len() {
@@ -924,11 +929,18 @@ impl ValidatorSet {
                 // Slashed validator - subtract adjustment
                 let adjustment = individual_adjustments[&i];
                 unadjusted_reward.saturating_sub(adjustment)
+            } else if total_unslashed_voting_power == 0 {
+                // Degenerate case: every validator with voting power was
+                // slashed (or this unslashed validator itself has zero
+                // power and is the only unslashed one). There is no
+                // unslashed weight to redistribute the slashed bonus to —
+                // guard the division by zero and pay no bonus.
+                unadjusted_reward
             } else {
                 // Unslashed validator - gets bonus based on voting power
                 let bonus = (total_adjustment as u128) * (validator.voting_power as u128)
                     / (total_unslashed_voting_power as u128);
-                unadjusted_reward + (bonus as u64)
+                unadjusted_reward.saturating_add(bonus as u64)
             };
 
             adjusted_rewards.push(adjusted_reward);
@@ -962,7 +974,12 @@ impl ValidatorSet {
             let commission_amount =
                 (reward_amount as u128) * (validator.commission_rate as u128) / 10000;
             let validator_commission = commission_amount as u64;
-            let staker_reward = reward_amount - validator_commission;
+            // `saturating_sub`: commission is `reward * rate/10000` with
+            // `rate <= 10000`, so it can never exceed `reward_amount` —
+            // saturate defensively so a malformed commission rate can't
+            // underflow-panic the epoch transition (which would not be
+            // caught by safe mode).
+            let staker_reward = reward_amount.saturating_sub(validator_commission);
 
             // Order matches Sui: distribute staker rewards first (so
             // the index advance only includes existing stakers), then

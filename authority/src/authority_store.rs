@@ -525,7 +525,8 @@ impl AuthorityStore {
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
         for ((owner, coin_type), balance) in balances.iter().filter(|(_, v)| **v != 0) {
-            self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, *balance)?;
+            // Genesis: no settlement has run, version 0.
+            self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, *balance, 0)?;
         }
         batch.write()?;
         Ok(())
@@ -716,7 +717,20 @@ impl AuthorityStore {
         // which is what this drain consumes. So in practice this path
         // fires only for the per-cp settlement system tx.
         if !all_balance_events.is_empty() {
-            self.apply_settlement_events(write_batch, &all_balance_events)?;
+            // Balance events are drained only for the per-cp Settlement system
+            // tx (see comment above). We store the funds-withdraw scheduler's
+            // globally-monotonic version alongside each balance so the scheduler
+            // can read `(balance, version)` atomically. The version packs the
+            // Settlement's `(epoch, round)` — round (= checkpoint height) alone
+            // resets per epoch and would not be monotonic across boundaries.
+            // Any non-Settlement kind here has no balance events.
+            let settled_height = match transaction.transaction_data().kind() {
+                types::transaction::TransactionKind::Settlement(s) => {
+                    crate::funds_withdraw_scheduler::pack_version(s.epoch, s.round)
+                }
+                _ => 0,
+            };
+            self.apply_settlement_events(write_batch, &all_balance_events, settled_height)?;
         }
 
         // Stage 14d (SIP-58 single-path): same single-writer rule for
@@ -803,6 +817,11 @@ impl AuthorityStore {
         &self,
         write_batch: &mut DBBatch,
         events: &[BalanceEvent],
+        // Pending-checkpoint height of the settlement applying these events;
+        // stored alongside each balance so the funds-withdraw scheduler can
+        // read `(balance, settled_height)` atomically. Test callers that
+        // bypass the consensus pipeline pass 0.
+        settled_height: u64,
     ) -> SomaResult<()> {
         // Two events with the same `(owner, coin_type)` key would each
         // read the same current balance, compute their own
@@ -820,7 +839,8 @@ impl AuthorityStore {
             if net_delta == 0 {
                 continue;
             }
-            let current = self.perpetual_tables.accumulator_balances.get(&key)?.unwrap_or(0);
+            let current =
+                self.perpetual_tables.accumulator_balances.get(&key)?.map(|(b, _)| b).unwrap_or(0);
             let new_balance = match apply_delta_to_balance(current, net_delta) {
                 BalanceUpdate::Ok(v) => v,
                 BalanceUpdate::Underflow { current, delta } => {
@@ -844,7 +864,13 @@ impl AuthorityStore {
         // CF stays source of truth this stage; debug-mode
         // `get_balance` asserts both stores agree on every read.
         for ((owner, coin_type), new_balance) in &new_balances {
-            self.write_balance_cf_to_batch(write_batch, *owner, *coin_type, *new_balance)?;
+            self.write_balance_cf_to_batch(
+                write_batch,
+                *owner,
+                *coin_type,
+                *new_balance,
+                settled_height,
+            )?;
         }
 
         Ok(())
@@ -1336,7 +1362,25 @@ impl AuthorityStore {
     /// drives CF updates directly. Stage 14c.7 brings the
     /// accumulator objects back in sync via settlement effects.
     pub fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> SomaResult<u64> {
-        Ok(self.perpetual_tables.accumulator_balances.get(&(owner, coin_type))?.unwrap_or(0))
+        Ok(self
+            .perpetual_tables
+            .accumulator_balances
+            .get(&(owner, coin_type))?
+            .map(|(balance, _version)| balance)
+            .unwrap_or(0))
+    }
+
+    /// Read a balance together with the pending-checkpoint height of the
+    /// settlement that last wrote it, in a single atomic row read. Used by
+    /// the funds-withdraw scheduler to seed an account consistently and to
+    /// detect when storage has already been advanced past a request
+    /// (catch-up / checkpoint-executor path). An absent row is `(0, 0)`.
+    pub fn get_balance_with_version(
+        &self,
+        owner: SomaAddress,
+        coin_type: CoinType,
+    ) -> SomaResult<(u64, u64)> {
+        Ok(self.perpetual_tables.accumulator_balances.get(&(owner, coin_type))?.unwrap_or((0, 0)))
     }
 
     /// Stage 14b: read the balance via the accumulator object path.
@@ -1381,7 +1425,8 @@ impl AuthorityStore {
         balance: u64,
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
-        self.write_balance_cf_to_batch(&mut batch, owner, coin_type, balance)?;
+        // Genesis/test direct write: version 0 (no settlement has run).
+        self.write_balance_cf_to_batch(&mut batch, owner, coin_type, balance, 0)?;
         batch.write()?;
         Ok(())
     }
@@ -1407,10 +1452,11 @@ impl AuthorityStore {
         owner: SomaAddress,
         coin_type: CoinType,
         new_balance: u64,
+        settled_height: u64,
     ) -> SomaResult<()> {
         write_batch.insert_batch(
             &self.perpetual_tables.accumulator_balances,
-            std::iter::once((&(owner, coin_type), &new_balance)),
+            std::iter::once((&(owner, coin_type), &(new_balance, settled_height))),
         )?;
         Ok(())
     }
@@ -1469,7 +1515,8 @@ impl AuthorityStore {
                     // Stage 14b: dual-write through the shared
                     // bottleneck so the CF and the accumulator object
                     // land in the same batch.
-                    self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, new_balance)?;
+                    // Test-only path (no consensus pipeline): version 0.
+                    self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, new_balance, 0)?;
                     new_balances.push(((*owner, *coin_type), new_balance));
                 }
                 BalanceUpdate::Underflow { current, delta } => {
@@ -1498,8 +1545,8 @@ impl AuthorityStore {
     pub fn iter_all_balances(&self) -> SomaResult<Vec<((SomaAddress, CoinType), u64)>> {
         let mut out = Vec::new();
         for entry in self.perpetual_tables.accumulator_balances.safe_iter() {
-            let (k, v) = entry?;
-            out.push((k, v));
+            let (k, (balance, _version)) = entry?;
+            out.push((k, balance));
         }
         Ok(out)
     }
@@ -1517,7 +1564,7 @@ impl AuthorityStore {
         // variants.
         let mut out = Vec::new();
         for entry in self.perpetual_tables.accumulator_balances.safe_iter() {
-            let ((entry_owner, coin_type), balance) = entry?;
+            let ((entry_owner, coin_type), (balance, _version)) = entry?;
             if entry_owner == owner {
                 out.push((coin_type, balance));
             }
@@ -1864,7 +1911,8 @@ impl AuthorityStore {
 
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
         if !events.is_empty() {
-            self.apply_settlement_events(&mut batch, &events)?;
+            // Test helper (bypasses the consensus pipeline): version 0.
+            self.apply_settlement_events(&mut batch, &events, 0)?;
         }
         if !delegation_events.is_empty() {
             self.apply_delegation_events(&mut batch, &delegation_events)?;

@@ -60,6 +60,22 @@ impl<T> ExecutionOutput<T> {
 
 pub type ExecutionOrEarlyError = Result<(), ExecutionErrorKind>;
 
+/// Result of the pre-execution address-funds withdraw scheduler for a single
+/// transaction, carried on the `ExecutionEnv` into execution. Mirrors Sui's
+/// `FundsWithdrawStatus` (`sui-types/src/execution_params.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FundsWithdrawStatus {
+    /// Unknown-or-sufficient: execute normally. The default for every tx that
+    /// either declares no withdrawal or was approved by the scheduler.
+    #[default]
+    MaybeSufficient,
+    /// The scheduler determined, at a settled version, that the declared
+    /// maximum withdrawal cannot be covered. Execution fails early with
+    /// [`ExecutionErrorKind::InsufficientFundsForWithdraw`] without running the
+    /// transaction body.
+    Insufficient,
+}
+
 /// Determine if a transaction is predetermined to fail execution.
 /// If so, return the error kind, otherwise return `None`.
 /// When we pass this to the execution engine, we will not execute the transaction
@@ -68,6 +84,7 @@ pub fn get_early_execution_error(
     transaction_digest: &TransactionDigest,
     input_objects: &CheckedInputObjects,
     config_certificate_deny_set: &HashSet<TransactionDigest>,
+    funds_withdraw_status: FundsWithdrawStatus,
 ) -> Option<ExecutionErrorKind> {
     if is_certificate_denied(transaction_digest, config_certificate_deny_set) {
         return Some(ExecutionErrorKind::CertificateDenied);
@@ -86,6 +103,12 @@ pub fn get_early_execution_error(
 
             _ => panic!("invalid cancellation reason Version: {:?}", reason),
         }
+    }
+
+    // The address-funds withdraw scheduler said this tx's declared maximum
+    // withdrawal is unaffordable at a settled version → fail early.
+    if matches!(funds_withdraw_status, FundsWithdrawStatus::Insufficient) {
+        return Some(ExecutionErrorKind::InsufficientFundsForWithdraw);
     }
 
     None

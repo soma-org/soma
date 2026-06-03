@@ -148,7 +148,13 @@ pub struct AuthorityPerpetualTables {
     /// State sync: settlement transactions' effects carry the balance
     /// deltas, so fullnodes replaying effects automatically rebuild
     /// this table without needing a special sync path.
-    pub(crate) accumulator_balances: DBMap<(SomaAddress, CoinType), u64>,
+    /// Value is `(balance, settled_height)`: the balance and the
+    /// pending-checkpoint height of the settlement that last wrote it. The
+    /// version is read atomically with the balance (single row) so the
+    /// funds-withdraw scheduler can seed an account's balance and its
+    /// settled version consistently — a parallel version CF would need a
+    /// non-atomic two-read and re-open the cross-commit staleness window.
+    pub(crate) accumulator_balances: DBMap<(SomaAddress, CoinType), (u64, u64)>,
 
     /// Stage 5.5: replay-protection cache for stateless transactions.
     ///

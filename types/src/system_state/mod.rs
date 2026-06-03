@@ -59,6 +59,10 @@ mod staking_lifecycle_tests;
 // fold-to-balance F1 model and have no analogue under auto-compound.
 // auto_compound_pool_tests above replaces both.
 #[cfg(test)]
+#[path = "unit_tests/reward_slashing_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod reward_slashing_tests;
+#[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod test_utils;

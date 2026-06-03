@@ -1362,12 +1362,30 @@ impl CheckpointBuilder {
             .cloned()
             .collect();
 
+        let epoch = self.epoch_store.epoch();
+        // The funds-withdraw scheduler version this settlement advances to: the
+        // packed `(epoch, checkpoint_height)`. Withdrawals in the NEXT commit
+        // read against this baseline, so advancing it resolves any that were
+        // Pending on it. Must be fired even for empty settlements, else the
+        // version never advances past commits with no balance events and
+        // downstream withdrawals wait forever.
+        let next_version = crate::funds_withdraw_scheduler::pack_version(epoch, checkpoint_height);
+
         let builder = AccumulatorSettlementTxBuilder::new(&user_only_effects);
         if builder.is_empty() {
-            // No balance/delegation events in this cp — nothing to
-            // settle. Wake the SettlementScheduler waiter with the
-            // skip sentinel and return empty.
+            // No balance/delegation events in this cp — nothing to settle on
+            // chain. Wake the SettlementScheduler waiter with the skip sentinel.
+            // Still advance the funds-withdraw scheduler to this version (with
+            // no deltas) so Pending withdrawals keyed on it resolve; safe to do
+            // immediately because an empty settlement changed no balance, so a
+            // freshly-seeded account reads the same value before and after.
             self.epoch_store.notify_settlement_transactions_ready(settlement_key, None);
+            if let Some(funds_scheduler) = self.epoch_store.funds_withdraw_scheduler() {
+                funds_scheduler.settle_funds(crate::funds_withdraw_scheduler::FundsSettlement {
+                    next_version,
+                    funds_changes: std::collections::BTreeMap::new(),
+                });
+            }
             return Vec::new();
         }
 
@@ -1379,7 +1397,6 @@ impl CheckpointBuilder {
         // synthetic digest, so anchoring the SettlementTransaction's
         // own (epoch, round, sub_dag_index) fields to those same
         // values keeps cross-validator determinism.
-        let epoch = self.epoch_store.epoch();
         // The SettlementTransaction's `round` field anchors digest
         // uniqueness across cps (consecutive settlements with the
         // same aggregated changes would otherwise collide in the
@@ -1429,7 +1446,40 @@ impl CheckpointBuilder {
         // the cache. Without this wait, the cp could finalize before
         // the settlement applied, which is exactly the bug 14c.7 left
         // open (supply violation at epoch boundary).
-        self.effects_store.notify_read_executed_effects(&[settlement_digest]).await
+        let settlement_effects =
+            self.effects_store.notify_read_executed_effects(&[settlement_digest]).await;
+
+        // Settlement for `checkpoint_height` has now persisted to the balance
+        // store. Feed the funds-withdraw scheduler the ACTUAL per-account net
+        // deltas (deposits +, real withdrawals −, from the settlement payload's
+        // already-netted balance events) and advance it to this version. This
+        // releases the now-settled reservations, applies the real (possibly
+        // smaller than reserved-max) amounts, and drains Pending withdrawals
+        // that this settlement makes decidable. Fired strictly AFTER the store
+        // write (the await above) so a freshly-seeded affected account reads the
+        // post-settlement balance — never before (which would miss the delta and
+        // re-open the deposit fork).
+        if let Some(funds_scheduler) = self.epoch_store.funds_withdraw_scheduler() {
+            let mut funds_changes: std::collections::BTreeMap<
+                crate::funds_withdraw_scheduler::AccountKey,
+                i128,
+            > = std::collections::BTreeMap::new();
+            for ev in &settlement_payload.changes {
+                use types::balance::BalanceEvent;
+                let key = (ev.owner(), ev.coin_type());
+                let delta = match ev {
+                    BalanceEvent::Deposit { amount, .. } => *amount as i128,
+                    BalanceEvent::Withdraw { amount, .. } => -(*amount as i128),
+                };
+                *funds_changes.entry(key).or_insert(0) += delta;
+            }
+            funds_scheduler.settle_funds(crate::funds_withdraw_scheduler::FundsSettlement {
+                next_version,
+                funds_changes,
+            });
+        }
+
+        settlement_effects
     }
 
     // This function is used to extract the consensus commit prologue digest and effects from the root

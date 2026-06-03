@@ -526,7 +526,7 @@ where
     let (scheduled_txns, assigned_tx_and_versions) = {
         let mut captured = captured_transactions.lock();
         assert!(!captured.is_empty(), "Expected transactions to be scheduled");
-        let (scheduled_txns, assigned_tx_and_versions, _) = captured.remove(0);
+        let (scheduled_txns, assigned_tx_and_versions, _, _) = captured.remove(0);
         (scheduled_txns, assigned_tx_and_versions)
     };
 

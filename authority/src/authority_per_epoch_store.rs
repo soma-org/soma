@@ -355,6 +355,21 @@ pub struct AuthorityPerEpochStore {
 
     /// A cache that tracks submitted transactions to prevent DoS through excessive resubmissions.
     pub(crate) submitted_transaction_cache: SubmittedTransactionCache,
+
+    /// Per-epoch async address-funds withdraw scheduler (Sui's
+    /// `FundsWithdrawScheduler`). Gates pre-execution withdrawal sufficiency
+    /// across not-yet-settled commits deterministically: the execution-path
+    /// router (`SettlementScheduler::enqueue`) submits each commit's withdrawal
+    /// batch and the settlement hook (checkpoint builder) feeds back actual
+    /// per-account deltas. Closes the cross-commit double-spend fork (and its
+    /// deposit-then-withdraw / failed-tx residuals) without a settlement
+    /// barrier. Initialized lazily in `ConsensusHandlerInitializer::
+    /// new_consensus_handler` (needs the object-cache reader for seeding);
+    /// `None` on nodes that don't process consensus. Dropped with the epoch
+    /// store, which closes its background task. See
+    /// [`crate::funds_withdraw_scheduler::FundsWithdrawScheduler`].
+    funds_withdraw_scheduler:
+        once_cell::sync::OnceCell<crate::funds_withdraw_scheduler::FundsWithdrawScheduler>,
 }
 
 #[derive(DBMapUtils)]
@@ -635,6 +650,7 @@ impl AuthorityPerEpochStore {
             consensus_tx_status_cache,
             tx_reject_reason_cache,
             submitted_transaction_cache,
+            funds_withdraw_scheduler: once_cell::sync::OnceCell::new(),
         });
         Ok(s)
     }
@@ -1817,6 +1833,35 @@ impl AuthorityPerEpochStore {
 
     #[instrument(level = "trace", skip_all)]
     pub fn verify_transaction(&self, tx: Transaction) -> SomaResult<VerifiedTransaction> {
+        // CRITICAL: users cannot submit internal system transactions
+        // (genesis / commit-prologue / change-epoch / settlement). These
+        // skip envelope-signature verification in
+        // `verify_sender_signed_data_message_signatures`, and every
+        // downstream layer (replay-protection exemption for sender==ZERO,
+        // input checks, gasless prepare_gas, the per-executor
+        // `signer == ZERO` guards) trusts that they could only have been
+        // injected internally. Without this gate a remote attacker can
+        // forge a sender==ZERO `Settlement` with a dummy signature and have
+        // it accepted unsigned — minting balances out of nothing.
+        //
+        // `verify_transaction` is the sole verification path for
+        // externally-submitted transactions (RPC handle_transaction /
+        // handle_submit_transaction, the orchestrator, and the consensus
+        // vote path); these internal kinds are constructed internally and
+        // never pass through here. Mirrors Sui's
+        // `SenderSignedData::validity_check` ("Users cannot send system
+        // transactions").
+        //
+        // NOTE: bridge "system" kinds are intentionally NOT rejected — they
+        // are relayed through this same path and authenticated by an
+        // embedded committee certificate in their executor. See
+        // `TransactionKind::is_internal_system_tx`.
+        if tx.data().transaction_data().kind().is_internal_system_tx() {
+            return Err(SomaError::UnsupportedFeatureError {
+                error: "internal system transactions cannot be submitted by users".to_string(),
+            }
+            .into());
+        }
         self.signature_verifier
             .verify_tx(tx.data())
             .map(|_| VerifiedTransaction::new_from_verified(tx))
@@ -1898,6 +1943,34 @@ impl AuthorityPerEpochStore {
 
     pub(crate) fn calculate_pending_checkpoint_height(&self, consensus_round: u64) -> u64 {
         consensus_round
+    }
+
+    /// Initialize this epoch's address-funds withdraw scheduler, seeded at the
+    /// epoch-start version `pack_version(epoch, 0)`. Idempotent — the first
+    /// caller (the consensus-handler initializer, which has the cache reader for
+    /// the balance seed) wins; later calls return the existing instance. Returns
+    /// the scheduler.
+    pub(crate) fn init_funds_withdraw_scheduler(
+        &self,
+        funds_read: std::sync::Arc<dyn crate::funds_withdraw_scheduler::AccountFundsRead>,
+    ) -> &crate::funds_withdraw_scheduler::FundsWithdrawScheduler {
+        self.funds_withdraw_scheduler.get_or_init(|| {
+            let starting_version = crate::funds_withdraw_scheduler::pack_version(self.epoch(), 0);
+            crate::funds_withdraw_scheduler::FundsWithdrawScheduler::new(
+                funds_read,
+                starting_version,
+            )
+        })
+    }
+
+    /// The address-funds withdraw scheduler for this epoch, if initialized.
+    /// `None` on nodes that don't process consensus commits (the initializer
+    /// never ran). Both the execution-path router and the settlement hook use
+    /// this.
+    pub(crate) fn funds_withdraw_scheduler(
+        &self,
+    ) -> Option<&crate::funds_withdraw_scheduler::FundsWithdrawScheduler> {
+        self.funds_withdraw_scheduler.get()
     }
 
     // Assigns shared object versions to transactions and updates the next shared object version state.

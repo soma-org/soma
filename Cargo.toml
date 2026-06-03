@@ -70,6 +70,14 @@ split-debuginfo = 'packed'
 strip = 'debuginfo'
 # Exit process with SIGABRT when any thread panics
 panic = 'abort'
+# Trap arithmetic overflow in production instead of silently wrapping.
+# Consensus-critical math (epoch reward distribution, accumulator
+# settlement, voting-power/stake) must never silently wrap — a wrapped
+# value is undetected supply corruption and, worse, diverges from
+# `[profile.simulator]` / test builds (which already enable this), so a
+# value that fails in CI would wrap on mainnet and could fork the chain.
+# Fail-stop (deterministic abort) is strictly safer than silent wrap.
+overflow-checks = true
 
 # Same as release, but build binary with debug symbols (binary size will be ~ 1GB).
 [profile.release-dbgsym]

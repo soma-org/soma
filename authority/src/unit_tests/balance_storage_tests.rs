@@ -399,7 +399,7 @@ fn apply_settlement(
     events: &[BalanceEvent],
 ) -> Result<(), types::error::SomaError> {
     let mut batch = store.perpetual_tables.accumulator_balances.batch();
-    store.apply_settlement_events(&mut batch, events)?;
+    store.apply_settlement_events(&mut batch, events, 0)?;
     batch.write().expect("rocksdb write");
     Ok(())
 }
