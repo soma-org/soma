@@ -6,13 +6,13 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{Object, ObjectID, Owner};
+// Object/Owner no longer needed once Stage 9d-C4 removed StakedSomaV1
+// creation from the validator-reward path.
 use types::system_state::{SystemState, SystemStateTrait};
-use types::target::{generate_target, make_target_seed};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for system state transactions (validators)
 pub struct ChangeEpochExecutor;
@@ -23,8 +23,6 @@ impl ChangeEpochExecutor {
     }
 }
 
-impl FeeCalculator for ChangeEpochExecutor {}
-
 /// Under msim, optionally inject a failure for specific epochs.
 /// Tests register a `fail_point_if` callback for "advance_epoch_result_injection"
 /// that returns `true` when the epoch should fail.
@@ -33,14 +31,14 @@ fn maybe_inject_advance_epoch_failure(
     result: ExecutionResult<
         std::collections::BTreeMap<
             types::base::SomaAddress,
-            types::system_state::staking::StakedSomaV1,
+            types::system_state::validator::ValidatorRewardCredit,
         >,
     >,
     new_epoch: u64,
 ) -> ExecutionResult<
     std::collections::BTreeMap<
         types::base::SomaAddress,
-        types::system_state::staking::StakedSomaV1,
+        types::system_state::validator::ValidatorRewardCredit,
     >,
 > {
     let should_fail = utils::fp::handle_fail_point_if("advance_epoch_result_injection");
@@ -55,13 +53,16 @@ fn maybe_inject_advance_epoch_failure(
 }
 
 impl TransactionExecutor for ChangeEpochExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        0
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
-        signer: SomaAddress,
+        _signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         // Get system state object
         let state_object = store
@@ -90,7 +91,6 @@ impl TransactionExecutor for ChangeEpochExecutor {
             store.chain,
         );
 
-        // Store epoch_start_timestamp_ms for target generation (before moving change_epoch)
         let epoch_start_timestamp_ms = change_epoch.epoch_start_timestamp_ms;
 
         // Clone state before attempting advance_epoch so we can restore on failure
@@ -110,115 +110,107 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         match result {
             Ok(validator_rewards) => {
-                // Normal path: create reward objects and generate targets
-
+                // Auto-compound + F1/F4 audit fix: validator commission
+                // credits flow through the row — ONE row per (pool,
+                // validator), successive epochs accumulate.
+                //
+                // Two halves to keep the CF and the
+                // `DelegationAccumulator` object in sync (audit F1):
+                //
+                // 1. Compute the new row state: read the prefetched
+                //    row, auto_settle against the post-advance pool
+                //    (compounding any prior accrual into principal),
+                //    add the commission to principal, snapshot the
+                //    post-advance cumulative_index.
+                // 2. Mutate the object directly via
+                //    `mutate_input_object` (or `create_object` on
+                //    first-touch). The object was pre-loaded by
+                //    `execute_transaction`'s `resolved_accumulators`
+                //    block for ChangeEpoch.
+                // 3. Emit a `DelegationEvent` so
+                //    `apply_delegation_events` writes the matching
+                //    CF row in the same atomic write batch.
                 for (validator, reward) in validator_rewards {
-                    // Create StakedSoma object
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        reward,
-                        Owner::AddressOwner(validator),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
-                }
-
-                // Create initial targets for the new epoch if active models exist
-                if state.model_registry().has_active_models() {
-                    let initial_targets = state.parameters().target_initial_targets_per_epoch;
-                    let reward_per_target = state.target_state().reward_per_target;
-                    let models_per_target = state.parameters().target_models_per_target;
-                    let embedding_dim = state.parameters().target_embedding_dim;
-                    let new_epoch = state.epoch();
-
-                    // V3+: compute per-epoch emission budget for targets
-                    let epoch_target_budget = if state.protocol_version() >= 3 {
-                        Some(
-                            (state.emission_pool().emission_per_epoch as u128
-                                * state.parameters().target_reward_allocation_bps as u128
-                                / 10000u128) as u64,
-                        )
-                    } else {
-                        None
-                    };
-
-                    let mut targets_created = 0u64;
-                    for _ in 0..initial_targets {
-                        // Check emission pool has sufficient funds
-                        if state.emission_pool().balance < reward_per_target {
-                            tracing::warn!(
-                                "Emission pool depleted at epoch {}, stopping target generation at {} targets",
-                                new_epoch,
-                                targets_created
-                            );
-                            break;
-                        }
-
-                        // V3+: enforce per-epoch emission budget
-                        if let Some(budget) = epoch_target_budget {
-                            let already_spent = state
-                                .target_state()
-                                .targets_generated_this_epoch
-                                .saturating_mul(reward_per_target);
-                            if already_spent.saturating_add(reward_per_target) > budget {
-                                tracing::warn!(
-                                    "Epoch target budget exhausted at epoch {}, stopping at {} targets",
-                                    new_epoch,
-                                    targets_created
-                                );
-                                break;
-                            }
-                        }
-
-                        let creation_num = store.next_creation_num();
-                        let seed = make_target_seed(&tx_digest, creation_num);
-
-                        match generate_target(
-                            seed,
-                            &state.model_registry(),
-                            &state.target_state(),
-                            models_per_target,
-                            embedding_dim,
-                            new_epoch,
-                        ) {
-                            Ok(target) => {
-                                // Deduct reward from emission pool
-                                state.emission_pool_mut().balance -= reward_per_target;
-
-                                // Record that a target was generated (for difficulty adjustment)
-                                state.target_state_mut().record_target_generated();
-
-                                // Create target as shared object
-                                let target_object = Object::new_target_object(
-                                    ObjectID::derive_id(tx_digest, creation_num),
-                                    target,
-                                    tx_digest,
-                                );
-                                store.create_object(target_object);
-                                targets_created += 1;
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to generate target at epoch {}: {:?}",
-                                    new_epoch,
-                                    e
-                                );
-                                break;
-                            }
-                        }
+                    if reward.principal == 0 {
+                        continue;
                     }
 
-                    tracing::info!(
-                        "Created {} targets for epoch {} with reward_per_target={}",
-                        targets_created,
-                        new_epoch,
-                        reward_per_target
+                    let pool_id = reward.pool_id;
+                    let pool_view = state
+                        .validators()
+                        .find_validator(validator)
+                        .or_else(|| {
+                            state
+                                .validators()
+                                .pending_validators
+                                .iter()
+                                .find(|v| v.metadata.soma_address == validator)
+                        })
+                        .map(|v| &v.staking_pool)
+                        // A validator that earns commission in the same
+                        // epoch boundary it departs has already been moved
+                        // into `inactive_validators` by the preceding
+                        // `process_validator_transitions`. Without this
+                        // fallback `pool_view` is `None`, the commission
+                        // `reward.principal` (already minted into the pool's
+                        // aggregate by `advance_epoch`) is never folded into
+                        // the validator's delegation row, and the
+                        // pool-aggregate vs. per-staker rows permanently
+                        // desync. Mirrors the `WithdrawStake` lookup at
+                        // execution/staking.rs.
+                        .or_else(|| {
+                            state
+                                .validators()
+                                .inactive_validators
+                                .get(&pool_id)
+                                .map(|v| &v.staking_pool)
+                        });
+
+                    // 1. Compute the new row state.
+                    let mut row =
+                        store.prefetched_delegations.get(&pool_id).copied().unwrap_or_default();
+                    if let Some(pool) = pool_view {
+                        types::system_state::staking::auto_settle(
+                            &mut row,
+                            pool,
+                            change_epoch.epoch,
+                        );
+                        row.principal = row.principal.saturating_add(reward.principal);
+                        row.index_at_last_collect = pool.cumulative_index;
+                    }
+
+                    // 2. Mutate the DelegationAccumulator object so
+                    // the object world stays in sync with the CF.
+                    let acc_id =
+                        types::accumulator::DelegationAccumulator::derive_id(pool_id, validator);
+                    let acc = types::accumulator::DelegationAccumulator::new(
+                        pool_id,
+                        validator,
+                        row.principal,
+                        row.index_at_last_collect,
+                        row.pending_principal,
+                        row.pending_added_at_epoch,
                     );
+                    if let Some(existing) = store.read_object(&acc_id) {
+                        let mut new_obj = existing.clone();
+                        new_obj.set_delegation_accumulator(&acc);
+                        store.mutate_input_object(new_obj);
+                    } else {
+                        // First-touch: validator's row doesn't exist
+                        // yet (e.g., fresh validator at activation
+                        // epoch). Create the object so the next
+                        // mutation finds it.
+                        let new_obj =
+                            types::object::Object::new_delegation_accumulator(acc, tx_digest);
+                        store.create_object(new_obj);
+                    }
+
+                    // 3. Emit the matching CF event.
+                    store.emit_delegation_event(pool_id, validator, Some(row));
                 }
             }
             Err(e) => {
                 // Safe mode: restore state from backup and do minimal epoch bump.
-                // This path is intentionally simple and cannot fail.
                 tracing::error!(
                     "advance_epoch FAILED, entering safe mode: {:?}. \
                      The network will continue operating in degraded mode.",
@@ -228,16 +220,14 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 state = state_backup;
                 state.advance_epoch_safe_mode(
                     change_epoch.epoch,
+                    change_epoch.protocol_version.as_u64(),
                     change_epoch.fees,
                     epoch_start_timestamp_ms,
                 );
-
-                // No validator rewards are created, no targets generated.
-                // Everything is accumulated for the next successful epoch transition.
             }
         }
 
-        // Serialize and commit state — this path is shared for both normal and safe mode
+        // Serialize and commit state
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "Failed to serialize updated system state: {}",

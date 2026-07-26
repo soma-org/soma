@@ -56,16 +56,13 @@ fn error_hint(msg: &str) -> Option<&'static str> {
             "Is the network running? Try `soma start localnet` to launch a local network.",
         );
     }
-    if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
-        return Some("Use `soma faucet` to request test tokens.");
-    }
     if msg_lower.contains("force-regenesis") {
         return Some(
             "Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.",
         );
     }
     if msg_lower.contains("not found in active, pending, or inactive") {
-        return Some("Check the model ID with `soma model list`.");
+        return Some("Check the ID and try again.");
     }
     if msg_lower.contains("must be exactly 32 bytes") {
         return Some(

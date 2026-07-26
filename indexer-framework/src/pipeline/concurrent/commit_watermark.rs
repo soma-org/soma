@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
-use indexer_store_traits::pipeline_task;
 use soma_futures::service::Service;
 use tokio::sync::mpsc;
 use tracing::debug;
@@ -49,7 +48,12 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
     task: Option<String>,
     metrics: Arc<IndexerMetrics>,
 ) -> Service {
-    let pipeline_task = pipeline_task(H::NAME, task.as_deref(), <H::Store as Store>::DELIMITER);
+    // The new trait surface puts DELIMITER on ConcurrentStore, but the H::Store bound here is just
+    // Store. Use the same default "@" delimiter that ConcurrentStore declares.
+    let pipeline_task = match task.as_deref() {
+        Some(task) => format!("{}@{}", H::NAME, task),
+        None => H::NAME.to_string(),
+    };
     Service::new().spawn_aborting(async move {
         // To correctly update the watermark, the task tracks the watermark it last tried to write
         // and the watermark parts for any checkpoints that have been written since then
@@ -138,7 +142,10 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
             let elapsed = guard.stop_and_record();
 
             if let Some(ref watermark) = pending_watermark {
-                metrics.watermark_epoch.with_label_values(&[H::NAME]).set(watermark.epoch as i64);
+                metrics
+                    .watermark_epoch
+                    .with_label_values(&[H::NAME])
+                    .set(watermark.epoch_hi_inclusive as i64);
 
                 metrics
                     .watermark_checkpoint
@@ -262,7 +269,10 @@ async fn write_watermark<H: Handler>(
             checkpoint_lag_reporter
                 .report_lag(watermark.checkpoint_hi_inclusive, watermark.timestamp_ms_hi_inclusive);
 
-            metrics.watermark_epoch_in_db.with_label_values(&[H::NAME]).set(watermark.epoch as i64);
+            metrics
+                .watermark_epoch_in_db
+                .with_label_values(&[H::NAME])
+                .set(watermark.epoch_hi_inclusive as i64);
 
             metrics
                 .watermark_transaction_in_db

@@ -1,0 +1,177 @@
+---
+interface Props {
+  buttonText?: string;
+}
+
+const { buttonText = "Get Updates" } = Astro.props;
+---
+
+<div class="email-signup">
+  <form class="signup-form">
+    <input
+      type="email"
+      name="email"
+      placeholder="Email"
+      required
+      autocomplete="email"
+      class="email-input"
+    />
+    <button type="submit" class="submit-btn">
+      {buttonText}
+    </button>
+  </form>
+</div>
+
+<script>
+  class EmailSignupForm {
+    form: HTMLFormElement;
+    emailInput: HTMLInputElement;
+    submitBtn: HTMLButtonElement;
+    static LOOPS_ENDPOINT =
+      "https://app.loops.so/api/newsletter-form/cmkmp4n4u02w10iyoo0initlu";
+
+    constructor(container: HTMLElement) {
+      this.form = container.querySelector(".signup-form") as HTMLFormElement;
+      this.emailInput = container.querySelector(
+        ".email-input",
+      ) as HTMLInputElement;
+      this.submitBtn = container.querySelector(
+        ".submit-btn",
+      ) as HTMLButtonElement;
+
+      this.form.addEventListener("submit", (e) => this.handleSubmit(e));
+    }
+
+    setDone(message: string) {
+      this.emailInput.value = "";
+      this.emailInput.placeholder = message;
+      this.emailInput.disabled = true;
+      this.submitBtn.textContent = "Sent ✓";
+      this.submitBtn.disabled = true;
+    }
+
+    setError(message: string) {
+      this.emailInput.value = "";
+      this.emailInput.placeholder = message;
+      this.emailInput.disabled = false;
+      this.submitBtn.textContent = "Get Updates";
+      this.submitBtn.disabled = false;
+    }
+
+    async handleSubmit(e: Event) {
+      e.preventDefault();
+
+      const email = this.emailInput.value.trim();
+      if (!email) return;
+
+      this.submitBtn.disabled = true;
+      this.emailInput.disabled = true;
+      this.submitBtn.textContent = "Sending...";
+
+      try {
+        const formBody = `email=${encodeURIComponent(email)}`;
+
+        const response = await fetch(EmailSignupForm.LOOPS_ENDPOINT, {
+          method: "POST",
+          body: formBody,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        });
+
+        if (response.status === 429) {
+          this.setError("Too many requests, try again later");
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          this.setDone("Check your email to confirm");
+        } else {
+          this.setError(data.message || "Something went wrong, try again");
+        }
+      } catch (error) {
+        this.setError("Connection error, try again");
+      }
+    }
+  }
+
+  // Initialize all email signup forms on the page
+  document.querySelectorAll(".email-signup").forEach((container) => {
+    new EmailSignupForm(container as HTMLElement);
+  });
+</script>
+
+<style>
+  .email-signup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 28rem;
+    margin: 0 auto;
+  }
+
+  .signup-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    .signup-form {
+      flex-direction: row;
+    }
+  }
+
+  .email-input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    background: var(--sl-color-black);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    color: var(--sl-color-white);
+    font-family: var(--sl-font);
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease;
+  }
+
+  .email-input::placeholder {
+    color: var(--sl-color-gray-3);
+  }
+
+  .email-input:focus {
+    outline: none;
+    border-color: var(--sl-color-white);
+  }
+
+  .email-input:disabled {
+    opacity: 0.5;
+  }
+
+  .submit-btn {
+    padding: 0.75rem 1.5rem;
+    background: var(--sl-color-white);
+    color: var(--sl-color-black);
+    font-family: var(--sl-font);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+  }
+
+  .submit-btn:hover {
+    opacity: 0.85;
+  }
+
+  .submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+</style>

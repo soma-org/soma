@@ -28,6 +28,26 @@ impl std::fmt::Display for SdkTypeConversionError {
 
 impl std::error::Error for SdkTypeConversionError {}
 
+/// Convert a flat list of `PubkeySig` rpc-domain entries into the typed,
+/// pubkey-keyed envelope the on-chain executor expects. Validates each
+/// pubkey is a real secp256k1 point and each signature is exactly 65 bytes.
+fn rpc_sigs_to_envelope(
+    sigs: Vec<PubkeySig>,
+) -> Result<
+    BTreeMap<types::bridge::BridgePubkey, types::bridge::BridgeSignature>,
+    SdkTypeConversionError,
+> {
+    let mut out = BTreeMap::new();
+    for sig in sigs {
+        let pk = types::bridge::BridgePubkey::from_bytes(&sig.signer_pubkey)
+            .map_err(|e| SdkTypeConversionError(format!("invalid bridge pubkey: {e}")))?;
+        let s = types::bridge::BridgeSignature::from_bytes(&sig.signature)
+            .map_err(|e| SdkTypeConversionError(format!("invalid bridge signature: {e}")))?;
+        out.insert(pk, s);
+    }
+    Ok(out)
+}
+
 impl From<anyhow::Error> for SdkTypeConversionError {
     fn from(value: anyhow::Error) -> Self {
         Self(value.to_string())
@@ -57,9 +77,17 @@ impl TryFrom<types::object::Object> for Object {
         // Map ObjectType from domain to SDK
         let object_type = match value.data.object_type() {
             types::object::ObjectType::SystemState => ObjectType::SystemState,
-            types::object::ObjectType::Coin => ObjectType::Coin,
+            types::object::ObjectType::Coin(ct) => ObjectType::Coin(*ct),
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
-            types::object::ObjectType::Target => ObjectType::Target,
+            types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
+            types::object::ObjectType::BridgeRecord => ObjectType::BridgeRecord,
+            types::object::ObjectType::Clock => ObjectType::Clock,
+            types::object::ObjectType::Channel => ObjectType::Channel,
+            types::object::ObjectType::BalanceAccumulator => ObjectType::BalanceAccumulator,
+            types::object::ObjectType::DelegationAccumulator => ObjectType::DelegationAccumulator,
+            types::object::ObjectType::Provider => ObjectType::Provider,
+            types::object::ObjectType::ProviderInbox => ObjectType::ProviderInbox,
+            types::object::ObjectType::Offering => ObjectType::Offering,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -83,9 +111,17 @@ impl TryFrom<Object> for types::object::Object {
         // Map ObjectType from SDK to domain
         let object_type = match value.object_type {
             ObjectType::SystemState => types::object::ObjectType::SystemState,
-            ObjectType::Coin => types::object::ObjectType::Coin,
+            ObjectType::Coin(ct) => types::object::ObjectType::Coin(ct),
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
-            ObjectType::Target => types::object::ObjectType::Target,
+            ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
+            ObjectType::BridgeRecord => types::object::ObjectType::BridgeRecord,
+            ObjectType::Clock => types::object::ObjectType::Clock,
+            ObjectType::Channel => types::object::ObjectType::Channel,
+            ObjectType::BalanceAccumulator => types::object::ObjectType::BalanceAccumulator,
+            ObjectType::DelegationAccumulator => types::object::ObjectType::DelegationAccumulator,
+            ObjectType::Provider => types::object::ObjectType::Provider,
+            ObjectType::ProviderInbox => types::object::ObjectType::ProviderInbox,
+            ObjectType::Offering => types::object::ObjectType::Offering,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -109,6 +145,10 @@ impl TryFrom<types::transaction::TransactionData> for Transaction {
                 kind: v1.kind.try_into()?,
                 sender: v1.sender.into(),
                 gas_payment: v1.gas_payment.into_iter().map(Into::into).collect(),
+                // Stage 5.5/6c: forward expiration so it round-trips
+                // through wire encoding and the validator's signature
+                // check sees the same BCS bytes the wallet signed.
+                expiration: v1.expiration,
             }),
         }
     }
@@ -118,10 +158,11 @@ impl TryFrom<Transaction> for types::transaction::TransactionData {
     type Error = SdkTypeConversionError;
 
     fn try_from(value: Transaction) -> Result<Self, Self::Error> {
-        Ok(types::transaction::TransactionData::new(
+        Ok(types::transaction::TransactionData::new_with_expiration(
             value.kind.try_into()?,
             value.sender.into(),
             value.gas_payment.into_iter().map(Into::into).collect(),
+            value.expiration,
         ))
     }
 }
@@ -333,7 +374,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 net_address: args.net_address,
                 p2p_address: args.p2p_address,
                 primary_address: args.primary_address,
-                proxy_address: args.proxy_address,
             }),
 
             TK::RemoveValidator(args) => TransactionKind::RemoveValidator(RemoveValidatorArgs {
@@ -353,7 +393,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
-                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
@@ -363,100 +402,47 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             TK::SetCommissionRate { new_rate } => TransactionKind::SetCommissionRate { new_rate },
 
-            // Transfer operations
-            TK::TransferCoin { coin, amount, recipient } => TransactionKind::TransferCoin {
-                coin: coin.into(),
-                amount,
-                recipient: recipient.into(),
-            },
-
-            TK::PayCoins { coins, amounts, recipients } => TransactionKind::PayCoins {
-                coins: coins.into_iter().map(Into::into).collect(),
-                amounts,
-                recipients: recipients.into_iter().map(Into::into).collect(),
-            },
-
+            // Stage 13b: domain TransactionKind no longer has
+            // Transfer / MergeCoins variants — match arms gone.
             TK::TransferObjects { objects, recipient } => TransactionKind::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),
                 recipient: recipient.into(),
             },
 
             // Staking operations
-            TK::AddStake { address, coin_ref, amount } => TransactionKind::AddStake {
-                address: address.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
-
-            TK::WithdrawStake { staked_soma } => {
-                TransactionKind::WithdrawStake { staked_soma: staked_soma.into() }
+            TK::AddStake { validator, amount } => {
+                TransactionKind::AddStake { validator: validator.into(), amount }
             }
 
-            // Model transactions
-            TK::CreateModel(args) => TransactionKind::CreateModel(CreateModelArgs {
-                stake_amount: args.stake_amount,
-                commission_rate: args.commission_rate,
-                architecture_version: args.architecture_version,
-            }),
-
-            TK::CommitModel(args) => TransactionKind::CommitModel(CommitModelArgs {
-                model_id: args.model_id.into(),
-                manifest: args.manifest.into(),
-                weights_commitment: args.weights_commitment.into_inner().to_vec(),
-                embedding_commitment: args.embedding_commitment.into_inner().to_vec(),
-                decryption_key_commitment: args.decryption_key_commitment.into_inner().to_vec(),
-            }),
-
-            TK::RevealModel(args) => TransactionKind::RevealModel(RevealModelArgs {
-                model_id: args.model_id.into(),
-                decryption_key: args.decryption_key.as_ref().to_vec(),
-                embedding: args.embedding.to_vec(),
-            }),
-
-            TK::AddStakeToModel { model_id, coin_ref, amount } => {
-                TransactionKind::AddStakeToModel {
-                    model_id: model_id.into(),
-                    coin_ref: coin_ref.into(),
-                    amount,
-                }
+            TK::WithdrawStake { pool_id, amount } => {
+                TransactionKind::WithdrawStake { pool_id: pool_id.into(), amount }
             }
 
-            TK::SetModelCommissionRate { model_id, new_rate } => {
-                TransactionKind::SetModelCommissionRate { model_id: model_id.into(), new_rate }
+            TK::Settlement(settlement) => {
+                TransactionKind::Settlement(crate::types::SettlementTransaction {
+                    epoch: settlement.epoch,
+                    round: settlement.round,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes: settlement.changes,
+                    delegation_changes: settlement.delegation_changes,
+                })
             }
 
-            TK::DeactivateModel { model_id } => {
-                TransactionKind::DeactivateModel { model_id: model_id.into() }
+            TK::BalanceTransfer(args) => {
+                TransactionKind::BalanceTransfer(crate::types::BalanceTransferArgs {
+                    coin_type: args.coin_type,
+                    transfers: args
+                        .transfers
+                        .into_iter()
+                        .map(|(addr, amount)| (addr.into(), amount))
+                        .collect(),
+                })
             }
 
-            TK::ReportModel { model_id } => {
-                TransactionKind::ReportModel { model_id: model_id.into() }
-            }
-
-            TK::UndoReportModel { model_id } => {
-                TransactionKind::UndoReportModel { model_id: model_id.into() }
-            }
-
-            // Submission transactions
-            TK::SubmitData(args) => TransactionKind::SubmitData(SubmitDataArgs {
-                target_id: args.target_id.into(),
-                data_manifest: SubmissionManifest { manifest: args.data_manifest.manifest.into() },
-                model_id: args.model_id.into(),
-                embedding: args.embedding.to_vec(),
-                distance_score: args.distance_score.as_scalar(),
-                loss_score: args.loss_score.to_vec(),
-                bond_coin: args.bond_coin.into(),
-            }),
-
-            TK::ClaimRewards(args) => {
-                TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: args.target_id.into() })
-            }
-
-            TK::ReportSubmission { target_id } => {
-                TransactionKind::ReportSubmission { target_id: target_id.into() }
-            }
-            TK::UndoReportSubmission { target_id } => {
-                TransactionKind::UndoReportSubmission { target_id: target_id.into() }
+            _ => {
+                return Err(SdkTypeConversionError(
+                    "Marketplace/bridge tx type conversion not yet implemented".to_string(),
+                ));
             }
         })
     }
@@ -510,7 +496,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     net_address: args.net_address,
                     p2p_address: args.p2p_address,
                     primary_address: args.primary_address,
-                    proxy_address: args.proxy_address,
                 })
             }
 
@@ -533,7 +518,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
-                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
@@ -543,138 +527,260 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
 
-            // Transfer operations
-            TransactionKind::TransferCoin { coin, amount, recipient } => {
-                TK::TransferCoin { coin: coin.into(), amount, recipient: recipient.into() }
-            }
-
-            TransactionKind::PayCoins { coins, amounts, recipients } => TK::PayCoins {
-                coins: coins.into_iter().map(Into::into).collect(),
-                amounts,
-                recipients: recipients.into_iter().map(Into::into).collect(),
-            },
-
+            // Stage 13b: Transfer / MergeCoins deleted.
             TransactionKind::TransferObjects { objects, recipient } => TK::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),
                 recipient: recipient.into(),
             },
 
             // Staking operations
-            TransactionKind::AddStake { address, coin_ref, amount } => {
-                TK::AddStake { address: address.into(), coin_ref: coin_ref.into(), amount }
+            TransactionKind::AddStake { validator, amount } => {
+                TK::AddStake { validator: validator.into(), amount }
             }
 
-            TransactionKind::WithdrawStake { staked_soma } => {
-                TK::WithdrawStake { staked_soma: staked_soma.into() }
+            TransactionKind::WithdrawStake { pool_id, amount } => {
+                TK::WithdrawStake { pool_id: pool_id.into(), amount }
             }
 
-            // Model transactions
-            TransactionKind::CreateModel(args) => {
-                TK::CreateModel(types::transaction::CreateModelArgs {
-                    stake_amount: args.stake_amount,
-                    commission_rate: args.commission_rate,
-                    architecture_version: args.architecture_version,
+            // Bridge transactions
+            TransactionKind::BridgeDeposit(args) => {
+                let target_chain_byte = args.target_chain as u8;
+                let target_chain = types::bridge::BridgeChainId::from_u8(target_chain_byte)
+                    .ok_or_else(|| {
+                        SdkTypeConversionError(format!(
+                            "BridgeDeposit: invalid target_chain byte {target_chain_byte}"
+                        ))
+                    })?;
+                TK::BridgeDeposit(types::transaction::BridgeDepositArgs {
+                    nonce: args.nonce,
+                    eth_tx_hash: args.eth_tx_hash.try_into().unwrap_or([0u8; 32]),
+                    recipient: args.recipient.into(),
+                    amount: args.amount,
+                    timestamp_ms: args.timestamp_ms,
+                    sender_eth_address: args.sender_eth_address.try_into().unwrap_or([0u8; 20]),
+                    target_chain,
+                    token_type: args.token_type as u8,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
+                })
+            }
+            TransactionKind::BridgeWithdraw(args) => {
+                let target_chain_byte = args.target_chain as u8;
+                let target_chain = types::bridge::BridgeChainId::from_u8(target_chain_byte)
+                    .ok_or_else(|| {
+                        SdkTypeConversionError(format!(
+                            "BridgeWithdraw: invalid target_chain byte {target_chain_byte}"
+                        ))
+                    })?;
+                TK::BridgeWithdraw(types::transaction::BridgeWithdrawArgs {
+                    amount: args.amount,
+                    recipient_eth_address: args
+                        .recipient_eth_address
+                        .try_into()
+                        .unwrap_or([0u8; 20]),
+                    target_chain,
+                })
+            }
+            TransactionKind::BridgeEmergencyPause(args) => {
+                TK::BridgeEmergencyPause(types::transaction::BridgeEmergencyPauseArgs {
+                    nonce: args.nonce,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
+                })
+            }
+            TransactionKind::BridgeEmergencyUnpause(args) => {
+                TK::BridgeEmergencyUnpause(types::transaction::BridgeEmergencyUnpauseArgs {
+                    nonce: args.nonce,
+                    signatures: rpc_sigs_to_envelope(args.signatures)?,
+                })
+            }
+            TransactionKind::BridgeAttachWithdrawalSignatures(args) => {
+                TK::BridgeAttachWithdrawalSignatures(
+                    types::transaction::BridgeAttachWithdrawalSignaturesArgs {
+                        nonce: args.nonce,
+                        signatures: rpc_sigs_to_envelope(args.signatures)?,
+                    },
+                )
+            }
+            TransactionKind::BridgeUpdateCommitteeBlocklist(args) => {
+                let eth_addresses: Vec<[u8; 20]> = args
+                    .eth_addresses
+                    .into_iter()
+                    .filter_map(|v| <[u8; 20]>::try_from(v.as_slice()).ok())
+                    .collect();
+                TK::BridgeUpdateCommitteeBlocklist(
+                    types::transaction::BridgeUpdateCommitteeBlocklistArgs {
+                        nonce: args.nonce,
+                        is_blocklist: args.is_blocklist,
+                        eth_addresses,
+                        signatures: rpc_sigs_to_envelope(args.signatures)?,
+                    },
+                )
+            }
+            TransactionKind::BridgeRegisterBridgeKey(args) => {
+                let bridge_pubkey = types::bridge::BridgePubkey::from_bytes(&args.bridge_pubkey)
+                    .map_err(|e| SdkTypeConversionError(format!("invalid bridge_pubkey: {e}")))?;
+                TK::BridgeRegisterBridgeKey(types::transaction::BridgeRegisterBridgeKeyArgs {
+                    bridge_pubkey,
+                    http_url: args.http_url,
                 })
             }
 
-            TransactionKind::CommitModel(args) => {
-                TK::CommitModel(types::transaction::CommitModelArgs {
-                    model_id: args.model_id.into(),
-                    manifest: args.manifest.try_into()?,
-                    weights_commitment: types::digests::ModelWeightsCommitment::new(
-                        args.weights_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("weights_commitment must be 32 bytes".into())
-                        })?,
-                    ),
-                    embedding_commitment: types::digests::EmbeddingCommitment::new(
-                        args.embedding_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("embedding_commitment must be 32 bytes".into())
-                        })?,
-                    ),
-                    decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                        args.decryption_key_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError(
-                                "decryption_key_commitment must be 32 bytes".into(),
-                            )
-                        })?,
-                    ),
+            // Payment-channel transactions
+            TransactionKind::OpenChannel(args) => {
+                TK::OpenChannel(types::transaction::OpenChannelArgs {
+                    payee: args.payee.into(),
+                    authorized_signer: args.authorized_signer.into(),
+                    token: args.token,
+                    deposit_amount: args.deposit_amount,
+                    model_id: args.model_id,
+                })
+            }
+            TransactionKind::Settle(args) => {
+                use fastcrypto::traits::ToFromBytes;
+                let voucher_signature = types::crypto::GenericSignature::from_bytes(
+                    &args.voucher_signature,
+                )
+                .map_err(|e| SdkTypeConversionError(format!("invalid voucher_signature: {}", e)))?;
+                TK::Settle(types::transaction::SettleArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    cumulative_amount: args.cumulative_amount,
+                    cumulative_prompt_tokens: args.cumulative_prompt_tokens,
+                    cumulative_completion_tokens: args.cumulative_completion_tokens,
+                    cumulative_cache_read_tokens: args.cumulative_cache_read_tokens,
+                    cumulative_cache_write_tokens: args.cumulative_cache_write_tokens,
+                    cumulative_requests: args.cumulative_requests,
+                    voucher_signature,
+                })
+            }
+            TransactionKind::RequestClose(args) => {
+                TK::RequestClose(types::transaction::RequestCloseArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                })
+            }
+            TransactionKind::WithdrawAfterTimeout(args) => {
+                TK::WithdrawAfterTimeout(types::transaction::WithdrawAfterTimeoutArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    payee: types::base::SomaAddress::from(args.payee),
+                })
+            }
+            TransactionKind::TopUp(args) => TK::TopUp(types::transaction::TopUpArgs {
+                channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                    args.channel_id,
+                )),
+                coin_type: args.coin_type,
+                amount: args.amount,
+            }),
+            TransactionKind::RateChannel(args) => {
+                let reason_code = match args.reason_code {
+                    0 => types::transaction::RatingReasonCode::Quality,
+                    1 => types::transaction::RatingReasonCode::TtftBreach,
+                    2 => types::transaction::RatingReasonCode::TtotBreach,
+                    3 => types::transaction::RatingReasonCode::NoResponse,
+                    _ => types::transaction::RatingReasonCode::Other,
+                };
+                TK::RateChannel(types::transaction::RateChannelArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    negative: args.negative,
+                    reason_code,
                 })
             }
 
-            TransactionKind::RevealModel(args) => {
-                let dim = args.embedding.len();
-                TK::RevealModel(types::transaction::RevealModelArgs {
-                    model_id: args.model_id.into(),
-                    decryption_key: types::crypto::DecryptionKey::new(
-                        args.decryption_key.try_into().map_err(|_| {
-                            SdkTypeConversionError("decryption_key must be 32 bytes".into())
-                        })?,
-                    ),
-                    embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
+            // Per-(provider, model) offerings
+            TransactionKind::RegisterOffering(args) => {
+                TK::RegisterOffering(types::transaction::RegisterOfferingArgs {
+                    model_id: args.model_id,
+                    prompt_micros_per_1k: args.prompt_micros_per_1k,
+                    completion_micros_per_1k: args.completion_micros_per_1k,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k,
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k,
+                    request_micros: args.request_micros,
+                    ttft_bound_ms: args.ttft_bound_ms,
+                    ttot_bound_ms: args.ttot_bound_ms,
+                })
+            }
+            TransactionKind::UpdateOffering(args) => {
+                TK::UpdateOffering(types::transaction::UpdateOfferingArgs {
+                    offering_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.offering_id,
+                    )),
+                    model_id: args.model_id,
+                    prompt_micros_per_1k: args.prompt_micros_per_1k,
+                    completion_micros_per_1k: args.completion_micros_per_1k,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k,
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k,
+                    request_micros: args.request_micros,
+                    ttft_bound_ms: args.ttft_bound_ms,
+                    ttot_bound_ms: args.ttot_bound_ms,
+                })
+            }
+            TransactionKind::DeactivateOffering(args) => {
+                TK::DeactivateOffering(types::transaction::DeactivateOfferingArgs {
+                    offering_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.offering_id,
+                    )),
+                    model_id: args.model_id,
                 })
             }
 
-            TransactionKind::AddStakeToModel { model_id, coin_ref, amount } => {
-                TK::AddStakeToModel { model_id: model_id.into(), coin_ref: coin_ref.into(), amount }
+            // Provider registry transactions
+            TransactionKind::RegisterProvider(args) => {
+                TK::RegisterProvider(types::transaction::RegisterProviderArgs {
+                    endpoint: args.endpoint,
+                    iroh_endpoint_id: args.iroh_endpoint_id,
+                })
             }
-
-            TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
-                TK::SetModelCommissionRate { model_id: model_id.into(), new_rate }
-            }
-
-            TransactionKind::DeactivateModel { model_id } => {
-                TK::DeactivateModel { model_id: model_id.into() }
-            }
-
-            TransactionKind::ReportModel { model_id } => {
-                TK::ReportModel { model_id: model_id.into() }
-            }
-
-            TransactionKind::UndoReportModel { model_id } => {
-                TK::UndoReportModel { model_id: model_id.into() }
-            }
-
-            // Submission transactions
-            TransactionKind::SubmitData(args) => {
-                let data_manifest = types::submission::SubmissionManifest::new(
-                    args.data_manifest.manifest.try_into()?,
-                );
-                // Convert f32 embedding to SomaTensor
-                let embedding = types::tensor::SomaTensor::new(
-                    args.embedding.clone(),
-                    vec![args.embedding.len()],
-                );
-                let distance_score = types::tensor::SomaTensor::scalar(args.distance_score);
-                let loss_score = types::tensor::SomaTensor::new(
-                    args.loss_score.clone(),
-                    vec![args.loss_score.len()],
-                );
-
-                TK::SubmitData(types::transaction::SubmitDataArgs {
-                    target_id: args.target_id.into(),
-                    data_manifest,
-                    model_id: args.model_id.into(),
-                    embedding,
-                    distance_score,
-                    loss_score,
-                    bond_coin: args.bond_coin.into(),
+            TransactionKind::UpdateProvider(args) => {
+                TK::UpdateProvider(types::transaction::UpdateProviderArgs {
+                    provider_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.provider_id,
+                    )),
+                    endpoint: args.endpoint,
+                    iroh_endpoint_id: args.iroh_endpoint_id,
                 })
             }
 
-            TransactionKind::ClaimRewards(args) => {
-                TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
-                    target_id: args.target_id.into(),
-                    // target_initial_shared_version is ignored from proto - use protocol constant
+            TransactionKind::Settlement(settlement) => {
+                TK::Settlement(types::transaction::SettlementTransaction {
+                    epoch: settlement.epoch,
+                    round: settlement.round,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes: settlement.changes,
+                    delegation_changes: settlement.delegation_changes,
                 })
             }
 
-            TransactionKind::ReportSubmission { target_id } => {
-                TK::ReportSubmission { target_id: target_id.into() }
+            TransactionKind::BalanceTransfer(args) => {
+                TK::BalanceTransfer(types::transaction::BalanceTransferArgs {
+                    coin_type: args.coin_type,
+                    transfers: args
+                        .transfers
+                        .into_iter()
+                        .map(|(addr, amount)| (addr.into(), amount))
+                        .collect(),
+                })
             }
-            TransactionKind::UndoReportSubmission { target_id } => {
-                TK::UndoReportSubmission { target_id: target_id.into() }
-            }
+
+            // Model/Target/Submission transaction kinds have been removed from the domain
+            _ => return Err(SdkTypeConversionError("Unsupported transaction kind".into())),
         })
+    }
+}
+
+/// Parse a CoinType from its proto string representation. Accepts the
+/// labels emitted by `Object::object_type` (e.g. "Coin(SOMA)") and the
+/// short forms used by OpenChannelArgs::token ("SOMA", "USDC").
+fn parse_coin_type(s: &str) -> Result<types::object::CoinType, SdkTypeConversionError> {
+    match s {
+        "SOMA" | "Coin(SOMA)" | "Coin" => Ok(types::object::CoinType::Soma),
+        "USDC" | "Coin(USDC)" => Ok(types::object::CoinType::Usdc),
+        other => Err(SdkTypeConversionError(format!("Unknown coin type: {}", other))),
     }
 }
 
@@ -745,29 +851,28 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
                 .into_iter()
                 .map(|object| (object.object_id.into(), object.kind.into()))
                 .collect(),
+            // TODO(stage-13m+): the SDK-side `TransactionEffects` does
+            // not yet mirror `balance_events` / `delegation_events`.
+            // Indexers and the persistent store read these fields off
+            // the domain `TransactionEffects` directly, so the SDK
+            // round-trip path is not load-bearing for balance
+            // attribution today. When the SDK gains those fields,
+            // remove these empty defaults and forward through.
+            balance_events: vec![],
+            delegation_events: vec![],
         }))
     }
 }
 
 impl From<types::tx_fee::TransactionFee> for crate::types::TransactionFee {
     fn from(value: types::tx_fee::TransactionFee) -> Self {
-        Self {
-            base_fee: value.base_fee,
-            operation_fee: value.operation_fee,
-            value_fee: value.value_fee,
-            total_fee: value.total_fee,
-        }
+        Self { total_fee: value.total_fee }
     }
 }
 
 impl From<crate::types::TransactionFee> for types::tx_fee::TransactionFee {
     fn from(value: crate::types::TransactionFee) -> Self {
-        Self {
-            base_fee: value.base_fee,
-            operation_fee: value.operation_fee,
-            value_fee: value.value_fee,
-            total_fee: value.total_fee,
-        }
+        Self { total_fee: value.total_fee }
     }
 }
 
@@ -824,6 +929,16 @@ impl From<types::object::Owner> for Owner {
                 Self::Shared(initial_shared_version.value())
             }
             types::object::Owner::Immutable => Self::Immutable,
+            types::object::Owner::Accumulator { kind } => Self::Accumulator {
+                kind: match kind {
+                    types::object::AccumulatorKind::Balance => {
+                        crate::types::AccumulatorKind::Balance
+                    }
+                    types::object::AccumulatorKind::Delegation => {
+                        crate::types::AccumulatorKind::Delegation
+                    }
+                },
+            },
         }
     }
 }
@@ -836,6 +951,16 @@ impl From<Owner> for types::object::Owner {
                 initial_shared_version: types::object::Version::from_u64(initial_shared_version),
             },
             Owner::Immutable => types::object::Owner::Immutable,
+            Owner::Accumulator { kind } => types::object::Owner::Accumulator {
+                kind: match kind {
+                    crate::types::AccumulatorKind::Balance => {
+                        types::object::AccumulatorKind::Balance
+                    }
+                    crate::types::AccumulatorKind::Delegation => {
+                        types::object::AccumulatorKind::Delegation
+                    }
+                },
+            },
         }
     }
 }
@@ -1141,10 +1266,21 @@ impl From<types::effects::object_change::ObjectIn> for ObjectIn {
 
 impl From<types::effects::object_change::ObjectOut> for ObjectOut {
     fn from(value: types::effects::object_change::ObjectOut) -> Self {
+        use types::effects::object_change::AccumulatorOperation;
         match value {
             types::effects::object_change::ObjectOut::NotExist => Self::NotExist,
             types::effects::object_change::ObjectOut::ObjectWrite((digest, owner)) => {
                 Self::ObjectWrite { digest: digest.into(), owner: owner.into() }
+            }
+            types::effects::object_change::ObjectOut::AccumulatorWriteV1(write) => {
+                Self::AccumulatorWriteV1 {
+                    operation: match write.operation {
+                        AccumulatorOperation::Merge => "Merge",
+                        AccumulatorOperation::Split => "Split",
+                    }
+                    .to_string(),
+                    amount: write.value.as_u64(),
+                }
             }
         }
     }
@@ -1174,10 +1310,31 @@ impl From<ObjectIn> for types::effects::object_change::ObjectIn {
 
 impl From<ObjectOut> for types::effects::object_change::ObjectOut {
     fn from(value: ObjectOut) -> Self {
+        // SDK -> domain conversion. The SDK-side AccumulatorWriteV1
+        // doesn't carry the natural-key (owner, coin_type) — only the
+        // operation and amount. To reconstruct the domain
+        // `AccumulatorWriteV1`, callers would need to look up the
+        // accumulator object by its parent ChangedObject's ID; that
+        // requires a store handle the conversion doesn't have.
+        //
+        // Stage 14c.1 leaves this conversion as best-effort: SDK
+        // AccumulatorWriteV1 maps to a domain placeholder so the
+        // round-trip compiles. Production indexers consume domain
+        // effects directly off the wire (BCS), not via SDK
+        // round-trip, so this gap is non-load-bearing today. When
+        // the SDK boundary needs the full record, extend the SDK
+        // type to carry the (owner, coin_type) tuple.
         match value {
             ObjectOut::NotExist => Self::NotExist,
             ObjectOut::ObjectWrite { digest, owner } => {
                 Self::ObjectWrite((digest.into(), owner.into()))
+            }
+            ObjectOut::AccumulatorWriteV1 { .. } => {
+                // TODO(stage-14c+): fill in once the SDK type carries
+                // the natural-key tuple. For now, fall back to
+                // NotExist so any client that round-trips through SDK
+                // doesn't crash.
+                Self::NotExist
             }
         }
     }
@@ -1197,6 +1354,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
     fn from(value: types::effects::ExecutionFailureStatus) -> Self {
         match value {
             types::effects::ExecutionFailureStatus::InsufficientGas => Self::InsufficientGas,
+            types::effects::ExecutionFailureStatus::InvalidGasCoinType { object_id } => {
+                Self::InvalidGasCoinType { object_id: object_id.into() }
+            }
             types::effects::ExecutionFailureStatus::InvalidOwnership {
                 object_id,
                 expected_owner,
@@ -1283,12 +1443,6 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::EmbeddingDimensionMismatch { expected, actual } => {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
-            types::effects::ExecutionFailureStatus::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold {
-                    score: score.as_scalar(),
-                    threshold: threshold.as_scalar(),
-                }
-            }
             types::effects::ExecutionFailureStatus::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
             }
@@ -1339,6 +1493,135 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
             }
+            // Marketplace errors
+            types::effects::ExecutionFailureStatus::AskNotFound
+            | types::effects::ExecutionFailureStatus::AskNotOpen
+            | types::effects::ExecutionFailureStatus::AskExpired
+            | types::effects::ExecutionFailureStatus::AskAlreadyFilled
+            | types::effects::ExecutionFailureStatus::AskHasAcceptedBids
+            | types::effects::ExecutionFailureStatus::BidNotFound
+            | types::effects::ExecutionFailureStatus::BidNotPending
+            | types::effects::ExecutionFailureStatus::BidPriceTooHigh
+            | types::effects::ExecutionFailureStatus::SellerCannotBidOnOwnAsk
+            | types::effects::ExecutionFailureStatus::SettlementNotFound
+            | types::effects::ExecutionFailureStatus::SettlementAlreadyRatedNegative
+            | types::effects::ExecutionFailureStatus::RatingDeadlinePassed
+            | types::effects::ExecutionFailureStatus::VaultNotFound
+            | types::effects::ExecutionFailureStatus::InsufficientVaultBalance
+            | types::effects::ExecutionFailureStatus::WrongCoinTypeForPayment => {
+                Self::OtherError(value.to_string())
+            }
+            // Bridge errors
+            types::effects::ExecutionFailureStatus::BridgePaused
+            | types::effects::ExecutionFailureStatus::BridgeNonceAlreadyProcessed
+            | types::effects::ExecutionFailureStatus::BridgeInsufficientSignatureStake
+            | types::effects::ExecutionFailureStatus::BridgeSystemMessageSeqMismatch { .. }
+            | types::effects::ExecutionFailureStatus::BridgeAlreadyPaused
+            | types::effects::ExecutionFailureStatus::BridgeNotPaused
+            | types::effects::ExecutionFailureStatus::BridgeAmountZero
+            | types::effects::ExecutionFailureStatus::BridgeSupplyUnderflow
+            | types::effects::ExecutionFailureStatus::BridgeBlocklistPayloadTooLarge { .. }
+            | types::effects::ExecutionFailureStatus::BridgeUrlTooLong { .. } => {
+                Self::OtherError(value.to_string())
+            }
+
+            // Payment-channel errors — typed at the rpc::types layer so
+            // integrators can match on them programmatically.
+            types::effects::ExecutionFailureStatus::ChannelCallerNotPayee {
+                expected,
+                actual,
+            } => Self::ChannelCallerNotPayee {
+                expected: expected.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::ChannelCallerNotPayer {
+                expected,
+                actual,
+            } => Self::ChannelCallerNotPayer {
+                expected: expected.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::ChannelVoucherNotMonotonic {
+                cumulative,
+                settled,
+            } => Self::ChannelVoucherNotMonotonic { cumulative, settled },
+            types::effects::ExecutionFailureStatus::ChannelOverspend {
+                cumulative,
+                available,
+            } => Self::ChannelOverspend { cumulative, available },
+            types::effects::ExecutionFailureStatus::ChannelGraceNotElapsed {
+                now_ms,
+                earliest_ms,
+            } => Self::ChannelGraceNotElapsed { now_ms, earliest_ms },
+            types::effects::ExecutionFailureStatus::ChannelCloseAlreadyPending => {
+                Self::ChannelCloseAlreadyPending
+            }
+            types::effects::ExecutionFailureStatus::ChannelNoCloseRequest => {
+                Self::ChannelNoCloseRequest
+            }
+            types::effects::ExecutionFailureStatus::ChannelInvalidVoucherSignature {
+                reason,
+            } => Self::ChannelInvalidVoucherSignature { reason },
+            types::effects::ExecutionFailureStatus::ChannelAmountZero => {
+                Self::ChannelAmountZero
+            }
+            types::effects::ExecutionFailureStatus::ChannelInvalidInput { reason } => {
+                Self::ChannelInvalidInput { reason }
+            }
+            types::effects::ExecutionFailureStatus::ChannelCoinTypeMismatch => {
+                Self::ChannelCoinTypeMismatch
+            }
+            types::effects::ExecutionFailureStatus::NotAChannel { object_id } => {
+                Self::NotAChannel { object_id: object_id.into() }
+            }
+            types::effects::ExecutionFailureStatus::ChannelClockMissing => {
+                Self::ChannelClockMissing
+            }
+
+            // Provider registry errors
+            types::effects::ExecutionFailureStatus::ProviderAlreadyExists => {
+                Self::ProviderAlreadyExists
+            }
+            types::effects::ExecutionFailureStatus::ProviderNotFound => Self::ProviderNotFound,
+            types::effects::ExecutionFailureStatus::ProviderCallerMismatch => {
+                Self::ProviderCallerMismatch
+            }
+            types::effects::ExecutionFailureStatus::ProviderInvalidEndpoint { reason } => {
+                Self::ProviderInvalidEndpoint { reason }
+            }
+            types::effects::ExecutionFailureStatus::ProviderClockMissing => {
+                Self::ProviderClockMissing
+            }
+            types::effects::ExecutionFailureStatus::ChannelTooManyOpenForPair {
+                current,
+                max,
+            } => Self::ChannelTooManyOpenForPair { current, max },
+            types::effects::ExecutionFailureStatus::ChannelInboxPayeeMismatch {
+                declared,
+                actual,
+            } => Self::ChannelInboxPayeeMismatch {
+                declared: declared.into(),
+                actual: actual.into(),
+            },
+            types::effects::ExecutionFailureStatus::NotAProviderInbox { object_id } => {
+                Self::NotAProviderInbox { object_id: object_id.into() }
+            }
+
+            // Per-(provider, model) Offering errors — dedicated rpc::types variants.
+            types::effects::ExecutionFailureStatus::OfferingAlreadyExists => {
+                Self::OfferingAlreadyExists
+            }
+            types::effects::ExecutionFailureStatus::OfferingNotFound => Self::OfferingNotFound,
+            types::effects::ExecutionFailureStatus::OfferingCallerMismatch => {
+                Self::OfferingCallerMismatch
+            }
+            types::effects::ExecutionFailureStatus::OfferingUnknownModel { model_id } => {
+                Self::OfferingUnknownModel { model_id }
+            }
+            types::effects::ExecutionFailureStatus::ChannelOfferingMissing {
+                payee,
+                model_id,
+            } => Self::ChannelOfferingMissing { payee: payee.into(), model_id },
         }
     }
 }
@@ -1347,6 +1630,9 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
     fn from(value: ExecutionError) -> Self {
         match value {
             ExecutionError::InsufficientGas => Self::InsufficientGas,
+            ExecutionError::InvalidGasCoinType { object_id } => {
+                Self::InvalidGasCoinType { object_id: object_id.into() }
+            }
             ExecutionError::InvalidOwnership { object_id } => Self::InvalidOwnership {
                 object_id: object_id.into(),
                 expected_owner: object_id.into(), // TODO: change this
@@ -1357,8 +1643,8 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             }
             ExecutionError::InvalidObjectType { object_id } => Self::InvalidObjectType {
                 object_id: object_id.into(),
-                expected_type: types::object::ObjectType::Coin, // TODO: change this
-                actual_type: types::object::ObjectType::Coin,   // TODO: change this
+                expected_type: types::object::ObjectType::Coin(types::object::CoinType::Soma), // TODO: change this
+                actual_type: types::object::ObjectType::Coin(types::object::CoinType::Soma), // TODO: change this
             },
             ExecutionError::InvalidTransactionType => Self::InvalidTransactionType,
             ExecutionError::InvalidArguments { reason } => Self::InvalidArguments { reason },
@@ -1416,12 +1702,6 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::EmbeddingDimensionMismatch { expected, actual } => {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
-            ExecutionError::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold {
-                    score: types::tensor::SomaTensor::scalar(score),
-                    threshold: types::tensor::SomaTensor::scalar(threshold),
-                }
-            }
             ExecutionError::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
             }
@@ -1459,6 +1739,66 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::OtherError(string) => {
                 Self::SomaError(types::error::SomaError::from(string))
             }
+
+            // Payment-channel errors — typed both directions.
+            ExecutionError::ChannelCallerNotPayee { expected, actual } => {
+                Self::ChannelCallerNotPayee { expected: expected.into(), actual: actual.into() }
+            }
+            ExecutionError::ChannelCallerNotPayer { expected, actual } => {
+                Self::ChannelCallerNotPayer { expected: expected.into(), actual: actual.into() }
+            }
+            ExecutionError::ChannelVoucherNotMonotonic { cumulative, settled } => {
+                Self::ChannelVoucherNotMonotonic { cumulative, settled }
+            }
+            ExecutionError::ChannelOverspend { cumulative, available } => {
+                Self::ChannelOverspend { cumulative, available }
+            }
+            ExecutionError::ChannelGraceNotElapsed { now_ms, earliest_ms } => {
+                Self::ChannelGraceNotElapsed { now_ms, earliest_ms }
+            }
+            ExecutionError::ChannelCloseAlreadyPending => Self::ChannelCloseAlreadyPending,
+            ExecutionError::ChannelNoCloseRequest => Self::ChannelNoCloseRequest,
+            ExecutionError::ChannelInvalidVoucherSignature { reason } => {
+                Self::ChannelInvalidVoucherSignature { reason }
+            }
+            ExecutionError::ChannelAmountZero => Self::ChannelAmountZero,
+            ExecutionError::ChannelInvalidInput { reason } => Self::ChannelInvalidInput { reason },
+            ExecutionError::ChannelCoinTypeMismatch => Self::ChannelCoinTypeMismatch,
+            ExecutionError::NotAChannel { object_id } => {
+                Self::NotAChannel { object_id: object_id.into() }
+            }
+            ExecutionError::ChannelClockMissing => Self::ChannelClockMissing,
+
+            // Provider registry errors
+            ExecutionError::ProviderAlreadyExists => Self::ProviderAlreadyExists,
+            ExecutionError::ProviderNotFound => Self::ProviderNotFound,
+            ExecutionError::ProviderCallerMismatch => Self::ProviderCallerMismatch,
+            ExecutionError::ProviderInvalidEndpoint { reason } => {
+                Self::ProviderInvalidEndpoint { reason }
+            }
+            ExecutionError::ProviderClockMissing => Self::ProviderClockMissing,
+
+            // Per-pair channel cap (ProviderInbox) errors
+            ExecutionError::ChannelTooManyOpenForPair { current, max } => {
+                Self::ChannelTooManyOpenForPair { current, max }
+            }
+            ExecutionError::ChannelInboxPayeeMismatch { declared, actual } => {
+                Self::ChannelInboxPayeeMismatch { declared: declared.into(), actual: actual.into() }
+            }
+            ExecutionError::NotAProviderInbox { object_id } => {
+                Self::NotAProviderInbox { object_id: object_id.into() }
+            }
+
+            ExecutionError::OfferingAlreadyExists => Self::OfferingAlreadyExists,
+            ExecutionError::OfferingNotFound => Self::OfferingNotFound,
+            ExecutionError::OfferingCallerMismatch => Self::OfferingCallerMismatch,
+            ExecutionError::OfferingUnknownModel { model_id } => {
+                Self::OfferingUnknownModel { model_id }
+            }
+            ExecutionError::ChannelOfferingMissing { payee, model_id } => {
+                Self::ChannelOfferingMissing { payee: payee.into(), model_id }
+            }
+
             _ => unreachable!("sdk shouldn't have a variant that the mono repo doesn't"),
         }
     }
@@ -1631,32 +1971,6 @@ impl TryFrom<Manifest> for types::metadata::Manifest {
                 Ok(types::metadata::Manifest::V1(types::metadata::ManifestV1::new(url, metadata)))
             }
         }
-    }
-}
-
-// ============================================================================
-// ModelWeightsManifest conversions
-// ============================================================================
-
-impl From<types::model::ModelWeightsManifest> for ModelWeightsManifest {
-    fn from(value: types::model::ModelWeightsManifest) -> Self {
-        Self {
-            manifest: value.manifest.into(),
-            decryption_key: value.decryption_key.as_bytes().to_vec(),
-        }
-    }
-}
-
-impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: ModelWeightsManifest) -> Result<Self, Self::Error> {
-        let manifest = value.manifest.try_into()?;
-        let key_array: [u8; 32] = value
-            .decryption_key
-            .try_into()
-            .map_err(|_| SdkTypeConversionError("decryption_key must be 32 bytes".into()))?;
-        Ok(Self { manifest, decryption_key: types::crypto::DecryptionKey::new(key_array) })
     }
 }
 

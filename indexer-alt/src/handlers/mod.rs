@@ -11,7 +11,7 @@ use types::effects::TransactionEffectsAPI;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::{Object, ObjectID, Owner};
 
-pub mod coin_balance_buckets;
+// Stage 13i: coin_balance_buckets handler removed.
 pub mod cp_sequence_numbers;
 pub mod kv_checkpoints;
 pub mod kv_epoch_ends;
@@ -20,19 +20,20 @@ pub mod kv_objects;
 pub mod kv_transactions;
 pub mod obj_info;
 pub mod obj_versions;
+pub mod soma_balance_deltas;
+pub mod soma_bridge_deposits;
+pub mod soma_channel_events;
+pub mod soma_channel_ratings;
+pub mod soma_channels;
 pub mod soma_epoch_state;
-pub mod soma_models;
-pub mod soma_reward_balances;
-pub mod soma_rewards;
-pub mod soma_staked_soma;
-pub mod soma_target_reports;
-pub mod soma_targets;
+pub mod soma_inference_settlements;
+pub mod soma_offerings;
+pub mod soma_providers;
 pub mod soma_tx_details;
 pub mod soma_validators;
 pub mod tx_affected_addresses;
 pub mod tx_affected_objects;
 pub mod tx_balance_changes;
-pub mod tx_calls;
 pub mod tx_digests;
 pub mod tx_kinds;
 

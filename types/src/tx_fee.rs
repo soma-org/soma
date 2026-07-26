@@ -1,54 +1,31 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 
+/// The total fee deducted from a transaction's gas coin.
+///
+/// Tx fee = `unit_fee * executor.fee_units(...)`. Each executor decides how
+/// many units its op costs based on op shape; the protocol-level `unit_fee`
+/// (in shannons) sets the price per unit.
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct TransactionFee {
-    // Base transaction fee
-    pub base_fee: u64,
-    // Fee for each object operation (reads and writes)
-    pub operation_fee: u64,
-    // Fee based on transaction value
-    pub value_fee: u64,
-    // Total fee deducted
+    /// Total fee deducted (in shannons).
     pub total_fee: u64,
 }
 
 impl TransactionFee {
-    pub fn new(base_fee: u64, operation_fee: u64, value_fee: u64) -> Self {
-        let total_fee = base_fee.saturating_add(operation_fee).saturating_add(value_fee);
-
-        Self { base_fee, operation_fee, value_fee, total_fee }
+    pub fn new(total_fee: u64) -> Self {
+        Self { total_fee }
     }
 
+    /// Sum the fees across an iterator of transaction effects.
     pub fn new_from_txn_effects<'a>(
         transactions: impl Iterator<Item = &'a TransactionEffects>,
     ) -> TransactionFee {
-        let (base_fees, operation_fees, value_fees, total_fees): (
-            Vec<u64>,
-            Vec<u64>,
-            Vec<u64>,
-            Vec<u64>,
-        ) = transactions
-            .map(|e| {
-                (
-                    e.transaction_fee().base_fee,
-                    e.transaction_fee().operation_fee,
-                    e.transaction_fee().value_fee,
-                    e.transaction_fee().total_fee,
-                )
-            })
-            .multiunzip();
-
-        TransactionFee {
-            base_fee: base_fees.iter().sum(),
-            operation_fee: operation_fees.iter().sum(),
-            value_fee: value_fees.iter().sum(),
-            total_fee: total_fees.iter().sum(),
-        }
+        let total_fee = transactions.map(|e| e.transaction_fee().total_fee).sum();
+        TransactionFee { total_fee }
     }
 }

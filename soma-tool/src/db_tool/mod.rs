@@ -128,12 +128,8 @@ pub enum DbToolCommand {
 
     /// Search the owner index by address
     IndexSearchOwner(index_search::OwnerSearchOptions),
-
-    /// Search the balance index by address
-    IndexSearchBalance(index_search::BalanceSearchOptions),
-
-    /// Search the target index
-    IndexSearchTarget(index_search::TargetSearchOptions),
+    // Stage 13i: IndexSearchBalance removed — the rpc_index no
+    // longer tracks balances. Use the gRPC GetBalance RPC instead.
 }
 
 pub fn print_db_all_tables(db_path: PathBuf) -> anyhow::Result<()> {
@@ -215,14 +211,6 @@ pub async fn execute_db_tool_command(db_path: PathBuf, cmd: DbToolCommand) -> an
 
         DbToolCommand::IndexSearchOwner(opts) => {
             index_search::search_owner_index(db_path, opts)?;
-        }
-
-        DbToolCommand::IndexSearchBalance(opts) => {
-            index_search::search_balance_index(db_path, opts)?;
-        }
-
-        DbToolCommand::IndexSearchTarget(opts) => {
-            index_search::search_target_index(db_path, opts)?;
         }
     }
     Ok(())

@@ -2,21 +2,21 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Transfer an object to a recipient
+Transfer SOMA or USDC to a recipient
 
-Usage: soma transfer [OPTIONS] --to <TO> --object-id <OBJECT_ID>
+Usage: soma transfer [OPTIONS] <COMMAND>
+
+Commands:
+  soma  Transfer SOMA to a recipient
+  usdc  Transfer USDC to a recipient
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
-      --to <TO>                         Recipient address or alias
-      --object-id <OBJECT_ID>           Object ID to transfer
-      --gas <GAS>                       Gas object (auto-selected if not provided)
-      --tx-digest                       Compute the transaction digest and print it out, but do not execute
-      --simulate                        Perform a dry run (simulation) of the transaction, without executing it
-      --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
-      --serialize-signed-transaction    Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
-      --json                            Output as JSON
-  -h, --help                            Print help
+      --json  Output as JSON
+  -h, --help  Print help
 
 EXAMPLES:
-    soma transfer --to 0x1234...5678 --object-id 0xABCD...
-    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS...
+    soma transfer soma 10 0x1234...5678
+    soma transfer usdc 1.50 alice
+
+For non-fungible transfers (objects), use `soma object transfer`.

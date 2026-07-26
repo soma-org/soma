@@ -38,12 +38,10 @@ async fn make_add_stake_consensus_tx(
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let gas_ref = gas_object.compute_object_reference();
+    // Stage 9d-C2: AddStake is balance-mode — the SOMA stake debit
+    // comes from the sender's accumulator, not a coin reference.
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas_ref,
-            amount: Some(1_000_000),
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         vec![gas_ref],
     );
@@ -51,7 +49,9 @@ async fn make_add_stake_consensus_tx(
     ConsensusTransaction::new_user_transaction_message(&authority.name, tx)
 }
 
-/// Helper: create a TransferCoin consensus transaction (owned objects only).
+/// Helper: create a BalanceTransfer consensus transaction.
+/// Stage 13b: balance-mode only. Seeds the sender's SOMA
+/// accumulator so the reservation pre-pass admits the tx.
 async fn make_transfer_consensus_tx(
     authority: &crate::authority::AuthorityState,
 ) -> ConsensusTransaction {
@@ -60,10 +60,18 @@ async fn make_transfer_consensus_tx(
     let gas_object_id = ObjectID::random();
     let gas_object = Object::with_id_owner_coin_for_testing(gas_object_id, sender, 10_000_000_000);
     authority.insert_genesis_object(gas_object.clone()).await;
+    // Seed SOMA accumulator so the BalanceTransfer reservation passes.
+    authority
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, 10_000_000_000)
+        .unwrap();
 
     let gas_ref = gas_object.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_ref, amount: Some(1_000), recipient },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(recipient, 1_000)],
+        }),
         sender,
         vec![gas_ref],
     );
@@ -137,10 +145,13 @@ async fn test_consensus_handler_deduplication() {
     let total_schedulables: usize =
         captured.iter().map(|(schedulables, _, _)| schedulables.len()).sum();
 
-    // commit1: 1 CCP + 1 user tx = 2; commit2: 1 CCP + 0 user tx (deduped) = 1
-    // Total should be <= 3 (allowing for CCP in each commit + 1 user tx)
+    // commit1: 1 CCP + 1 user tx + 1 Settlement = 3
+    // commit2: 1 CCP + 0 user tx (deduped) + 1 Settlement = 2
+    // Total = 5; bound to <= 5 to leave a small slack for CCP-skip cases.
+    // (Stage 6a added the per-commit Settlement injection — see
+    // `process_transactions` in consensus_handler.rs.)
     assert!(
-        total_schedulables <= 4,
+        total_schedulables <= 5,
         "Expected deduplication to prevent duplicate user tx: got {} total schedulables",
         total_schedulables,
     );

@@ -37,6 +37,12 @@ message SystemState {
   optional bool safe_mode = 14;
   optional uint64 safe_mode_accumulated_fees = 15;
   optional uint64 safe_mode_accumulated_emissions = 16;
+
+  // Bridge state (pause flag, committee, registrations, nonces).
+  // Mirrors `types::bridge::BridgeState`. Consumers read this for
+  // committee discovery, replay-defense checks, and the watchdog
+  // conservation invariant.
+  optional BridgeState bridge_state = 17;
 }
 
 message ReporterSet {
@@ -45,49 +51,15 @@ message ReporterSet {
 
 message SystemParameters {
   optional uint64 epoch_duration_ms = 1;
-  optional uint64 validator_reward_allocation_bps = 2;
 
-  // Model parameters
-  optional uint64 model_min_stake = 3;
-  optional uint64 model_architecture_version = 4;
-  optional uint64 model_reveal_slash_rate_bps = 5;
-  optional uint64 model_tally_slash_rate_bps = 6;
+  // Per-unit fee. Tx fee = unit_fee * executor.fee_units(...).
+  optional uint64 unit_fee = 2;
 
-  // Fee parameters
-  optional uint64 target_epoch_fee_collection = 7;
-  optional uint64 base_fee = 8;
-  optional uint64 write_object_fee = 9;
-  optional uint64 value_fee_bps = 10;
-  optional uint64 min_value_fee_bps = 11;
-  optional uint64 max_value_fee_bps = 12;
-  optional uint64 fee_adjustment_rate_bps = 13;
-
-  // Target/Submission parameters
-  optional uint64 target_models_per_target = 14;
-  optional uint64 target_embedding_dim = 15;
-  optional float target_initial_distance_threshold = 16;
-  optional uint64 target_reward_allocation_bps = 17;
-  optional uint64 target_hits_per_epoch = 18;
-  optional uint64 target_hits_ema_decay_bps = 19;
-  optional uint64 target_difficulty_adjustment_rate_bps = 20;
-  optional float target_max_distance_threshold = 21;
-  optional float target_min_distance_threshold = 22;
-  optional uint64 target_initial_targets_per_epoch = 23;
-
-  // Reward distribution parameters
-  optional uint64 target_submitter_reward_share_bps = 24;
-  optional uint64 target_model_reward_share_bps = 25;
-  optional uint64 target_claimer_incentive_bps = 26;
-
-  // Submission parameters
-  optional uint64 submission_bond_per_byte = 27;
-
-  // Challenge parameters
-  optional uint64 challenger_bond_per_byte = 28;
-  // challenge_distance_epsilon removed - using Burn's Tolerance::permissive() instead
-
-  // Data size limit
-  optional uint64 max_submission_data_size = 30;
+  // Payment-channel grace period: how long after `RequestClose`
+  // a payer must wait before they can call `WithdrawAfterTimeout`.
+  // Surfaced so wallets/proxies can compute "earliest withdrawable"
+  // without reading the SystemState BCS directly.
+  optional uint64 channel_grace_period_ms = 3;
 }
 
 message EmissionPool {
@@ -113,7 +85,6 @@ message Validator {
   optional string net_address = 5;
   optional string p2p_address = 6;
   optional string primary_address = 7;
-  optional string proxy_address = 19;  // HTTP proxy address for serving data/model downloads
 
   optional uint64 voting_power = 8;
   optional uint64 commission_rate = 9;
@@ -129,7 +100,6 @@ message Validator {
   optional string next_epoch_net_address = 16;
   optional string next_epoch_p2p_address = 17;
   optional string next_epoch_primary_address = 18;
-  optional string next_epoch_proxy_address = 20;  // HTTP proxy address for next epoch
 
   // Proof of possession for the protocol key (BLS signature)
   optional bytes proof_of_possession = 21;
@@ -312,5 +282,86 @@ message Challenge {
 
   // Winning model ID used by submitter
   optional string winning_model_id = 11;
+}
+
+// =============================================================================
+// Bridge state (`SystemState.bridge_state`)
+// =============================================================================
+// Mirror of `types::bridge::BridgeState`. Carries everything bridge nodes
+// and external observers need to verify committee membership, replay
+// defense state, and the conservation invariant — without falling back to
+// raw BCS reads of the SystemState object.
+
+message BridgeState {
+  // Pause flag set by EmergencyPause / cleared by EmergencyUnpause.
+  optional bool paused = 1;
+
+  // Monotonic counter assigned to each outbound USDC withdrawal. The
+  // PendingWithdrawal `nonce` field is this value at the time the
+  // withdrawal was created.
+  optional uint64 next_withdrawal_nonce = 2;
+
+  // Live committee — populated at epoch boundaries by
+  // `try_rotate_committee` reading the BridgeRegistrations below.
+  optional BridgeCommittee bridge_committee = 3;
+
+  // Replay defense for inbound USDC deposits. Each deposit's nonce is
+  // added on successful execution; later attempts to reuse the same
+  // nonce are rejected. Grows monotonically.
+  repeated uint64 processed_deposit_nonces = 4;
+
+  // Per-message-type sequence numbers for system messages
+  // (EmergencyOp = 2, UpdateCommitteeBlocklist = 4, LimitUpdate = 5,
+  // EvmContractUpgrade = 6). Token transfers don't consume from this
+  // map. Keys are `BridgeMessageType` discriminants (u8 widened to
+  // uint32 for proto compatibility).
+  map<uint32, uint64> system_message_seq_nums = 5;
+
+  // Pre-registered bridge keys awaiting the next committee rotation.
+  // Cleared on each successful `try_rotate_committee`.
+  // Key: validator Soma address (hex, no 0x prefix).
+  map<string, BridgeRegistration> bridge_registrations = 6;
+
+  // Running total of USDC minted on Soma minus USDC burned, in raw
+  // 6-decimal units. The watchdog reads this for the conservation
+  // invariant against the Eth-side vault balance.
+  optional uint64 total_usdc_supply = 7;
+}
+
+// Committee active in the current epoch. Keyed by bridge pubkey so
+// signature verification can ecrecover and look up directly.
+message BridgeCommittee {
+  // Bridge pubkey (33-byte compressed secp256k1, hex-encoded) -> member.
+  map<string, BridgeMember> members = 1;
+
+  // Voting-power thresholds in basis points (1 BPS = 0.01%).
+  optional uint64 threshold_deposit = 2;       // f+1 (~3334)
+  optional uint64 threshold_withdraw = 3;      // f+1 (~3334)
+  optional uint64 threshold_pause = 4;         // small minority (~450)
+  optional uint64 threshold_unpause = 5;       // 5001 (50.01%)
+  optional uint64 threshold_blocklist = 6;     // 5001
+  optional uint64 threshold_limit_update = 7;  // 5001
+  optional uint64 threshold_evm_upgrade = 8;   // 5001
+}
+
+message BridgeMember {
+  // Validator soma address (hex, no 0x prefix). Audit/lookup only —
+  // sig verification uses the pubkey (map key in `BridgeCommittee.members`).
+  optional string soma_address = 1;
+  optional uint64 voting_power = 2;
+  // Public HTTP URL the validator's bridge node listens on for
+  // peer sig-request RPCs.
+  optional string http_url = 3;
+  // Blocklisted members stay in the map (so peers recognize their
+  // sigs rather than getting "unknown signer" errors) but contribute
+  // 0 voting power to threshold checks.
+  optional bool is_blocklisted = 4;
+}
+
+message BridgeRegistration {
+  // 33-byte compressed secp256k1 pubkey (raw bytes, not hex).
+  optional bytes bridge_pubkey = 1;
+  // Public HTTP URL the validator will run its bridge node on.
+  optional string http_url = 2;
 }
 

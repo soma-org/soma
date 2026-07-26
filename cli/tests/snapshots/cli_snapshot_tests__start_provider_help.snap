@@ -1,0 +1,28 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Run the provider-side inference daemon (formerly `soma inference serve`)
+
+Fronts an OpenAI-compatible upstream behind SomaPay-authorized `/v1/chat/completions`. Backends today: openrouter, vast.
+
+Usage: soma start provider [OPTIONS] --config <CONFIG>
+
+Options:
+      --config <CONFIG>
+          Path to the provider TOML config (carries the model catalog + backend selection — no chain config)
+
+      --address <ADDRESS>
+          Address whose key signs both on-chain ops and HTTP vouchers. Defaults to the wallet's active address
+
+      --client <CLIENT>
+          Path to the soma client config (defaults to ~/.soma/client.yaml)
+
+      --soma-home <SOMA_HOME>
+          Soma home (for the per-channel provider ledger). Defaults to ~/.soma
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+EXAMPLE:
+    soma start provider --config provider.toml

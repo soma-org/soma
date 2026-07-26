@@ -11,7 +11,6 @@
 //! Update snapshots: cargo insta review
 
 use assert_cmd::Command;
-use predicates::prelude::*;
 
 fn soma_cmd() -> Command {
     Command::cargo_bin("soma").expect("soma binary should be built")
@@ -68,32 +67,23 @@ fn test_balance_help() {
 }
 
 #[test]
-fn test_send_help() {
-    let output =
-        soma_cmd().args(["send", "--help"]).output().expect("failed to run soma send --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("send_help", stdout);
-}
-
-#[test]
-fn test_model_help() {
-    let output =
-        soma_cmd().args(["model", "--help"]).output().expect("failed to run soma model --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("model_help", stdout);
-}
-
-#[test]
-fn test_model_commit_help() {
+fn test_start_provider_help() {
     let output = soma_cmd()
-        .args(["model", "commit", "--help"])
+        .args(["start", "provider", "--help"])
         .output()
-        .expect("failed to run soma model commit --help");
+        .expect("failed to run soma start provider --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("model_commit_help", stdout);
+    insta::assert_snapshot!("start_provider_help", stdout);
+}
+
+#[test]
+fn test_proxy_help() {
+    let output =
+        soma_cmd().args(["proxy", "--help"]).output().expect("failed to run soma proxy --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("proxy_help", stdout);
 }
 
 #[test]
@@ -144,15 +134,6 @@ fn test_stake_help() {
 }
 
 #[test]
-fn test_pay_help() {
-    let output =
-        soma_cmd().args(["pay", "--help"]).output().expect("failed to run soma pay --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("pay_help", stdout);
-}
-
-#[test]
 fn test_transfer_help() {
     let output = soma_cmd()
         .args(["transfer", "--help"])
@@ -164,21 +145,12 @@ fn test_transfer_help() {
 }
 
 #[test]
-fn test_unstake_help() {
+fn test_object_help() {
     let output =
-        soma_cmd().args(["unstake", "--help"]).output().expect("failed to run soma unstake --help");
+        soma_cmd().args(["object", "--help"]).output().expect("failed to run soma object --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("unstake_help", stdout);
-}
-
-#[test]
-fn test_objects_help() {
-    let output =
-        soma_cmd().args(["objects", "--help"]).output().expect("failed to run soma objects --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("objects_help", stdout);
+    insta::assert_snapshot!("object_help", stdout);
 }
 
 #[test]
@@ -187,15 +159,6 @@ fn test_tx_help() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     insta::assert_snapshot!("tx_help", stdout);
-}
-
-#[test]
-fn test_target_help() {
-    let output =
-        soma_cmd().args(["target", "--help"]).output().expect("failed to run soma target --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("target_help", stdout);
 }
 
 #[test]
@@ -226,15 +189,6 @@ fn test_keytool_help() {
 }
 
 #[test]
-fn test_faucet_help() {
-    let output =
-        soma_cmd().args(["faucet", "--help"]).output().expect("failed to run soma faucet --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("faucet_help", stdout);
-}
-
-#[test]
 fn test_completions_help() {
     let output = soma_cmd()
         .args(["completions", "--help"])
@@ -252,20 +206,6 @@ fn test_completions_help() {
 #[test]
 fn test_unknown_command() {
     soma_cmd().arg("nonexistent-command").assert().failure();
-}
-
-#[test]
-fn test_send_missing_required_args() {
-    soma_cmd().args(["send"]).assert().failure().stderr(predicate::str::contains("--to"));
-}
-
-#[test]
-fn test_model_commit_missing_args() {
-    soma_cmd()
-        .args(["model", "commit"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--weights-file"));
 }
 
 // =============================================================================

@@ -10,7 +10,7 @@
 #![allow(clippy::nonminimal_bool)]
 #![allow(clippy::unnecessary_unwrap)]
 
-pub mod audit_service;
+pub mod accumulators;
 pub mod authority;
 pub mod authority_aggregator;
 pub mod authority_client;
@@ -36,14 +36,13 @@ pub mod execution;
 pub mod execution_driver;
 pub mod execution_scheduler;
 pub mod fallback_fetch;
-pub mod fullnode_proxy;
 pub mod global_state_hasher;
 pub mod mysticeti_adapter;
-pub mod proxy_server;
 pub mod reconfiguration;
 pub mod rpc_index;
 pub mod safe_client;
 pub mod server;
+pub mod settlement_scheduler;
 pub mod shared_obj_version_manager;
 pub mod signature_verifier;
 pub mod stake_aggregator;
@@ -63,17 +62,12 @@ pub mod validator_tx_finalizer;
 #[cfg(test)]
 pub mod test_authority_clients;
 
-#[cfg(test)]
-#[path = "unit_tests/pay_coin_tests.rs"]
-mod pay_coin_tests;
+// Stage 13b: pay_coin_tests + transfer_coin_tests deleted with the
+// Transfer / MergeCoins tx kinds + CoinExecutor.
 
 #[cfg(test)]
 #[path = "unit_tests/gas_tests.rs"]
 mod gas_tests;
-
-#[cfg(test)]
-#[path = "unit_tests/transfer_coin_tests.rs"]
-mod transfer_coin_tests;
 
 #[cfg(test)]
 #[path = "unit_tests/staking_tests.rs"]
@@ -86,14 +80,6 @@ mod authority_tests;
 #[cfg(test)]
 #[path = "unit_tests/validator_tests.rs"]
 mod validator_tests;
-
-#[cfg(test)]
-#[path = "unit_tests/model_tests.rs"]
-mod model_tests;
-
-#[cfg(test)]
-#[path = "unit_tests/submission_tests.rs"]
-mod submission_tests;
 
 #[cfg(test)]
 #[path = "unit_tests/transaction_validation_tests.rs"]
@@ -116,6 +102,18 @@ mod batch_transaction_tests;
 mod epoch_store_tests;
 
 #[cfg(test)]
+#[path = "unit_tests/balance_storage_tests.rs"]
+mod balance_storage_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/delegation_storage_tests.rs"]
+mod delegation_storage_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/replay_cache_tests.rs"]
+mod replay_cache_tests;
+
+#[cfg(test)]
 #[path = "unit_tests/execution_driver_tests.rs"]
 mod execution_driver_tests;
 
@@ -126,6 +124,10 @@ mod batch_verification_tests;
 #[cfg(test)]
 #[path = "unit_tests/consensus_tests.rs"]
 mod consensus_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/bridge_tests.rs"]
+mod bridge_tests;
 
 #[cfg(test)]
 pub(crate) mod consensus_test_utils;

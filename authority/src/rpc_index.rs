@@ -9,8 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use store::rocks::{DBMap, DBMapTableConfigMap};
-use store::rocksdb::compaction_filter::Decision;
-use store::rocksdb::{MergeOperands, WriteOptions};
+use store::rocksdb::WriteOptions;
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
@@ -31,8 +30,11 @@ use types::transaction_outputs::WrittenObjects;
 use crate::authority_store::AuthorityStore;
 use crate::checkpoints::CheckpointStore;
 
-const CURRENT_DB_VERSION: u64 = 4; // Bumped for terminal object pruning
-const BALANCE_FLUSH_THRESHOLD: usize = 10_000;
+// Stage 13i: bumped to 7 to invalidate any pre-existing index DBs
+// that contain the dropped `balance` column family — those entries
+// were never read after Stage 13e (which routed get_balance to the
+// accumulator) and would now fail to deserialize.
+const CURRENT_DB_VERSION: u64 = 7;
 
 fn bulk_ingestion_write_options() -> WriteOptions {
     let mut opts = WriteOptions::default();
@@ -69,52 +71,9 @@ fn default_table_options() -> store::rocks::DBOptions {
     store::rocks::default_db_options().disable_write_throttling()
 }
 
-fn balance_delta_merge_operator(
-    _key: &[u8],
-    existing_val: Option<&[u8]>,
-    operands: &MergeOperands,
-) -> Option<Vec<u8>> {
-    let mut result = existing_val
-        .map(|v| {
-            bcs::from_bytes::<BalanceIndexInfo>(v)
-                .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption.")
-        })
-        .unwrap_or_default();
-
-    for operand in operands.iter() {
-        let delta = bcs::from_bytes::<BalanceIndexInfo>(operand)
-            .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption.");
-        result.merge_delta(&delta);
-    }
-    Some(
-        bcs::to_bytes(&result)
-            .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption."),
-    )
-}
-
-fn balance_compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> Decision {
-    let balance_info = match bcs::from_bytes::<BalanceIndexInfo>(value) {
-        Ok(info) => info,
-        Err(_) => return Decision::Keep,
-    };
-
-    if balance_info.balance_delta == 0 { Decision::Remove } else { Decision::Keep }
-}
-
-/// Convert a TargetStatus to a string for indexing.
-fn target_status_string(status: &types::target::TargetStatus) -> String {
-    match status {
-        types::target::TargetStatus::Open => "open".to_string(),
-        types::target::TargetStatus::Filled { .. } => "filled".to_string(),
-        types::target::TargetStatus::Claimed => "claimed".to_string(),
-    }
-}
-
-fn balance_table_options() -> store::rocks::DBOptions {
-    default_table_options()
-        .set_merge_operator_associative("balance_merge", balance_delta_merge_operator)
-        .set_compaction_filter("balance_zero_filter", balance_compaction_filter)
-}
+// Stage 13i: balance_delta_merge_operator / balance_compaction_filter /
+// balance_table_options removed. The rpc_index `balance` column
+// family is gone (Stage 13e routes get_balance to the accumulator).
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct MetadataInfo {
@@ -135,8 +94,6 @@ pub struct OwnerIndexKey {
 
     pub object_type: ObjectType,
 
-    pub inverted_balance: Option<u64>,
-
     pub object_id: ObjectID,
 }
 
@@ -151,9 +108,7 @@ impl OwnerIndexKey {
         };
         let object_type = object.type_().clone();
 
-        let inverted_balance = object.as_coin();
-
-        Self { owner: *owner, object_type, inverted_balance, object_id: object.id() }
+        Self { owner: *owner, object_type, object_id: object.id() }
     }
 }
 
@@ -169,55 +124,10 @@ impl OwnerIndexInfo {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct BalanceKey {
-    pub owner: SomaAddress,
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
-pub struct BalanceIndexInfo {
-    pub balance_delta: i128,
-}
-
-impl From<u64> for BalanceIndexInfo {
-    fn from(coin_value: u64) -> Self {
-        Self { balance_delta: coin_value as i128 }
-    }
-}
-
-impl BalanceIndexInfo {
-    fn merge_delta(&mut self, other: &Self) {
-        self.balance_delta += other.balance_delta;
-    }
-}
-
-impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
-    fn from(index_info: BalanceIndexInfo) -> Self {
-        // Note: We represent balance deltas as i128 to simplify merging positive and negative updates.
-        // Be aware: Move doesn't enforce a one-time-witness (OTW) pattern when creating a Supply<T>.
-        // Anyone can call `sui::balance::create_supply` and mint unbounded supply, potentially pushing
-        // total balances over u64::MAX. To avoid crashing the indexer, we clamp the merged value instead
-        // of panicking on overflow. This has the unfortunate consequence of making bugs in the index
-        // harder to detect, but is a necessary trade-off to avoid creating a DOS attack vector.
-        let balance = index_info.balance_delta.clamp(0, u64::MAX as i128) as u64;
-        types::storage::read_store::BalanceInfo { balance }
-    }
-}
-
-/// Key for the target index table.
-/// Ordered by (status, generation_epoch, target_id) to allow efficient filtering and pagination.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct TargetIndexKey {
-    pub status: String,
-    pub generation_epoch: u64,
-    pub target_id: ObjectID,
-}
-
-/// Value stored in the target index table.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct TargetIndexInfo {
-    pub version: Version,
-}
+// Stage 13i: BalanceKey / BalanceIndexInfo removed. The rpc_index
+// no longer tracks Coin-object balances; balances are read directly
+// from the per-(owner, coin_type) accumulator via the Stage 13e
+// get_balance path.
 
 /// RocksDB tables for the RpcIndexStore
 ///
@@ -260,17 +170,6 @@ pub struct IndexStoreTables {
     /// Allows an efficient iterator to list all objects currently owned by a specific user
     /// account.
     owner: DBMap<OwnerIndexKey, OwnerIndexInfo>,
-
-    /// An index of Balances.
-    ///
-    /// Allows looking up balances by owner address and coin type.
-    balance: DBMap<BalanceKey, BalanceIndexInfo>,
-
-    /// An index of Targets.
-    ///
-    /// Allows efficient iteration over targets filtered by status and/or epoch.
-    /// Key is (status, generation_epoch, target_id) for efficient range scans.
-    targets: DBMap<TargetIndexKey, TargetIndexInfo>,
 }
 
 impl IndexStoreTables {
@@ -278,18 +177,10 @@ impl IndexStoreTables {
         Self::get_read_only_handle(path.to_path_buf(), None, None)
     }
 
-    fn open_with_index_options<P: Into<PathBuf>>(
-        path: P,
-        // index_options: IndexStoreOptions,
-    ) -> Self {
-        let mut table_options = std::collections::BTreeMap::new();
-        table_options.insert("balance".to_string(), balance_table_options());
-
-        IndexStoreTables::open_tables_read_write(
-            path.into(),
-            None,
-            Some(DBMapTableConfigMap::new(table_options)),
-        )
+    fn open_with_index_options<P: Into<PathBuf>>(path: P) -> Self {
+        // Stage 13i: no per-table options — the only table that
+        // needed a custom merge operator was `balance`, which is gone.
+        IndexStoreTables::open_tables_read_write(path.into(), None, None)
     }
 
     fn open_with_options<P: Into<PathBuf>>(
@@ -518,92 +409,30 @@ impl IndexStoreTables {
         checkpoint: &CheckpointData,
         batch: &mut store::rocks::DBBatch,
     ) -> Result<(), StorageError> {
-        let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
-
+        // Stage 13i: balance tracking removed. The accumulator is the
+        // sole source of truth for fungible balances; the rpc_index
+        // only needs the owner index now.
         for tx in &checkpoint.transactions {
-            // Compute balance deltas using derive_balance_changes (same approach as SUI).
-            // This correctly handles all cases: created, mutated, deleted coins.
-            let tx_balance_changes = types::balance_change::derive_balance_changes(
-                &tx.effects,
-                &tx.input_objects,
-                &tx.output_objects,
-            );
-            for change in tx_balance_changes {
-                let key = BalanceKey { owner: change.address };
-                balance_changes
-                    .entry(key)
-                    .or_default()
-                    .merge_delta(&BalanceIndexInfo { balance_delta: change.amount });
-            }
-
-            // Update owner and target indexes for removed objects
+            // Update owner index for removed objects
             for removed_object in tx.removed_objects_pre_version() {
                 match removed_object.owner() {
                     Owner::AddressOwner(_) => {
                         let owner_key = OwnerIndexKey::from_object(removed_object);
                         batch.delete_batch(&self.owner, [owner_key])?;
                     }
-
-                    Owner::Shared { .. } | Owner::Immutable => {}
-                }
-
-                // Clean up target index entries for deleted shared objects
-                if removed_object.type_() == &ObjectType::Target {
-                    if let Ok(old_target) =
-                        bcs::from_bytes::<types::target::TargetV1>(removed_object.data.contents())
-                    {
-                        let old_key = TargetIndexKey {
-                            status: target_status_string(&old_target.status),
-                            generation_epoch: old_target.generation_epoch,
-                            target_id: removed_object.id(),
-                        };
-                        batch.delete_batch(&self.targets, [old_key])?;
-                    }
+                    Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                 }
             }
 
-            // Update owner and target indexes for changed objects
+            // Update owner indexes for changed objects
             for (object, old_object) in tx.changed_objects() {
-                // Handle target index updates for Target objects
-                if object.type_() == &ObjectType::Target {
-                    // Remove old target index entry if this is an update
-                    if let Some(old_obj) = old_object {
-                        if let Ok(old_target) =
-                            bcs::from_bytes::<types::target::TargetV1>(old_obj.data.contents())
-                        {
-                            let old_status = target_status_string(&old_target.status);
-                            let old_key = TargetIndexKey {
-                                status: old_status,
-                                generation_epoch: old_target.generation_epoch,
-                                target_id: old_obj.id(),
-                            };
-                            batch.delete_batch(&self.targets, [old_key])?;
-                        }
-                    }
-
-                    // Add new target index entry
-                    if let Ok(target) =
-                        bcs::from_bytes::<types::target::TargetV1>(object.data.contents())
-                    {
-                        let status = target_status_string(&target.status);
-                        let key = TargetIndexKey {
-                            status,
-                            generation_epoch: target.generation_epoch,
-                            target_id: object.id(),
-                        };
-                        let info = TargetIndexInfo { version: object.version() };
-                        batch.insert_batch(&self.targets, [(key, info)])?;
-                    }
-                }
-
                 if let Some(old_object) = old_object {
                     match old_object.owner() {
                         Owner::AddressOwner(_) => {
                             let owner_key = OwnerIndexKey::from_object(old_object);
                             batch.delete_batch(&self.owner, [owner_key])?;
                         }
-
-                        Owner::Shared { .. } | Owner::Immutable => {}
+                        Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                     }
                 }
 
@@ -613,13 +442,10 @@ impl IndexStoreTables {
                         let owner_info = OwnerIndexInfo::new(object);
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
                     }
-
-                    Owner::Shared { .. } | Owner::Immutable => {}
+                    Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                 }
             }
         }
-
-        batch.partial_merge_batch(&self.balance, balance_changes)?;
 
         Ok(())
     }
@@ -650,7 +476,6 @@ impl IndexStoreTables {
             // When no object_type filter is given, start at the smallest key variant
             // (SystemState) to iterate over ALL object types for this owner.
             object_type: object_type.clone().unwrap_or(ObjectType::SystemState),
-            inverted_balance: None,
             object_id: ObjectID::ZERO,
         });
 
@@ -670,84 +495,14 @@ impl IndexStoreTables {
         }))
     }
 
-    fn get_balance(
-        &self,
-        owner: &SomaAddress,
-    ) -> Result<Option<BalanceIndexInfo>, TypedStoreError> {
-        let key = BalanceKey { owner: owner.to_owned() };
-        self.balance.get(&key)
-    }
-
-    fn balance_iter(
-        &self,
-        owner: SomaAddress,
-        cursor: Option<BalanceKey>,
-    ) -> Result<
-        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        let lower_bound = cursor.unwrap_or(BalanceKey { owner });
-
-        Ok(self.balance.safe_iter_with_bounds(Some(lower_bound), None).scan((), move |_, item| {
-            match item {
-                Ok((key, value)) if key.owner == owner => Some(Ok((key, value))),
-                Ok(_) => None,          // Different owner, stop iteration
-                Err(e) => Some(Err(e)), // Propagate error
-            }
-        }))
-    }
-
-    /// Iterate over targets, optionally filtered by status and/or epoch.
-    fn targets_iter(
-        &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<types::storage::read_store::TargetInfo>,
-    ) -> Result<
-        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        // If status_filter is provided, we can seek directly to that status prefix
-        // Otherwise, we need to scan all statuses
-        let lower_bound = cursor.map(|c| TargetIndexKey {
-            status: c.status,
-            generation_epoch: c.generation_epoch,
-            target_id: c.target_id,
-        });
-
-        let status_filter_clone = status_filter.clone();
-        let iter = self.targets.safe_iter_with_bounds(lower_bound, None).filter_map(move |item| {
-            match item {
-                Ok((key, info)) => {
-                    // Apply status filter if specified
-                    if let Some(ref filter) = status_filter_clone {
-                        if &key.status != filter {
-                            return None;
-                        }
-                    }
-                    // Apply epoch filter if specified
-                    if let Some(epoch) = epoch_filter {
-                        if key.generation_epoch != epoch {
-                            return None;
-                        }
-                    }
-                    Some(Ok(types::storage::read_store::TargetInfo {
-                        target_id: key.target_id,
-                        version: info.version,
-                        status: key.status,
-                        generation_epoch: key.generation_epoch,
-                    }))
-                }
-                Err(e) => Some(Err(e)),
-            }
-        });
-
-        Ok(iter)
-    }
+    // Stage 13i: get_balance / balance_iter removed. The accumulator
+    // is the sole source of truth for fungible balances — see the
+    // Stage 13e get_balance impl in storage.rs which reads from
+    // AuthorityStore::get_balance directly.
 
     /// Index a single executed transaction's object changes immediately after execution.
     ///
-    /// Updates the owner and target indexes for real-time queries.
+    /// Updates the owner indexes for real-time queries.
     /// Balance updates are intentionally omitted here — they are applied only during
     /// checkpoint-based indexing (`index_objects`) to avoid double-counting via the
     /// additive RocksDB merge operator.
@@ -772,20 +527,7 @@ impl IndexStoreTables {
                                 let owner_key = OwnerIndexKey::from_object(old_object);
                                 batch.delete_batch(&self.owner, [owner_key])?;
                             }
-                            Owner::Shared { .. } | Owner::Immutable => {}
-                        }
-
-                        // Clean up target index entries for deleted shared objects
-                        if old_object.type_() == &ObjectType::Target {
-                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
-                                old_object.data.contents(),
-                            ) {
-                                let old_key = TargetIndexKey {
-                                    status: target_status_string(&old_target.status),
-                                    generation_epoch: old_target.generation_epoch,
-                                    target_id: id,
-                                };
-                                batch.delete_batch(&self.targets, [old_key])?;
+                            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {
                             }
                         }
                     }
@@ -796,42 +538,6 @@ impl IndexStoreTables {
         // Process all changed objects
         for (oref, owner, kind) in effects.all_changed_objects() {
             let id = &oref.0;
-
-            // Handle Target index updates
-            if let Some(new_object) = written.get(id) {
-                if new_object.type_() == &ObjectType::Target {
-                    // Remove old target index entry if this is an update
-                    if matches!(kind, WriteKind::Mutate) {
-                        if let Some(old_object) = input_objects.get(id) {
-                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
-                                old_object.data.contents(),
-                            ) {
-                                let old_status = target_status_string(&old_target.status);
-                                let old_key = TargetIndexKey {
-                                    status: old_status,
-                                    generation_epoch: old_target.generation_epoch,
-                                    target_id: *id,
-                                };
-                                batch.delete_batch(&self.targets, [old_key])?;
-                            }
-                        }
-                    }
-
-                    // Add new target index entry
-                    if let Ok(target) =
-                        bcs::from_bytes::<types::target::TargetV1>(new_object.data.contents())
-                    {
-                        let status = target_status_string(&target.status);
-                        let key = TargetIndexKey {
-                            status,
-                            generation_epoch: target.generation_epoch,
-                            target_id: *id,
-                        };
-                        let info = TargetIndexInfo { version: new_object.version() };
-                        batch.insert_batch(&self.targets, [(key, info)])?;
-                    }
-                }
-            }
 
             // For mutated objects, handle old owner removal if owner changed
             if matches!(kind, WriteKind::Mutate) {
@@ -865,7 +571,7 @@ impl IndexStoreTables {
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
                     }
                 }
-                Owner::Shared { .. } | Owner::Immutable => {}
+                Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
             }
         }
 
@@ -1087,18 +793,12 @@ impl RpcIndexStore {
                         limit
                     };
 
-                    // Apply cf_options to all tables
+                    // Apply cf_options to all tables. Stage 13i: the
+                    // balance table is gone, so no special-case
+                    // merge-operator override is needed.
                     for (table_name, _) in IndexStoreTables::describe_tables() {
                         table_config_map.insert(table_name, cf_options.clone());
                     }
-
-                    // Override Balance options with the merge operator
-                    let mut balance_options = cf_options.clone();
-                    balance_options = balance_options.set_merge_operator_associative(
-                        "balance_merge",
-                        balance_delta_merge_operator,
-                    );
-                    table_config_map.insert("balance".to_string(), balance_options);
 
                     IndexStoreTables::open_with_options(
                         &path,
@@ -1229,40 +929,15 @@ impl RpcIndexStore {
         self.tables.owner_iter(owner, object_type, cursor)
     }
 
-    pub fn get_balance(
-        &self,
-        owner: &SomaAddress,
-    ) -> Result<Option<BalanceIndexInfo>, TypedStoreError> {
-        self.tables.get_balance(owner)
-    }
-
-    pub fn balance_iter(
-        &self,
-        owner: SomaAddress,
-        cursor: Option<BalanceKey>,
-    ) -> Result<
-        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.balance_iter(owner, cursor)
-    }
+    // Stage 13i: get_balance / balance_iter removed from the public
+    // RpcIndexStore surface. Callers that want a balance should
+    // use the gRPC `LiveDataService.GetBalance` (Stage 13e), which
+    // reads from the authority's accumulator.
 
     pub fn get_highest_indexed_checkpoint_seq_number(
         &self,
     ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
         self.tables.watermark.get(&Watermark::Indexed)
-    }
-
-    pub fn targets_iter(
-        &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<types::storage::read_store::TargetInfo>,
-    ) -> Result<
-        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.targets_iter(status_filter, epoch_filter, cursor)
     }
 
     /// Index a transaction immediately after execution (before checkpoint finalization).
@@ -1285,7 +960,6 @@ struct RpcParLiveObjectSetIndexer<'a> {
 struct RpcLiveObjectIndexer<'a> {
     tables: &'a IndexStoreTables,
     batch: store::rocks::DBBatch,
-    balance_changes: HashMap<BalanceKey, BalanceIndexInfo>,
     batch_size_limit: usize,
 }
 
@@ -1296,7 +970,6 @@ impl<'a> ParMakeLiveObjectIndexer for RpcParLiveObjectSetIndexer<'a> {
         RpcLiveObjectIndexer {
             tables: self.tables,
             batch: self.tables.owner.batch(),
-            balance_changes: HashMap::new(),
             batch_size_limit: self.batch_size_limit,
         }
     }
@@ -1304,44 +977,17 @@ impl<'a> ParMakeLiveObjectIndexer for RpcParLiveObjectSetIndexer<'a> {
 
 impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
     fn index_object(&mut self, object: Object) -> Result<(), StorageError> {
-        // Index Target objects (shared objects) — skip terminal (Claimed) targets
-        if object.type_() == &ObjectType::Target {
-            if let Ok(target) = bcs::from_bytes::<types::target::TargetV1>(object.data.contents()) {
-                if !matches!(target.status, types::target::TargetStatus::Claimed) {
-                    let status = target_status_string(&target.status);
-                    let key = TargetIndexKey {
-                        status,
-                        generation_epoch: target.generation_epoch,
-                        target_id: object.id(),
-                    };
-                    let info = TargetIndexInfo { version: object.version() };
-                    self.batch.insert_batch(&self.tables.targets, [(key, info)])?;
-                }
-            }
-        }
-
         match object.owner {
             // Owner Index
-            Owner::AddressOwner(owner) => {
+            Owner::AddressOwner(_) => {
                 let owner_key = OwnerIndexKey::from_object(&object);
                 let owner_info = OwnerIndexInfo::new(&object);
                 self.batch.insert_batch(&self.tables.owner, [(owner_key, owner_info)])?;
-
-                if let Some(value) = object.as_coin() {
-                    let balance_key = BalanceKey { owner };
-                    let balance_info = BalanceIndexInfo::from(value);
-                    self.balance_changes.entry(balance_key).or_default().merge_delta(&balance_info);
-
-                    if self.balance_changes.len() >= BALANCE_FLUSH_THRESHOLD {
-                        self.batch.partial_merge_batch(
-                            &self.tables.balance,
-                            std::mem::take(&mut self.balance_changes),
-                        )?;
-                    }
-                }
+                // Stage 13i: balance index removed; nothing further
+                // to do for coin-typed objects.
             }
 
-            Owner::Shared { .. } | Owner::Immutable => {}
+            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
         }
 
         // If the batch size grows to greater than the limit then write out to the DB so that the
@@ -1354,11 +1000,8 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
         Ok(())
     }
 
-    fn finish(mut self) -> Result<(), StorageError> {
-        self.batch
-            .partial_merge_batch(&self.tables.balance, std::mem::take(&mut self.balance_changes))?;
+    fn finish(self) -> Result<(), StorageError> {
         self.batch.write_opt(&bulk_ingestion_write_options())?;
-
         Ok(())
     }
 }

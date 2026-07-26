@@ -1,0 +1,20 @@
+---
+title: Introduction
+description: A federated market for AI inference.
+---
+import { LinkCard } from '@astrojs/starlight/components';
+
+Soma is a federated market for AI inference. Providers register the models they serve and the prices they charge; consumers pay per token through on-chain payment channels. Settlement is in USDC, bridged from Base.
+
+There's no platform in the middle. Providers run their own infrastructure (their own GPUs, their own routing to OpenRouter, Anthropic, or anywhere else), publish their offerings on chain, and earn the full per-call revenue minus a small protocol fee. Consumers see every offering for every model and pick on price, latency, or any other criterion.
+
+The chain underneath is a BFT consensus chain that handles three things and nothing else: a registry of providers and their offerings, payment channels that let consumers stream micropayments without an on-chain tx per call, and a USDC bridge so payments are denominated in something stable.
+
+## What you can do
+
+- **Use the network.** Run `soma proxy` locally, point any OpenAI-compatible client at it, and your requests get routed to the cheapest provider for the model you asked for. Charges are deducted from a payment channel you opened with that provider.
+- **Sell inference.** Register as a provider, publish offerings (one per model you want to sell, with prices and SLAs), run `soma start provider` to accept requests, and withdraw earnings.
+- **Run a validator.** Validators run consensus, hold the chain together, and earn a share of protocol fees.
+
+<LinkCard title="Quickstart" href="/quickstart/" description="Make your first inference call in ten minutes." />
+<LinkCard title="The market" href="/concepts/market/" description="How providers, offerings, channels, and settlement fit together." />

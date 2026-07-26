@@ -79,11 +79,14 @@ fn extract_validators(system_state: &types::system_state::SystemState) -> Vec<St
                 commission_rate: v.commission_rate as i64,
                 next_epoch_commission_rate: v.next_epoch_commission_rate as i64,
                 staking_pool_id: v.staking_pool.id.to_vec(),
-                stake: v.staking_pool.soma_balance as i64,
-                pending_stake: v.staking_pool.pending_stake as i64,
+                // Auto-compound F1: `stake` mirrors the pool's
+                // rewards-eligible stake (the F1 fold divisor);
+                // `pending_stake` is the pending bucket that
+                // promotes at the next epoch boundary.
+                stake: v.staking_pool.active_stake as i64,
+                pending_stake: v.staking_pool.pending_active_stake as i64,
                 name: None, // ValidatorMetadata doesn't have a name field
                 network_address: Some(v.metadata.net_address.to_string()),
-                proxy_address: Some(v.metadata.proxy_address.to_string()),
                 protocol_pubkey: bcs::to_bytes(&v.metadata.protocol_pubkey).ok(),
             }
         })

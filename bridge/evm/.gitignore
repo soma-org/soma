@@ -1,0 +1,34 @@
+# Foundry
+out/
+cache/
+# Local-rehearsal broadcasts (anvil + custom chain ids) should never
+# be committed. The default conventions only catch dry-run + latest;
+# numbered broadcast logs from a `forge script ... --broadcast` run
+# against anvil would otherwise leak. Filter by chain id: only the
+# real-network broadcasts (1, 11155111, 84532, etc.) get versioned;
+# anvil's 31337 + any other local chain ids are ignored entirely.
+broadcast/*/dry-run/
+broadcast/**/*latest*
+broadcast/*/31337/
+broadcast/*/1337/
+build-info/
+
+# OZ Foundry upgrades plugin cache (proxy + impl deploy registry)
+.openzeppelin/
+
+# Deps
+lib/
+node_modules/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

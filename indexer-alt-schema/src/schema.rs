@@ -4,23 +4,9 @@
 
 // @generated automatically by Diesel CLI.
 
-diesel::table! {
-    coin_balance_buckets (object_id, cp_sequence_number) {
-        object_id -> Bytea,
-        cp_sequence_number -> Int8,
-        owner_kind -> Nullable<Int2>,
-        owner_id -> Nullable<Bytea>,
-        coin_type -> Nullable<Bytea>,
-        coin_balance_bucket -> Nullable<Int2>,
-    }
-}
-
-diesel::table! {
-    coin_balance_buckets_deletion_reference (cp_sequence_number, object_id) {
-        object_id -> Bytea,
-        cp_sequence_number -> Int8,
-    }
-}
+// Stage 13i: coin_balance_buckets and coin_balance_buckets_deletion_reference
+// tables removed. The accumulator is the sole source of truth for fungible
+// balances; the indexer no longer tracks Coin objects.
 
 diesel::table! {
     cp_sequence_numbers (cp_sequence_number) {
@@ -144,16 +130,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    tx_calls (package, module, function, tx_sequence_number) {
-        package -> Bytea,
-        module -> Text,
-        function -> Text,
-        tx_sequence_number -> Int8,
-        sender -> Bytea,
-    }
-}
-
-diesel::table! {
     tx_digests (tx_sequence_number) {
         tx_sequence_number -> Int8,
         tx_digest -> Bytea,
@@ -172,67 +148,13 @@ diesel::table! {
         epoch -> Int8,
         emission_balance -> Int8,
         emission_per_epoch -> Int8,
-        distance_threshold -> Float8,
-        targets_generated_this_epoch -> Int8,
-        hits_this_epoch -> Int8,
-        hits_ema -> Int8,
-        reward_per_target -> Int8,
+        distribution_counter -> Int8,
+        period_length -> Int8,
+        decrease_rate -> Int4,
+        protocol_fund_balance -> Int8,
         safe_mode -> Bool,
         safe_mode_accumulated_fees -> Int8,
         safe_mode_accumulated_emissions -> Int8,
-    }
-}
-
-diesel::table! {
-    soma_models (model_id, epoch) {
-        model_id -> Bytea,
-        epoch -> Int8,
-        status -> Text,
-        owner -> Bytea,
-        architecture_version -> Int8,
-        commit_epoch -> Int8,
-        stake -> Int8,
-        commission_rate -> Int8,
-        next_epoch_commission_rate -> Int8,
-        staking_pool_id -> Bytea,
-        activation_epoch -> Nullable<Int8>,
-        deactivation_epoch -> Nullable<Int8>,
-        rewards_pool -> Int8,
-        pool_token_balance -> Int8,
-        pending_stake -> Int8,
-        pending_total_soma_withdraw -> Int8,
-        pending_pool_token_withdraw -> Int8,
-        exchange_rates_json -> Text,
-        manifest_url -> Nullable<Text>,
-        manifest_checksum -> Nullable<Bytea>,
-        manifest_size -> Nullable<Int8>,
-        weights_commitment -> Nullable<Bytea>,
-        has_pending_update -> Bool,
-        pending_manifest_url -> Nullable<Text>,
-        pending_manifest_checksum -> Nullable<Bytea>,
-        pending_manifest_size -> Nullable<Int8>,
-        pending_weights_commitment -> Nullable<Bytea>,
-        pending_commit_epoch -> Nullable<Int8>,
-    }
-}
-
-diesel::table! {
-    soma_reward_balances (target_id, recipient) {
-        target_id -> Bytea,
-        cp_sequence_number -> Int8,
-        epoch -> Int8,
-        tx_digest -> Bytea,
-        recipient -> Bytea,
-        amount -> Int8,
-    }
-}
-
-diesel::table! {
-    soma_rewards (target_id) {
-        target_id -> Bytea,
-        cp_sequence_number -> Int8,
-        epoch -> Int8,
-        tx_digest -> Bytea,
     }
 }
 
@@ -248,35 +170,138 @@ diesel::table! {
 }
 
 diesel::table! {
-    soma_target_reports (target_id, cp_sequence_number, reporter) {
-        target_id -> Bytea,
+    soma_balance_deltas (owner, coin_type, cp_sequence_number) {
+        owner -> Bytea,
+        coin_type -> Text,
         cp_sequence_number -> Int8,
-        reporter -> Bytea,
+        delta -> Int8,
     }
 }
 
 diesel::table! {
-    soma_targets (target_id, cp_sequence_number) {
-        target_id -> Bytea,
-        cp_sequence_number -> Int8,
-        epoch -> Int8,
-        status -> Text,
-        submitter -> Nullable<Bytea>,
-        winning_model_id -> Nullable<Bytea>,
-        reward_pool -> Int8,
-        bond_amount -> Int8,
-        report_count -> Int4,
-        winning_distance_score -> Nullable<Float8>,
-        winning_loss_score -> Nullable<Float8>,
-        winning_model_owner -> Nullable<Bytea>,
-        fill_epoch -> Nullable<Int8>,
-        distance_threshold -> Float8,
-        model_ids_json -> Text,
-        winning_data_url -> Nullable<Text>,
-        winning_data_checksum -> Nullable<Bytea>,
-        winning_data_size -> Nullable<Int8>,
+    soma_channels (channel_id) {
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        authorized_signer -> Bytea,
+        token -> Text,
+        deposit -> Int8,
+        settled_amount -> Int8,
+        close_requested_at_ms -> Nullable<Int8>,
+        status -> Int2,
+        opened_at_cp -> Int8,
+        opened_tx_digest -> Bytea,
+        last_update_cp -> Int8,
+        // 2026-05-13: per-channel offering snapshot. `model_id` is
+        // empty on legacy rows opened pre-migration.
+        model_id -> Text,
+        prompt_micros_per_1k -> Int8,
+        completion_micros_per_1k -> Int8,
+        cache_read_micros_per_1k -> Int8,
+        cache_write_micros_per_1k -> Int8,
+        request_micros -> Int8,
+        ttft_bound_ms -> Int4,
+        ttot_bound_ms -> Int4,
     }
 }
+
+diesel::table! {
+    soma_channel_events (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        channel_id -> Bytea,
+        kind -> Text,
+        delta -> Int8,
+        timestamp_ms -> Int8,
+        // 2026-05-13: voucher-side usage deltas + rating reason code.
+        tokens_in_delta -> Int8,
+        tokens_out_delta -> Int8,
+        cache_read_delta -> Int8,
+        cache_write_delta -> Int8,
+        requests_delta -> Int8,
+        rating_reason_code -> Nullable<Int2>,
+    }
+}
+
+diesel::table! {
+    soma_offerings (provider, model_id) {
+        provider -> Bytea,
+        model_id -> Text,
+        prompt_micros_per_1k -> Int8,
+        completion_micros_per_1k -> Int8,
+        cache_read_micros_per_1k -> Int8,
+        cache_write_micros_per_1k -> Int8,
+        request_micros -> Int8,
+        ttft_bound_ms -> Int4,
+        ttot_bound_ms -> Int4,
+        active -> Bool,
+        updated_at_cp -> Int8,
+        updated_at_ms -> Int8,
+    }
+}
+
+// 2026-05-14: per-Settle denormalized row. One row per chain Settle
+// tx, joining the voucher's cumulative_* with the channel's
+// snapshotted model_id + payee so a single table scan answers
+// "how many tokens of model X has provider Y delivered today".
+diesel::table! {
+    soma_inference_settlements (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        model_id -> Text,
+        cumulative_amount -> Int8,
+        cumulative_prompt_tokens -> Int8,
+        cumulative_completion_tokens -> Int8,
+        cumulative_cache_read_tokens -> Int8,
+        cumulative_cache_write_tokens -> Int8,
+        cumulative_requests -> Int8,
+        delta_amount -> Int8,
+        timestamp_ms -> Int8,
+    }
+}
+
+diesel::table! {
+    soma_providers (address) {
+        address -> Bytea,
+        endpoint -> Text,
+        iroh_endpoint_id -> Text,
+        last_update_cp -> Int8,
+    }
+}
+
+diesel::table! {
+    soma_channel_ratings (channel_id) {
+        channel_id -> Bytea,
+        payer -> Bytea,
+        payee -> Bytea,
+        negative -> Bool,
+        rated_at_cp -> Int8,
+        rated_at_ms -> Int8,
+    }
+}
+
+// View backed by the migration `provider_reputation`. Read-only; do
+// not derive `Insertable` for this. SUMs are provider-side; counts
+// are in-process distinct-buyer counts. `negative_rate_30d` is NULL
+// when the provider has no in-window ratings on positive-volume
+// channels.
+diesel::table! {
+    provider_reputation (address) {
+        address -> Bytea,
+        volume_settled_30d -> Int8,
+        distinct_buyers_30d -> Int8,
+        channel_renewal_rate -> Float8,
+        mean_channel_span_cps -> Int8,
+        negative_rate_30d -> Nullable<Float8>,
+        rating_count_30d -> Int8,
+        signal_version -> Int4,
+    }
+}
+
+diesel::joinable!(provider_reputation -> soma_providers (address));
 
 diesel::table! {
     soma_validators (address, epoch) {
@@ -290,7 +315,6 @@ diesel::table! {
         pending_stake -> Int8,
         name -> Nullable<Text>,
         network_address -> Nullable<Text>,
-        proxy_address -> Nullable<Text>,
         protocol_pubkey -> Nullable<Bytea>,
     }
 }
@@ -308,6 +332,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_bridge_deposits (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        cp_sequence_number -> Int8,
+        recipient -> Bytea,
+        amount -> Int8,
+        nonce -> Int8,
+        eth_tx_hash -> Bytea,
+        timestamp_ms -> Int8,
+    }
+}
+
+diesel::table! {
     watermarks (pipeline) {
         pipeline -> Text,
         epoch_hi_inclusive -> Int8,
@@ -321,8 +357,6 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
-    coin_balance_buckets,
-    coin_balance_buckets_deletion_reference,
     cp_sequence_numbers,
     kv_checkpoints,
     kv_epoch_ends,
@@ -332,19 +366,22 @@ diesel::allow_tables_to_appear_in_same_query!(
     obj_info,
     obj_info_deletion_reference,
     obj_versions,
+    soma_balance_deltas,
+    soma_channel_events,
+    soma_channel_ratings,
+    soma_channels,
     soma_epoch_state,
-    soma_models,
-    soma_reward_balances,
-    soma_rewards,
+    provider_reputation,
+    soma_providers,
+    soma_offerings,
+    soma_inference_settlements,
     soma_staked_soma,
-    soma_target_reports,
-    soma_targets,
     soma_validators,
     soma_tx_details,
+    soma_bridge_deposits,
     tx_affected_addresses,
     tx_affected_objects,
     tx_balance_changes,
-    tx_calls,
     tx_digests,
     tx_kinds,
     watermarks,

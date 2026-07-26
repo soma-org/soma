@@ -9,7 +9,6 @@ mod crypto_tests;
 mod effects_tests;
 mod envelope_tests;
 mod error_tests;
-#[cfg(feature = "ml")]
 mod genesis_tests;
 mod intent_tests;
 mod multisig_extension_tests;

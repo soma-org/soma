@@ -1,0 +1,89 @@
+[package]
+name = "bridge-node"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Workspace crates
+types = { workspace = true }
+rpc = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# gRPC client (used to talk to the Soma fullnode RPC, not for bridge
+# peer exchange — that uses HTTP via the `http_server` module).
+tonic = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Crypto
+fastcrypto = { workspace = true }
+
+# Ethereum RPC (raw JSON-RPC via reqwest — avoids alloy serde compatibility issues)
+reqwest = { workspace = true }
+
+# Full alloy stack for the outbound relayer — ABI encoding +
+# EIP-1559 envelope + local-wallet signing + HTTP provider for
+# `eth_sendRawTransaction`. Pinned via workspace.
+alloy = { workspace = true }
+
+# HTTP REST surface for the bridge sig-exchange server (Sui parity).
+axum = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+backoff = { workspace = true }
+dashmap = { workspace = true }
+hex = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+arc-swap = { workspace = true }
+
+# Operator tooling (bridge-committee-export binary).
+clap = { workspace = true }
+sha2 = "0.10"
+
+# Bridge-node daemon binary deps.
+toml = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# RocksDB-backed WAL (Stage 6b: pending actions + Eth/Soma cursors persisted
+# across restarts so the bridge node doesn't re-scan from genesis on reboot).
+store = { workspace = true }
+bcs = { workspace = true }
+# Required by store-derive's `DBMapUtils` generated dump() impl.
+eyre = { workspace = true }
+# Required by store-derive's generated test scaffolding.
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+rand = { workspace = true }
+wiremock = { workspace = true }
+tower = { workspace = true }
+
+# Operator tool that exports the live Soma BridgeState committee in the
+# format the Foundry deployment script consumes. See `--help` for the
+# full deployment flow this fits into.
+[[bin]]
+name = "bridge-committee-export"
+path = "src/bin/bridge_committee_export.rs"
+
+# The bridge-node daemon — loads a TOML config, fetches the live
+# committee from a Soma fullnode, and spawns every subsystem
+# (Eth syncer, HTTP sig-exchange, executor, outbound relayer, watchdog).
+# See `src/main.rs` for the CLI surface and shutdown contract.
+[[bin]]
+name = "bridge-node"
+path = "src/main.rs"

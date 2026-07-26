@@ -15,7 +15,7 @@ Commands:
   update-metadata      Update validator metadata
   set-commission-rate  Set commission rate for the next epoch
   report-validator     Report or un-report a validator
-  report-model         Report or un-report a model (validators only)
+  register-bridge-key  Pre-register this validator's bridge keypair so they're eligible for the next epoch's bridge committee rotation. Must be called before the bridge can sign on this validator's behalf
   help                 Print this message or the help of the given subcommand(s)
 
 Options:

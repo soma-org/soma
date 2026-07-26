@@ -4,33 +4,30 @@
 
 // Command modules for top-level CLI commands
 pub mod balance;
-pub mod claim;
-pub mod data;
+pub mod bridge;
+pub mod channel;
 pub mod env;
-pub mod faucet;
-pub mod merge;
+pub mod inference;
 pub mod model;
 pub mod objects;
-pub mod pay;
-pub mod send;
+pub mod offering;
+pub mod provider;
 pub mod stake;
-pub mod submit;
-pub mod target;
 pub mod transfer;
 pub mod tx;
 pub mod validator;
 pub mod wallet;
 
-// Shared parsing helpers used by model and submit commands
-pub(crate) mod parse_helpers;
-
-// Progress bar helpers for download commands and scoring server
-pub(crate) mod download_progress;
-
 // Re-export subcommand enums for use in soma_commands.rs
+pub use bridge::BridgeCommand;
+pub use channel::ChannelCommand;
 pub use env::EnvCommand;
+pub use inference::{ProviderArgs, ProxyArgs};
 pub use model::ModelCommand;
-pub use objects::ObjectsCommand;
-pub use target::TargetCommand;
+pub use objects::ObjectCommand;
+pub use offering::OfferingCommand;
+pub use provider::ProviderCommand;
+pub use stake::StakeCommand;
+pub use transfer::TransferCommand;
 pub use validator::SomaValidatorCommand;
 pub use wallet::WalletCommand;

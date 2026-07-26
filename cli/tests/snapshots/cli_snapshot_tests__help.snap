@@ -7,27 +7,26 @@ Open-source Superintelligence
 Usage: soma <COMMAND>
 
 Commands:
-  balance      Check SOMA balance for an address
-  send         Send SOMA to a recipient
-  transfer     Transfer an object to a recipient
-  pay          Pay SOMA to multiple recipients
-  stake        Stake SOMA with a validator or model
-  unstake      Withdraw staked SOMA
-  faucet       Request test tokens from a faucet server
-  merge-coins  Merge dust coins to reduce object count
-  status       Show network connection status, version info, and active address
-  objects      Query on-chain objects by owner or ID
-  tx           Get transaction details or execute serialized transactions
-  wallet       Manage wallet addresses and keys
-  env          Manage network environments (switch, add, list)
-  model        Manage models (commit, reveal, update, deactivate, query)
-  target       Manage targets: query, submit data, claim rewards, download data
-  validator    Manage validators (register, set gas price, commission)
-  start        Start a long-running service (localnet, validator, faucet, scoring)
-  network      Inspect local network configuration and validator addresses
-  genesis      Bootstrap and initialize a new SOMA network
-  keytool      Low-level keystore operations (generate, import, export keys)
-  help         Print this message or the help of the given subcommand(s)
+  balance    Check SOMA balance for an address
+  transfer   Transfer SOMA or USDC to a recipient
+  stake      Stake SOMA with a validator: add, remove, or list delegations
+  status     Show network connection status, version info, and active address
+  object     Query on-chain objects by owner or ID, or transfer one to a recipient
+  tx         Get transaction details or execute serialized transactions
+  wallet     Manage wallet addresses and keys
+  env        Manage network environments (switch, add, list)
+  proxy      Run the local agent-facing inference proxy
+  channel    Manage on-chain payment channels (open, settle, top-up, close)
+  bridge     Soma ↔ Eth USDC bridge: initiate withdrawals, inspect the live `BridgeState`. Inbound deposits go through the Eth-side `SomaBridge.deposit(...)` call — there's no Soma-side command for that direction
+  provider   Manage on-chain provider registry (register, update, show)
+  offering   Manage per-(provider, model) on-chain offerings
+  model      Read the protocol-config `ModelRegistry`
+  validator  Manage validators (register, set gas price, commission)
+  start      Start a long-running service (localnet, validator, provider)
+  network    Inspect local network configuration and validator addresses
+  genesis    Bootstrap and initialize a new SOMA network
+  keytool    Low-level keystore operations (generate, import, export keys)
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

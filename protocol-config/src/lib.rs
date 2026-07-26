@@ -10,12 +10,22 @@ use protocol_config_macros::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
-mod tensor;
-pub use tensor::{BcsF32, Dtype, SomaTensor};
+pub mod model_registry;
+pub use model_registry::{
+    Modality, ModelFeature, ModelRegistry, ModelRegistryEntry, TokenizerFamily,
+};
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 5;
+/// V8: bump `max_channels_per_pair` from 8 → 64. The original cap was
+/// chosen for legitimate hot/cold-key splits; testnet usage (one
+/// wallet driving the integration suite plus repeated dev runs)
+/// blows past it quickly because closed-and-withdrawn channels still
+/// count toward the live slot count for the duration of the grace
+/// window. 64 is roughly 2× the current ModelRegistry size so a
+/// single wallet can open one channel per registered model with
+/// headroom for retries.
+pub const MAX_PROTOCOL_VERSION: u64 = 8;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -197,72 +207,14 @@ pub struct ProtocolConfig {
     epoch_duration_ms: Option<u64>,
 
     // === Reward/Emission Parameters ===
-    /// Percentage of epoch rewards allocated to validators (bps, e.g. 7000 = 70%)
-    validator_reward_allocation_bps: Option<u64>,
     reward_slashing_rate_bps: Option<u64>,
 
-    // === Model Parameters ===
-    /// Minimum stake required to commit a new model (in shannons)
-    model_min_stake: Option<u64>,
-    /// Required architecture version for new model commits
-    model_architecture_version: Option<u64>,
-    /// Slash rate (bps) for models that fail to reveal after commit (e.g. 5000 = 50%)
-    model_reveal_slash_rate_bps: Option<u64>,
-    /// Slash rate (bps) for models removed via tally reports (e.g. 9500 = 95%)
-    model_tally_slash_rate_bps: Option<u64>,
-
     // === Fee Parameters ===
-    target_epoch_fee_collection: Option<u64>,
-    base_fee: Option<u64>,
-    write_object_fee: Option<u64>,
-    initial_value_fee_bps: Option<u64>,
-    min_value_fee_bps: Option<u64>,
-    max_value_fee_bps: Option<u64>,
-    fee_adjustment_rate_bps: Option<u64>,
-
-    // === Target/Submission Parameters ===
-    /// Number of models assigned to each target (uniformly random selection)
-    target_models_per_target: Option<u64>,
-    /// Dimension of target embedding vectors
-    target_embedding_dim: Option<u64>,
-    /// Initial distance threshold for new targets (f32 cosine distance, as BcsF32)
-    target_initial_distance_threshold: Option<BcsF32>,
-    /// Percentage of epoch emissions allocated to targets (bps, e.g. 8000 = 80%)
-    target_reward_allocation_bps: Option<u64>,
-    /// Target number of hits (filled targets) per epoch.
-    /// Difficulty adjusts toward this count. More hits than target = make harder, fewer = easier.
-    target_hits_per_epoch: Option<u64>,
-    /// Decay factor for hits-per-epoch EMA (bps, e.g. 9000 = 90% decay means 10% weight on new data)
-    /// Higher decay = smoother/slower adjustments; lower = more responsive.
-    target_hits_ema_decay_bps: Option<u64>,
-    /// Difficulty adjustment rate per epoch (bps, e.g. 500 = 5% max change)
-    target_difficulty_adjustment_rate_bps: Option<u64>,
-    /// Maximum distance threshold (cap for difficulty decrease, as BcsF32)
-    target_max_distance_threshold: Option<BcsF32>,
-    /// Minimum distance threshold (floor for difficulty increase, as BcsF32)
-    target_min_distance_threshold: Option<BcsF32>,
-    /// Number of targets to issue at genesis and at each epoch start
-    target_initial_targets_per_epoch: Option<u64>,
-
-    // === Reward Distribution Parameters ===
-    /// Percentage of target reward allocated to the submitter (bps, e.g. 5000 = 50%)
-    target_submitter_reward_share_bps: Option<u64>,
-    /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
-    target_model_reward_share_bps: Option<u64>,
-    /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
-    target_claimer_incentive_bps: Option<u64>,
-
-    // === Submission Parameters ===
-    /// Bond per byte of submitted data (in shannons)
-    /// Bond is held on the Target and returned to submitter on successful claim,
-    /// or forfeited to emission pool on successful challenge.
-    submission_bond_per_byte: Option<u64>,
-
-    // === Data Size Limits ===
-    /// Maximum data size allowed for submissions (in bytes).
-    /// Submissions exceeding this size will be rejected.
-    /// This also affects audit timeouts which are calculated based on data size.
-    max_submission_data_size: Option<u64>,
+    /// Per-unit fee in USDC microdollars (1 USDC = 1_000_000 µUSDC).
+    /// The fee for a transaction is `unit_fee * executor.fee_units(...)`.
+    /// Each executor decides how many units its operation costs based on op shape.
+    /// All fees on Soma are paid in USDC; the gas coin must be Coin(Usdc).
+    unit_fee: Option<u64>,
 
     // === Execution Versioning ===
     /// Execution version controls which code paths are used when executing transactions.
@@ -270,6 +222,21 @@ pub struct ProtocolConfig {
     /// This ensures state sync determinism: a node replaying old epochs uses the
     /// execution version from that epoch, even if its binary supports newer versions.
     execution_version: Option<u64>,
+
+    // === Payment-Channel Parameters ===
+    /// How long after `RequestClose` the payer must wait before they
+    /// can call `WithdrawAfterTimeout` to reclaim the deposit. Gives
+    /// the payee a window to submit any final `Settle` before the
+    /// channel deletes. Defaults to 10 minutes.
+    channel_grace_period_ms: Option<u64>,
+
+    /// Maximum simultaneously-open channels permitted for any single
+    /// (payer, payee) pair. Bounds adversarial state-bloat —
+    /// `OpenChannel` rejects with `ChannelTooManyOpenForPair` when
+    /// the per-payer count in the per-payee `ProviderInbox` is
+    /// already at this value. Tuned per-network so testnet can
+    /// loosen / tighten without a binary upgrade. Defaults to 8.
+    max_channels_per_pair: Option<u32>,
 }
 
 // Instantiations for each protocol version.
@@ -304,7 +271,7 @@ impl ProtocolConfig {
             if version == ProtocolVersion::MAX_ALLOWED {
                 let mut config =
                     Self::get_for_version_impl(ProtocolVersion::new(version.as_u64() - 1), chain);
-                config.base_fee = Some(config.base_fee.unwrap_or(1000) + 1000);
+                config.unit_fee = Some(config.unit_fee.unwrap_or(1000) + 1000);
                 return config;
             }
         }
@@ -346,52 +313,26 @@ impl ProtocolConfig {
             epoch_duration_ms: Some(24 * 60 * 60 * 1000), // 1 day (ms)
 
             // Reward parameters
-            validator_reward_allocation_bps: Some(7000), // 70% of validator rewards
-            reward_slashing_rate_bps: Some(5000),        // 50%
+            reward_slashing_rate_bps: Some(5000), // 50%
 
-            // Model parameters
-            model_min_stake: Some(1_000_000_000), // 1 SOMA (in shannons)
-            model_architecture_version: Some(1),
-            model_reveal_slash_rate_bps: Some(5000), // 50%
-            model_tally_slash_rate_bps: Some(9500),  // 95%
-
-            // Fee parameters
-            target_epoch_fee_collection: Some(1_000_000_000),
-            base_fee: Some(1000),
-            write_object_fee: Some(300),
-            initial_value_fee_bps: Some(10),     // 0.1%
-            min_value_fee_bps: Some(1),          // 0.01%
-            max_value_fee_bps: Some(50),         // 0.5%
-            fee_adjustment_rate_bps: Some(1250), // 12.5%
-
-            // Target/Submission parameters
-            target_models_per_target: Some(3), // 3 models per target
-            target_embedding_dim: Some(2048),  // Standard transformer embedding dim
-            target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
-            target_reward_allocation_bps: Some(8000),             // 80% of emissions to targets
-            target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
-            target_hits_ema_decay_bps: Some(7000), // 70% decay (30% weight on new data)
-            target_difficulty_adjustment_rate_bps: Some(1000), // 10% max adjustment per epoch
-            target_max_distance_threshold: Some(BcsF32(2.0)), // Max distance (easiest, max cosine distance)
-            target_min_distance_threshold: Some(BcsF32(0.1)), // Min distance (hardest)
-            target_initial_targets_per_epoch: Some(20), // 20 targets at genesis and each epoch start
-
-            // Reward distribution parameters
-            target_submitter_reward_share_bps: Some(4975), // 49.75% to submitter
-            target_model_reward_share_bps: Some(4975),     // 49.75% to model owner
-            target_claimer_incentive_bps: Some(50),        // 0.5% to claimer as incentive
-
-            // Submission parameters
-            submission_bond_per_byte: Some(10), // 10 shannons per byte
-
-            // Data size limits
-            max_submission_data_size: Some(1024 * 1024), // 1 MiB max data size
+            // Fee parameters: 1000 µUSDC = $0.001 per unit. A simple Transfer
+            // (1 coin + 1 recipient = 2 units) costs ~$0.002.
+            unit_fee: Some(1000),
 
             // Execution versioning
             execution_version: Some(0), // Initial execution version
 
-                                        // When adding a new constant, set it to None in the earliest version, like this:
-                                        // new_constant: None,
+            // Payment-channel grace period: 10 minutes. Time the payee
+            // has after `RequestClose` to submit any final voucher via
+            // `Settle`/`Close` before the payer can `WithdrawAfterTimeout`.
+            channel_grace_period_ms: Some(10 * 60 * 1000),
+
+            // Per-(payer, payee) channel cap. Generous enough for
+            // legitimate hot/cold-key splits or per-SKU separation,
+            // tight enough to make spam unprofitable.
+            max_channels_per_pair: Some(8),
+            // When adding a new constant, set it to None in the earliest version, like this:
+            // new_constant: None,
         };
         if version.0 >= 2 {
             // V2: Bump execution_version to fix permanent object lock on
@@ -401,32 +342,36 @@ impl ProtocolConfig {
             cfg.execution_version = Some(1);
         }
         if version.0 >= 3 {
-            // Difficulty recalibration: 1 hit/sec target, z-based adjustment
-            cfg.target_hits_per_epoch = Some(86_400); // 1 hit/sec × 86400 sec/day
-            cfg.target_min_distance_threshold = Some(BcsF32(0.95));
-            cfg.target_difficulty_adjustment_rate_bps = Some(200); // 2%
-            cfg.target_hits_ema_decay_bps = Some(9000); // 90% decay
-            cfg.target_initial_distance_threshold = Some(BcsF32(0.978)); // z=1
-
-            // Bond: ~5% of reward at avg 10k submission → -EV cheating at 95% detection
-            cfg.submission_bond_per_byte = Some(65); // was 10; 65 × 10k = 650k ≈ 5% of 12.7M reward
-
             cfg.execution_version = Some(2);
         }
-        if version.0 >= 4 {
-            // Faster difficulty convergence: step = |z| when |z| > MIN_Z_STEP
-            // At current z=0.818, converges to threshold=1.0 in 1 epoch.
-            cfg.target_difficulty_adjustment_rate_bps = Some(10000); // 100%
+        // V6 (Stage 13m): TransactionEffects gains `balance_events` and
+        // `delegation_events` so indexers can attribute per-tx changes
+        // to the balance accumulator and F1 delegation rows without
+        // re-executing transactions. Effects digest format changes;
+        // since Soma is pre-mainnet there is no runtime gate — the
+        // entire network upgrades atomically.
+        //
+        // V7 (Stage 14c.1): `ObjectOut::AccumulatorWriteV1` variant —
+        // per-tx accumulator delta records ride effects.changed_objects
+        // (Sui SIP-58 style). The variant is unused at this version
+        // (Stage 14c.2+ migrates executors to emit it); the bump
+        // exists to gate the wire-format change.
+
+        // V8: raise the per-(payer, payee) channel cap to 64. Reading
+        // this on a chain whose `SystemState.parameters` was frozen
+        // at v7 won't take effect until the validators advance the
+        // protocol version; the per-epoch `advance_epoch` flow calls
+        // `build_system_parameters()` whenever `next_protocol_version
+        // != self.protocol_version`, which rewrites the parameters
+        // block (including this cap) from the new ProtocolConfig.
+        // Snapshots: `snapshots/*_version_8.snap` were added in the
+        // same release; the test suite enforces "only add, never
+        // update" snapshot drift.
+        if version.0 >= 8 {
+            cfg.max_channels_per_pair = Some(64);
         }
-        if version.0 >= 5 {
-            // Easier starting difficulty: threshold above random-sample distance
-            // band (~1.007-1.045). MIN_Z_STEP raised to 2.0 in adjust_difficulty().
-            cfg.target_initial_distance_threshold = Some(BcsF32(1.05));
-            // More concurrent targets to reduce per-target contention for newcomers.
-            cfg.target_initial_targets_per_epoch = Some(100); // was 20
-        }
-        // V6 is MAX_ALLOWED in msim (no-op, same as V5). Reserved for future changes.
-        if version.0 >= 7 {
+
+        if version.0 >= 9 {
             panic!("unsupported version {:?}", version);
         }
 
@@ -441,6 +386,12 @@ impl ProtocolConfig {
             // (the standard BFT threshold), not 2/3 + 50% buffer. This makes 3/4 validators
             // sufficient for upgrades in tests.
             cfg.buffer_stake_for_protocol_upgrade_bps = Some(0);
+
+            // Shorten the channel grace period so e2e tests don't have
+            // to advance the simulated clock by 10 minutes to verify
+            // the timed-close path. 5 seconds is plenty under msim,
+            // where Clock advances on every consensus commit.
+            cfg.channel_grace_period_ms = Some(5_000);
         }
 
         cfg
@@ -492,47 +443,12 @@ impl ProtocolConfig {
     }
 
     /// Build SystemParameters from protocol config.
-    /// Note: value_fee_bps is dynamic and may differ from initial_value_fee_bps
-    /// after fee adjustments. Pass the current value when updating.
-    pub fn build_system_parameters(&self, current_value_fee_bps: Option<u64>) -> SystemParameters {
+    pub fn build_system_parameters(&self) -> SystemParameters {
         SystemParameters {
             epoch_duration_ms: self.epoch_duration_ms(),
-            validator_reward_allocation_bps: self.validator_reward_allocation_bps(),
-            model_min_stake: self.model_min_stake(),
-            model_architecture_version: self.model_architecture_version(),
-            model_reveal_slash_rate_bps: self.model_reveal_slash_rate_bps(),
-            model_tally_slash_rate_bps: self.model_tally_slash_rate_bps(),
-            target_epoch_fee_collection: self.target_epoch_fee_collection(),
-            base_fee: self.base_fee(),
-            write_object_fee: self.write_object_fee(),
-            // Use current value if provided (preserves fee adjustments), otherwise use initial
-            value_fee_bps: current_value_fee_bps.unwrap_or_else(|| self.initial_value_fee_bps()),
-            min_value_fee_bps: self.min_value_fee_bps(),
-            max_value_fee_bps: self.max_value_fee_bps(),
-            fee_adjustment_rate_bps: self.fee_adjustment_rate_bps(),
-            // Target/Submission parameters
-            target_models_per_target: self.target_models_per_target(),
-            target_embedding_dim: self.target_embedding_dim(),
-            target_initial_distance_threshold: SomaTensor::scalar(
-                self.target_initial_distance_threshold().value(),
-            ),
-            target_reward_allocation_bps: self.target_reward_allocation_bps(),
-            target_hits_per_epoch: self.target_hits_per_epoch(),
-            target_hits_ema_decay_bps: self.target_hits_ema_decay_bps(),
-            target_difficulty_adjustment_rate_bps: self.target_difficulty_adjustment_rate_bps(),
-            target_max_distance_threshold: SomaTensor::scalar(
-                self.target_max_distance_threshold().value(),
-            ),
-            target_min_distance_threshold: SomaTensor::scalar(
-                self.target_min_distance_threshold().value(),
-            ),
-            target_initial_targets_per_epoch: self.target_initial_targets_per_epoch(),
-            target_submitter_reward_share_bps: self.target_submitter_reward_share_bps(),
-            target_model_reward_share_bps: self.target_model_reward_share_bps(),
-            target_claimer_incentive_bps: self.target_claimer_incentive_bps(),
-            submission_bond_per_byte: self.submission_bond_per_byte(),
-            // Data size limits
-            max_submission_data_size: self.max_submission_data_size(),
+            unit_fee: self.unit_fee(),
+            channel_grace_period_ms: self.channel_grace_period_ms(),
+            max_channels_per_pair: self.max_channels_per_pair(),
         }
     }
 }
@@ -542,83 +458,17 @@ pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
 
-    /// Percentage of epoch rewards allocated to validators (bps, e.g. 7000 = 70%)
-    pub validator_reward_allocation_bps: u64,
+    /// Per-unit fee. Tx fee = `unit_fee * executor.fee_units(...)`.
+    pub unit_fee: u64,
 
-    // === Model Parameters ===
-    /// Minimum stake required to commit a new model (in shannons)
-    pub model_min_stake: u64,
-    /// Required architecture version for new model commits
-    pub model_architecture_version: u64,
-    /// Slash rate for models that fail to reveal after commit (bps, e.g. 5000 = 50%)
-    pub model_reveal_slash_rate_bps: u64,
-    /// Slash rate for models removed via tally reports (bps, e.g. 9500 = 95%)
-    pub model_tally_slash_rate_bps: u64,
+    /// Payment-channel forced-close grace period (ms). After
+    /// `RequestClose`, the payer must wait this long before
+    /// `WithdrawAfterTimeout` succeeds.
+    pub channel_grace_period_ms: u64,
 
-    // === Fee Parameters ===
-    /// Target fee collection per epoch (network adjusts fees to hit this)
-    pub target_epoch_fee_collection: u64,
-
-    /// Base fee per transaction (in shannons)
-    pub base_fee: u64,
-
-    /// Fee per object write (in shannons)
-    pub write_object_fee: u64,
-
-    /// Current value fee rate in basis points (e.g., 10 = 0.1%)
-    pub value_fee_bps: u64,
-
-    /// Minimum value fee rate (floor)
-    pub min_value_fee_bps: u64,
-
-    /// Maximum value fee rate (ceiling)
-    pub max_value_fee_bps: u64,
-
-    /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
-    pub fee_adjustment_rate_bps: u64,
-
-    // === Target/Submission Parameters ===
-    /// Number of models assigned to each target
-    pub target_models_per_target: u64,
-    /// Dimension of target embedding vectors
-    pub target_embedding_dim: u64,
-    /// Initial distance threshold for new targets (cosine distance as scalar SomaTensor)
-    pub target_initial_distance_threshold: SomaTensor,
-    /// Percentage of epoch emissions allocated to targets (bps)
-    pub target_reward_allocation_bps: u64,
-    /// Target number of hits (filled targets) per epoch.
-    /// Difficulty adjusts toward this count.
-    pub target_hits_per_epoch: u64,
-    /// Decay factor for hits-per-epoch EMA (bps, e.g. 9000 = 90% decay)
-    pub target_hits_ema_decay_bps: u64,
-    /// Difficulty adjustment rate per epoch (bps)
-    pub target_difficulty_adjustment_rate_bps: u64,
-    /// Maximum distance threshold (cap, as scalar SomaTensor)
-    pub target_max_distance_threshold: SomaTensor,
-    /// Minimum distance threshold (floor, as scalar SomaTensor)
-    pub target_min_distance_threshold: SomaTensor,
-    /// Number of targets to issue at genesis and at each epoch start
-    pub target_initial_targets_per_epoch: u64,
-
-    // === Reward Distribution Parameters ===
-    /// Percentage of target reward allocated to the submitter (bps, e.g. 5000 = 50%)
-    pub target_submitter_reward_share_bps: u64,
-    /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
-    pub target_model_reward_share_bps: u64,
-    /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
-    pub target_claimer_incentive_bps: u64,
-
-    // === Submission Parameters ===
-    /// Bond per byte of submitted data (in shannons)
-    /// Bond is held on the Target and returned to submitter on successful claim,
-    /// or forfeited to emission pool on successful challenge.
-    pub submission_bond_per_byte: u64,
-
-    // === Data Size Limits ===
-    /// Maximum data size allowed for submissions (in bytes).
-    /// Submissions exceeding this size will be rejected.
-    /// This also affects audit timeouts which are calculated based on data size.
-    pub max_submission_data_size: u64,
+    /// Maximum simultaneously-open channels permitted per
+    /// (payer, payee) pair. See [`ProtocolConfig::max_channels_per_pair`].
+    pub max_channels_per_pair: u32,
 }
 
 // =============================================================================

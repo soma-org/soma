@@ -31,19 +31,14 @@ async fn test_handle_transfer_transaction_ok() {
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
     let object_id = ObjectID::random();
-    let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
-    let gas = authority_state.get_object(&gas_id).await.unwrap();
 
-    let data = TransactionData::new_transfer(
-        recipient,
-        obj.compute_object_reference(),
-        sender,
-        vec![gas.compute_object_reference()],
-    );
+    let data =
+        TransactionData::new_transfer(recipient, obj.compute_object_reference(), sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -58,18 +53,17 @@ async fn test_handle_transfer_receiver_equal_sender() {
     // Self-transfer should succeed
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let object_id = ObjectID::random();
-    let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
-    let gas = authority_state.get_object(&gas_id).await.unwrap();
 
     let data = TransactionData::new_transfer(
         sender, // recipient == sender
         obj.compute_object_reference(),
         sender,
-        vec![gas.compute_object_reference()],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
@@ -90,20 +84,15 @@ async fn test_handle_transfer_double_spend() {
     let recipient1 = dbg_addr(1);
     let recipient2 = dbg_addr(2);
     let object_id = ObjectID::random();
-    let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id)]).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
-    let gas = authority_state.get_object(&gas_id).await.unwrap();
 
     // First transfer succeeds
-    let data1 = TransactionData::new_transfer(
-        recipient1,
-        obj.compute_object_reference(),
-        sender,
-        vec![gas.compute_object_reference()],
-    );
+    let data1 =
+        TransactionData::new_transfer(recipient1, obj.compute_object_reference(), sender, vec![]);
     let tx1 = to_sender_signed_transaction(data1, &sender_key);
     let result1 = send_and_confirm_transaction(&authority_state, tx1).await;
     assert!(result1.is_ok(), "First transfer should succeed");
@@ -113,7 +102,7 @@ async fn test_handle_transfer_double_spend() {
         recipient2,
         obj.compute_object_reference(), // stale ref
         sender,
-        vec![gas.compute_object_reference()], // also stale
+        vec![],
     );
     let tx2 = to_sender_signed_transaction(data2, &sender_key);
     let result2 = send_and_confirm_transaction(&authority_state, tx2).await;
@@ -139,18 +128,17 @@ async fn test_effects_internal_consistency() {
     // Verify that effects have consistent created/mutated/deleted sets
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
-
-    let data = TransactionData::new_transfer_coin(
-        recipient,
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
         sender,
-        Some(1000),
-        coin.compute_object_reference(),
+        10_000_000,
+        10_000_000,
     );
+
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
     let effects = effects.into_data();
@@ -170,11 +158,24 @@ async fn test_effects_internal_consistency() {
         assert!(!deleted_ids.contains(id), "Object {:?} in both mutated and deleted", id);
     }
 
-    // Source coin should be mutated (balance deducted)
-    assert!(mutated_ids.contains(&coin_id), "Source coin should be in mutated set");
-
-    // New coin should be created for recipient
-    assert!(!created_ids.is_empty(), "Should have created objects for recipient");
+    // Stage 13c: BalanceTransfer creates / mutates / deletes
+    // nothing — both gas (USDC) and the SOMA debit/credit live
+    // in accumulators only.
+    assert!(
+        created_ids.is_empty(),
+        "Stage 13c BalanceTransfer must create no objects; got {:?}",
+        created_ids,
+    );
+    assert!(
+        mutated_ids.is_empty(),
+        "Stage 13c BalanceTransfer must mutate no objects; got {:?}",
+        mutated_ids,
+    );
+    assert!(
+        deleted_ids.is_empty(),
+        "Stage 13c BalanceTransfer must delete no objects; got {:?}",
+        deleted_ids,
+    );
 }
 
 #[tokio::test]
@@ -182,18 +183,17 @@ async fn test_effects_retrievable_after_execution() {
     // After executing a certificate, effects should be retrievable by digest
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
-
-    let data = TransactionData::new_transfer_coin(
-        recipient,
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
         sender,
-        Some(1000),
-        coin.compute_object_reference(),
+        10_000_000,
+        10_000_000,
     );
+
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000));
     let tx = to_sender_signed_transaction(data, &sender_key);
 
     let (cert, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
@@ -214,34 +214,53 @@ async fn test_effects_retrievable_after_execution() {
 
 #[tokio::test]
 async fn test_object_version_increments_after_mutation() {
-    // Object version (lamport timestamp) should increment after each mutation
+    // Object version (lamport timestamp) should increment after each
+    // mutation. Stage 13c: BalanceTransfer mutates no objects, so
+    // we exercise this invariant with AddStake — which mutates the
+    // shared SystemState — and assert that the SystemState's
+    // version strictly increases.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
-
-    let initial_version = authority_state.get_object(&coin_id).await.unwrap().version();
-
-    // Execute a transfer to mutate the coin
-    let data = TransactionData::new_transfer_coin(
-        dbg_addr(1),
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
         sender,
-        Some(1000),
-        coin.compute_object_reference(),
+        50_000_000,
+        10_000_000,
+    );
+
+    let initial_system_state_version = authority_state
+        .get_object(&types::SYSTEM_STATE_OBJECT_ID)
+        .await
+        .expect("SystemState exists")
+        .version();
+
+    let validator_address =
+        authority_state.get_system_state_object_for_testing().unwrap().validators().validators[0]
+            .metadata
+            .soma_address;
+
+    let data = TransactionData::new(
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
+        sender,
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
-    let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
+    let (_, effects) =
+        send_and_confirm_transaction_(&authority_state, None, tx, true).await.unwrap();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Version should have incremented
-    let after_version = authority_state.get_object(&coin_id).await.unwrap().version();
+    let after_system_state_version = authority_state
+        .get_object(&types::SYSTEM_STATE_OBJECT_ID)
+        .await
+        .expect("SystemState exists")
+        .version();
     assert!(
-        after_version > initial_version,
-        "Version should increment after mutation: {:?} vs {:?}",
-        after_version,
-        initial_version
+        after_system_state_version > initial_system_state_version,
+        "SystemState version must strictly increase after AddStake mutation: \
+         was {:?}, now {:?}",
+        initial_system_state_version,
+        after_system_state_version,
     );
 }
 
@@ -254,15 +273,9 @@ async fn test_bad_signature_rejected() {
     // Transaction signed with wrong key should be rejected
     let (sender, _sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let (_, wrong_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
-    let data = TransactionData::new_transfer_coin(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-        coin.compute_object_reference(),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
     // Sign with wrong key
     let tx = to_sender_signed_transaction(data, &wrong_key);
 
@@ -277,15 +290,9 @@ async fn test_no_signature_rejected() {
     use types::crypto::GenericSignature;
 
     let (sender, _sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
-    let data = TransactionData::new_transfer_coin(
-        dbg_addr(1),
-        sender,
-        Some(1000),
-        coin.compute_object_reference(),
-    );
+    let data =
+        crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(1), sender, Some(1000));
 
     // Create a transaction with no signatures
     let signed_data = SenderSignedData::new(data, vec![] as Vec<GenericSignature>);
@@ -344,14 +351,12 @@ async fn test_transfer_objects_success() {
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
     let object_id = ObjectID::random();
-    let gas_id = ObjectID::random();
 
     let obj = Object::with_id_owner_for_testing(object_id, sender);
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj.clone()).await;
-    authority_state.insert_genesis_object(gas.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -359,7 +364,7 @@ async fn test_transfer_objects_success() {
             recipient,
         },
         sender,
-        vec![gas.compute_object_reference()],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
@@ -380,14 +385,12 @@ async fn test_transfer_objects_wrong_owner() {
     let other_owner = dbg_addr(99);
     let recipient = dbg_addr(1);
     let object_id = ObjectID::random();
-    let gas_id = ObjectID::random();
 
     let obj = Object::with_id_owner_for_testing(object_id, other_owner); // owned by someone else
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj.clone()).await;
-    authority_state.insert_genesis_object(gas.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -395,7 +398,7 @@ async fn test_transfer_objects_wrong_owner() {
             recipient,
         },
         sender,
-        vec![gas.compute_object_reference()],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
@@ -412,22 +415,83 @@ async fn test_transfer_objects_wrong_owner() {
 }
 
 #[tokio::test]
+async fn test_transfer_objects_rejects_accumulator() {
+    // Stage 14a: BalanceAccumulator and DelegationAccumulator are
+    // system-managed. A user must not be able to TransferObjects
+    // against one — even if they manage to forge a transaction that
+    // targets the deterministically-derived ID, the layered defense
+    // (input validation + executor up-front check) must reject it.
+    use types::accumulator::BalanceAccumulator;
+    use types::object::CoinType;
+
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let recipient = dbg_addr(1);
+
+    // Construct a BalanceAccumulator object and insert it into the
+    // authority store as if genesis had created it.
+    let accumulator = BalanceAccumulator::new(sender, CoinType::Usdc, 1_000);
+    let acc_obj = Object::new_balance_accumulator(
+        accumulator,
+        types::digests::TransactionDigest::genesis_marker(),
+    );
+    let acc_id = acc_obj.id();
+
+    let authority_state = TestAuthorityBuilder::new().build().await;
+    authority_state.insert_genesis_object(acc_obj.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
+
+    let data = TransactionData::new(
+        TransactionKind::TransferObjects {
+            objects: vec![acc_obj.compute_object_reference()],
+            recipient,
+        },
+        sender,
+        vec![],
+    );
+    let tx = to_sender_signed_transaction(data, &sender_key);
+    let result = send_and_confirm_transaction(&authority_state, tx).await;
+
+    // Must fail — either at input validation (layer 1) or at the
+    // executor up-front check (layer 2). Either is acceptable; both
+    // are guards against transferring system state.
+    match result {
+        Ok((_, effects)) => {
+            assert!(
+                !effects.status().is_ok(),
+                "Transferring an accumulator object must fail; effects status: {:?}",
+                effects.status(),
+            );
+        }
+        Err(_) => {
+            // Acceptable — input validation rejected the tx outright.
+        }
+    }
+
+    // The accumulator's owner must be unchanged regardless of which
+    // layer rejected the transfer.
+    let after = authority_state.get_object(&acc_id).await.unwrap();
+    assert!(
+        after.owner.is_accumulator(),
+        "Accumulator owner must remain Owner::Accumulator after rejected transfer; got {:?}",
+        after.owner,
+    );
+}
+
+#[tokio::test]
 async fn test_transfer_multiple_objects() {
     // Transfer multiple objects in a single TransferObjects
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let recipient = dbg_addr(1);
     let obj_id1 = ObjectID::random();
     let obj_id2 = ObjectID::random();
-    let gas_id = ObjectID::random();
 
     let obj1 = Object::with_id_owner_for_testing(obj_id1, sender);
     let obj2 = Object::with_id_owner_for_testing(obj_id2, sender);
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(obj1.clone()).await;
     authority_state.insert_genesis_object(obj2.clone()).await;
-    authority_state.insert_genesis_object(gas.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(&authority_state, sender, 0, 10_000_000);
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
@@ -435,7 +499,7 @@ async fn test_transfer_multiple_objects() {
             recipient,
         },
         sender,
-        vec![gas.compute_object_reference()],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
@@ -457,25 +521,26 @@ async fn test_transfer_multiple_objects() {
 
 #[tokio::test]
 async fn test_staking_creates_shared_object_mutation() {
-    // AddStake mutates SystemState (shared object) — verify shared object versioning works
+    // AddStake mutates SystemState (shared object) — verify shared
+    // object versioning works. Stage 13c: AddStake is balance-mode
+    // for both stake (SOMA) and gas (USDC).
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        50_000_000,
+        10_000_000,
+    );
 
     let system_state = authority_state.get_system_state_object_for_testing().unwrap();
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: coin.compute_object_reference(),
-            amount: Some(1_000_000),
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
-        vec![coin.compute_object_reference()],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction_(&authority_state, None, tx, true).await;

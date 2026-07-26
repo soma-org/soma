@@ -1,0 +1,106 @@
+diff --git a/components/Dropdown.astro b/components/Dropdown.astro
+index 650ea8c40dbf487fcfbff04895285d1db2cc8c94..20aef605cd2005e66eb35171855eed60f9acda50 100644
+--- a/components/Dropdown.astro
++++ b/components/Dropdown.astro
+@@ -116,5 +116,10 @@ const dropdownId = id ? `dropdown-${id}` : "dropdown-0";
+         });
+     }
+ 
+-    allDropdownIds.map((id) => handleDropdownToggle(id))
++    function setupDropdowns() {
++        allDropdownIds.map((id) => handleDropdownToggle(id));
++    }
++
++    setupDropdowns();
++    document.addEventListener("astro:after-swap", setupDropdowns);
+ </script>
+diff --git a/overrides/PageTitle.astro b/overrides/PageTitle.astro
+index 48e94f86992c8b694b1ef89d44241797a7e5cf66..e02302e2889bc76d277bfc5d91535b98f029f753 100644
+--- a/overrides/PageTitle.astro
++++ b/overrides/PageTitle.astro
+@@ -11,14 +11,15 @@ interface OptionsProps {
+   id: "chatgpt" | "claude" | "markdown" | "v0" | "t3chat";
+ }
+ 
+-const currentPath = Astro.url.pathname.replace(/\/$/, "");
++const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/index";
+ const currentUrl = Astro.url.href;
++const mdUrl = `${Astro.url.origin}${currentPath}.md`;
+ const { actions, prompt: userPrompt, share } = config;
+ const { title, pageActions } = (Astro.locals as any).starlightRoute.entry.data;
+ 
+ const prompt = userPrompt?.includes("{url}")
+-  ? userPrompt?.replace("{url}", currentUrl)
+-  : `${userPrompt} ${currentUrl}`;
++  ? userPrompt?.replace("{url}", mdUrl)
++  : `${userPrompt} ${mdUrl}`;
+ const encodedPrompt = encodeURIComponent(prompt as string);
+ const encodedCurrentUrl = encodeURIComponent(currentUrl);
+ const encodedTitle = encodeURIComponent(title as string);
+@@ -182,33 +183,38 @@ const shareOptions = [
+ </style>
+ 
+ <script>
+-  const copyButton = document.querySelector(
+-    "#copy-markdown"
+-  ) as HTMLButtonElement;
+-
+-  copyButton?.addEventListener("click", async () => {
+-    let copyButtonClass: "copied" | "error" = "copied";
+-
+-    try {
+-      copyButton.disabled = true;
+-
+-      const currentPath = copyButton.dataset.path;
+-      const mdPath = `${currentPath}.md`;
+-
+-      const res = await fetch(mdPath);
+-      const contentForClipboard = await res.text();
+-
+-      await navigator.clipboard.writeText(contentForClipboard);
+-    } catch (error) {
+-      console.error(error);
+-      copyButtonClass = "error";
+-    } finally {
+-      copyButton.classList.add(copyButtonClass);
+-      copyButton.disabled = false;
++  function setupCopyButton() {
++    const copyButton = document.querySelector(
++      "#copy-markdown"
++    ) as HTMLButtonElement;
++
++    copyButton?.addEventListener("click", async () => {
++      let copyButtonClass: "copied" | "error" = "copied";
++
++      try {
++        copyButton.disabled = true;
++
++        const currentPath = copyButton.dataset.path;
++        const mdPath = `${currentPath}.md`;
++
++        const res = await fetch(mdPath);
++        const contentForClipboard = await res.text();
++
++        await navigator.clipboard.writeText(contentForClipboard);
++      } catch (error) {
++        console.error(error);
++        copyButtonClass = "error";
++      } finally {
++        copyButton.classList.add(copyButtonClass);
++        copyButton.disabled = false;
++
++        setTimeout(() => {
++          copyButton.classList.remove(copyButtonClass);
++        }, 3000);
++      }
++    });
++  }
+ 
+-      setTimeout(() => {
+-        copyButton.classList.remove(copyButtonClass);
+-      }, 3000);
+-    }
+-  });
++  setupCopyButton();
++  document.addEventListener("astro:after-swap", setupCopyButton);
+ </script>

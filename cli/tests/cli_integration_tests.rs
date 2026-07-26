@@ -19,13 +19,13 @@ use cli::response::{BalanceOutput, ClientCommandResponse};
 fn test_balance_output_display() {
     let output = BalanceOutput {
         address: types::base::SomaAddress::ZERO,
-        total_balance: 5_000_000_000,
-        coin_count: 1,
-        coins: None,
+        usdc: 12_345_678,
+        soma: 5_000_000_000,
     };
 
     let display = format!("{}", output);
     assert!(display.contains("SOMA"), "Balance output should contain SOMA: {display}");
+    assert!(display.contains("USDC"), "Balance output should contain USDC: {display}");
     assert!(
         display.contains(&types::base::SomaAddress::ZERO.to_string()[..10]),
         "Balance output should contain address: {display}"
@@ -36,16 +36,15 @@ fn test_balance_output_display() {
 fn test_balance_output_json() {
     let output = BalanceOutput {
         address: types::base::SomaAddress::ZERO,
-        total_balance: 5_000_000_000,
-        coin_count: 1,
-        coins: None,
+        usdc: 12_345_678,
+        soma: 5_000_000_000,
     };
 
     let json = serde_json::to_string(&output).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(parsed["total_balance"], 5_000_000_000u64);
-    assert_eq!(parsed["coin_count"], 1);
+    assert_eq!(parsed["soma"], 5_000_000_000u64);
+    assert_eq!(parsed["usdc"], 12_345_678u64);
 }
 
 #[test]
@@ -57,12 +56,7 @@ fn test_transaction_response_display_success() {
         status: TransactionStatus::Success,
         executed_epoch: 1,
         checkpoint: Some(100),
-        fee: types::tx_fee::TransactionFee {
-            base_fee: 1000,
-            operation_fee: 500,
-            value_fee: 0,
-            total_fee: 1500,
-        },
+        fee: types::tx_fee::TransactionFee { total_fee: 1500 },
         created: vec![],
         mutated: vec![],
         deleted: vec![],
@@ -89,12 +83,7 @@ fn test_transaction_response_display_failure() {
         status: TransactionStatus::Failure { error: "InsufficientGas".to_string() },
         executed_epoch: 1,
         checkpoint: None,
-        fee: types::tx_fee::TransactionFee {
-            base_fee: 0,
-            operation_fee: 0,
-            value_fee: 0,
-            total_fee: 0,
-        },
+        fee: types::tx_fee::TransactionFee { total_fee: 0 },
         created: vec![],
         mutated: vec![],
         deleted: vec![],
@@ -174,56 +163,6 @@ fn test_envs_output_empty() {
 }
 
 // =============================================================================
-// Model response tests
-// =============================================================================
-
-#[test]
-fn test_model_list_empty() {
-    use cli::commands::model::ModelListOutput;
-
-    let output = ModelListOutput { models: vec![] };
-    let display = format!("{}", output);
-    assert!(display.contains("No models"), "Empty list should say no models: {display}");
-}
-
-#[test]
-fn test_model_info_display() {
-    use cli::commands::model::{ModelInfoOutput, ModelStatus, ModelSummary};
-
-    let output = ModelInfoOutput {
-        model_id: types::object::ObjectID::ZERO,
-        status: ModelStatus::Active,
-        summary: ModelSummary {
-            model_id: types::object::ObjectID::ZERO,
-            owner: types::base::SomaAddress::ZERO,
-            status: ModelStatus::Active,
-            architecture_version: 1,
-            commission_rate: 500,
-            stake_balance: 1_000_000_000,
-            has_pending_update: false,
-        },
-    };
-
-    let display = format!("{}", output);
-    assert!(display.contains("Model Information"), "Should contain header: {display}");
-    assert!(display.contains("Active"), "Should show active status: {display}");
-    assert!(display.contains("5.00%"), "Should show commission rate: {display}");
-}
-
-#[test]
-fn test_model_status_display() {
-    use cli::commands::model::ModelStatus;
-
-    let active = format!("{}", ModelStatus::Active);
-    let pending = format!("{}", ModelStatus::Pending);
-    let inactive = format!("{}", ModelStatus::Inactive);
-
-    assert!(active.contains("Active"));
-    assert!(pending.contains("Pending"));
-    assert!(inactive.contains("Inactive"));
-}
-
-// =============================================================================
 // Format helpers tests
 // =============================================================================
 
@@ -244,12 +183,8 @@ fn test_format_soma_public() {
 fn test_balance_json_roundtrip() {
     let output = BalanceOutput {
         address: types::base::SomaAddress::ZERO,
-        total_balance: 42_000_000_000,
-        coin_count: 3,
-        coins: Some(vec![
-            (types::object::ObjectID::ZERO, 20_000_000_000),
-            (types::object::ObjectID::random(), 22_000_000_000),
-        ]),
+        usdc: 7_654_321,
+        soma: 42_000_000_000,
     };
 
     let json = serde_json::to_string_pretty(&output).unwrap();
@@ -287,62 +222,6 @@ fn test_validator_summary_display() {
     assert!(display.contains("Validator Information"), "Should contain header: {display}");
     assert!(display.contains("Active"), "Should show active status: {display}");
     assert!(display.contains("2.00%"), "Should show commission rate: {display}");
-}
-
-// =============================================================================
-// Merge coins response tests
-// =============================================================================
-
-#[test]
-fn test_merge_coins_nothing_to_merge_display() {
-    use cli::commands::merge::MergeCoinsResponse;
-
-    let response = MergeCoinsResponse::NothingToMerge;
-    let display = format!("{}", response);
-    assert!(display.contains("Nothing to merge"), "Should say nothing to merge: {display}");
-}
-
-#[test]
-fn test_merge_coins_success_display() {
-    use cli::commands::merge::MergeCoinsResponse;
-    use cli::response::{OwnedObjectRef, OwnerDisplay, TransactionResponse, TransactionStatus};
-
-    let tx = TransactionResponse {
-        digest: types::digests::TransactionDigest::default(),
-        status: TransactionStatus::Success,
-        executed_epoch: 0,
-        checkpoint: Some(1),
-        fee: types::tx_fee::TransactionFee {
-            base_fee: 1000,
-            operation_fee: 500,
-            value_fee: 0,
-            total_fee: 1500,
-        },
-        created: vec![],
-        mutated: vec![],
-        deleted: vec![],
-        gas_object: OwnedObjectRef {
-            object_id: types::object::ObjectID::ZERO,
-            version: types::object::Version::from_u64(1),
-            digest: types::digests::ObjectDigest::new([0; 32]),
-            owner: OwnerDisplay::AddressOwner { address: types::base::SomaAddress::ZERO },
-        },
-        balance_changes: vec![],
-    };
-    let response = MergeCoinsResponse::Success(tx);
-    let display = format!("{}", response);
-    assert!(display.contains("merged successfully"), "Should say merged successfully: {display}");
-    assert!(display.contains("Gas Summary"), "Should show gas summary: {display}");
-}
-
-#[test]
-fn test_merge_coins_json() {
-    use cli::commands::merge::MergeCoinsResponse;
-
-    let response = MergeCoinsResponse::NothingToMerge;
-    let json = serde_json::to_string(&response).unwrap();
-    // NothingToMerge serializes as null (untagged enum)
-    assert_eq!(json, "null");
 }
 
 // =============================================================================

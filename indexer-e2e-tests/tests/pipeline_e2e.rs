@@ -17,9 +17,20 @@ use diesel_async::RunQueryDsl;
 use indexer_alt_schema::schema::*;
 use indexer_e2e_tests::OffchainCluster;
 use indexer_framework::IndexerArgs;
-use test_cluster::TestClusterBuilder;
+use indexer_framework::ingestion::ClientArgs;
+use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
+use test_cluster::{TestCluster, TestClusterBuilder};
 use types::effects::TransactionEffectsAPI;
-use types::transaction::{TransactionData, TransactionKind};
+
+/// Point the indexer at a test cluster's fullnode gRPC `LedgerService` for ingestion.
+fn grpc_client_args(test_cluster: &TestCluster) -> ClientArgs {
+    ClientArgs {
+        ingestion: IngestionClientArgs {
+            rpc_api_url: Some(test_cluster.fullnode_handle.rpc_url.parse().expect("valid rpc url")),
+            ..Default::default()
+        },
+    }
+}
 
 /// Verify that a coin transfer transaction is indexed across all relevant pipelines.
 #[tokio::test(flavor = "multi_thread")]
@@ -27,51 +38,57 @@ use types::transaction::{TransactionData, TransactionKind};
 async fn test_transfer_coin_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
     // Start a real network
-    let test_cluster =
-        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     // Start the off-chain indexer stack
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a TransferCoin transaction
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-    let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());
     let expected_digest = *response.effects.transaction_digest();
 
-    // Wait for the indexer to catch up (generous timeout for TestCluster startup)
-    cluster
-        .wait_for_indexer(1, Duration::from_secs(120))
-        .await
-        .expect("Indexer did not reach checkpoint 1 within timeout");
-
     let mut conn = cluster.db().connect().await.unwrap();
 
-    // Verify kv_transactions has the transaction
-    let tx_count: i64 = kv_transactions::table
-        .filter(kv_transactions::tx_digest.eq(expected_digest.inner().to_vec()))
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    // Wait until *this* transaction is indexed into kv_transactions. Polling
+    // for the specific digest (rather than wait_for_indexer(1) followed by a
+    // single read) avoids a checkpoint race: the tx can land in checkpoint 2+
+    // depending on timing, so waiting for a fixed checkpoint number then
+    // asserting once is flaky (it failed once timing shifted under heavier
+    // build deps). Once the digest is present, its whole checkpoint is indexed,
+    // so the downstream assertions below hold too.
+    let expected_digest_bytes = expected_digest.inner().to_vec();
+    let tx_count: i64 = tokio::time::timeout(Duration::from_secs(120), async {
+        loop {
+            let count: i64 = kv_transactions::table
+                .filter(kv_transactions::tx_digest.eq(expected_digest_bytes.as_slice()))
+                .count()
+                .get_result(conn.deref_mut())
+                .await
+                .unwrap();
+            if count > 0 {
+                break count;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("Transaction not indexed into kv_transactions within 120s");
     assert!(tx_count > 0, "Transaction not found in kv_transactions");
 
     // Verify tx_digests has entries
@@ -110,16 +127,13 @@ async fn test_transfer_coin_indexed() {
 async fn test_watermarks_advance() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster =
-        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute 3 transactions to generate multiple checkpoints
     let addresses = test_cluster.wallet.get_addresses();
@@ -127,13 +141,11 @@ async fn test_watermarks_advance() {
     let recipient = addresses[1];
 
     for _ in 0..3 {
-        let gas =
-            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-        let tx_data = TransactionData::new(
-            TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
+        let tx_data = e2e_tests::balance_transfer_data(
+            &test_cluster,
+            types::object::CoinType::Usdc,
             sender,
-            vec![gas],
+            vec![(recipient, 100)],
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -172,28 +184,24 @@ async fn test_watermarks_advance() {
 async fn test_objects_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster =
-        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction that creates/mutates objects
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 500)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -227,28 +235,24 @@ async fn test_objects_indexed() {
 async fn test_graphql_queries_indexed_data() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster =
-        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
+    let test_cluster = TestClusterBuilder::new().build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 500)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -301,31 +305,24 @@ async fn test_graphql_queries_indexed_data() {
 async fn test_epoch_boundary_indexed() {
     let _ = tracing_subscriber::fmt::try_init();
 
-    let ingestion_dir = tempfile::tempdir().unwrap();
-    let ingestion_path = ingestion_dir.path().to_path_buf();
-
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(10_000)
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_epoch_duration_ms(10_000).build().await;
 
     let registry = prometheus::Registry::new();
-    let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
-        .await
-        .expect("Failed to start OffchainCluster");
+    let cluster =
+        OffchainCluster::new(grpc_client_args(&test_cluster), IndexerArgs::default(), &registry)
+            .await
+            .expect("Failed to start OffchainCluster");
 
     // Execute a transaction to help the network progress
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 100)],
     );
     let _ = test_cluster.sign_and_execute_transaction(&tx_data).await;
 

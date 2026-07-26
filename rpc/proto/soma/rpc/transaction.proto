@@ -17,6 +17,37 @@ message Transaction {
   optional TransactionKind kind = 2;
   optional string sender = 3;
   repeated ObjectReference gas_payment = 4;
+
+  // Replay-protection declaration (Stage 5.5). Default `None` for txs
+  // with owned inputs (replay-protected by version-bump); stateless
+  // txs (post-Stage 6 gas-from-balance) must declare `ValidDuring`.
+  // CRITICAL: this field MUST be in the BCS encoding of TransactionData
+  // because it's covered by the user's signature; dropping it on the
+  // wire causes signature verification failures.
+  optional TransactionExpiration expiration = 5;
+}
+
+// Transaction expiration: replay-protection declaration on a tx.
+message TransactionExpiration {
+  oneof value {
+    // No declared expiration. Used by txs with owned inputs (where
+    // version-bump on consumption provides replay protection).
+    google.protobuf.Empty none = 1;
+    ValidDuring valid_during = 2;
+  }
+}
+
+// Stateless replay-protection window. Width is bound to 2 epochs:
+// `max_epoch == min_epoch` or `max_epoch == min_epoch + 1`.
+message ValidDuring {
+  optional uint64 min_epoch = 1;
+  optional uint64 max_epoch = 2;
+  // Chain identifier this tx is valid on (32-byte CheckpointDigest of
+  // genesis). Cross-chain replay defense.
+  optional bytes chain = 3;
+  // Arbitrary u32 to differentiate otherwise-identical txs in the
+  // digest cache. Not consulted by the protocol; only affects digest.
+  optional uint32 nonce = 4;
 }
 
 // Transaction type.
@@ -74,13 +105,140 @@ message TransactionKind {
     ReportSubmission report_submission = 28;
     UndoReportSubmission undo_report_submission = 29;
 
-    // Challenge transactions
+    // Challenge transactions (deprecated)
     InitiateChallenge initiate_challenge = 26;
     // Field 27 was ResolveAudit (removed)
     ReportChallenge report_challenge = 30;
     UndoReportChallenge undo_report_challenge = 31;
     ClaimChallengeBond claim_challenge_bond = 32;
+
+    // Bridge transactions
+    BridgeDeposit bridge_deposit = 40;
+    BridgeWithdraw bridge_withdraw = 41;
+    BridgeEmergencyPause bridge_emergency_pause = 42;
+    BridgeEmergencyUnpause bridge_emergency_unpause = 43;
+    BridgeAttachWithdrawalSignatures bridge_attach_withdrawal_signatures = 44;
+    BridgeUpdateCommitteeBlocklist bridge_update_committee_blocklist = 45;
+    BridgeRegisterBridgeKey bridge_register_bridge_key = 46;
+
+    // Payment-channel transactions (Phase 1)
+    OpenChannel open_channel = 50;
+    Settle settle = 51;
+    RequestClose request_close = 52;
+    WithdrawAfterTimeout withdraw_after_timeout = 53;
+    TopUp top_up = 54;
+    RateChannel rate_channel = 57;
+
+    // Provider registry transactions
+    RegisterProvider register_provider = 55;
+    UpdateProvider update_provider = 56;
+
+    // Per-(provider, model) offering transactions (2026-05-13).
+    RegisterOffering register_offering = 58;
+    UpdateOffering update_offering = 59;
+    DeactivateOffering deactivate_offering = 62;
+
+    // Per-commit accumulator settlement system transaction (Stage 6a).
+    Settlement settlement = 60;
+
+    // Stateless value transfer from sender's accumulator balance to
+    // one or more recipients (Stage 7). Sender pays gas balance-mode
+    // too, so the entire tx has zero owned inputs.
+    BalanceTransfer balance_transfer = 61;
   }
+}
+
+// Stage 7: stateless balance-mode value transfer.
+message BalanceTransfer {
+  // Coin type label ("USDC", "SOMA"). All transfers in one tx share
+  // the same coin type.
+  optional string coin_type = 1;
+  // (recipient, amount) pairs.
+  repeated BalanceTransferEntry transfers = 2;
+}
+
+message BalanceTransferEntry {
+  optional string recipient = 1;
+  optional uint64 amount = 2;
+}
+
+// Bridge messages
+
+// Labeled-pubkey signature envelope. Each entry binds a 33-byte
+// compressed secp256k1 pubkey to its 65-byte recoverable signature.
+// On-chain verifier ecrecovers each `signature` and asserts the
+// recovered pubkey matches `signer_pubkey` before counting stake.
+message PubkeySig {
+  optional bytes signer_pubkey = 1;
+  optional bytes signature = 2;
+}
+
+message BridgeDeposit {
+  optional uint64 nonce = 1;
+  optional bytes eth_tx_hash = 2;
+  optional string recipient = 3;
+  optional uint64 amount = 4;
+  // V2 token transfer: Eth-side block timestamp.
+  optional uint64 timestamp_ms = 7;
+  // Labeled-pubkey signature envelope.
+  repeated PubkeySig signatures = 8;
+  // V2 wire-format field — Eth address that locked USDC on Eth.
+  // 20 raw bytes; on-chain executor reconstructs the canonical
+  // signed payload using this slot.
+  optional bytes sender_eth_address = 9;
+  // V2 wire-format field — destination chain id (always a Soma chain).
+  // Single byte; values per types::bridge::BridgeChainId.
+  optional uint32 target_chain = 10;
+  // V2 wire-format field — token id. Always 3 (USDC) today.
+  optional uint32 token_type = 11;
+}
+
+message BridgeWithdraw {
+  // Stage 12: amount is debited from the sender's USDC accumulator;
+  // no payment coin object is read. Field 1 (payment_coin) was removed.
+  optional uint64 amount = 2;
+  optional bytes recipient_eth_address = 3;
+  // V2 wire-format field — destination Eth chain id.
+  // Single byte; values per types::bridge::BridgeChainId.
+  optional uint32 target_chain = 4;
+}
+
+message BridgeEmergencyPause {
+  // Per-message-type seq num (shared with unpause; both have type byte 2).
+  optional uint64 nonce = 3;
+  repeated PubkeySig signatures = 4;
+}
+
+message BridgeEmergencyUnpause {
+  optional uint64 nonce = 3;
+  repeated PubkeySig signatures = 4;
+}
+
+// Attach a quorum committee certificate to an existing PendingWithdrawal
+// shared object. After this commits, anyone can read the cert and submit
+// it to the Eth-side SomaBridge contract to release the locked USDC.
+message BridgeAttachWithdrawalSignatures {
+  optional uint64 nonce = 1;
+  repeated PubkeySig signatures = 4;
+}
+
+// Surgically blocklist or unblocklist committee members. Members are
+// identified by their derived 20-byte Eth address. is_blocklist == true
+// sets the flag, false clears it. Mirrors Sui's committee_blocklist.
+message BridgeUpdateCommitteeBlocklist {
+  optional uint64 nonce = 1;
+  optional bool is_blocklist = 2;
+  // 20-byte Eth addresses, concatenated.
+  optional bytes eth_addresses = 3;
+  repeated PubkeySig signatures = 6;
+}
+
+// A validator pre-registers their bridge keypair and HTTP endpoint URL
+// for the next committee rotation.
+message BridgeRegisterBridgeKey {
+  // 33-byte compressed secp256k1 pubkey.
+  optional bytes bridge_pubkey = 1;
+  optional string http_url = 2;
 }
 
 message AddValidator {
@@ -90,7 +248,6 @@ message AddValidator {
   optional bytes net_address = 4;
   optional bytes p2p_address = 5;
   optional bytes primary_address = 6;
-  optional bytes proxy_address = 7;
   optional bytes proof_of_possession = 8;
 }
 
@@ -110,7 +267,6 @@ message UpdateValidatorMetadata {
   optional bytes next_epoch_network_address = 1;
   optional bytes next_epoch_p2p_address = 2;
   optional bytes next_epoch_primary_address = 3;
-  optional bytes next_epoch_proxy_address = 4;
   optional bytes next_epoch_protocol_pubkey = 5;
   optional bytes next_epoch_worker_pubkey = 6;
   optional bytes next_epoch_network_pubkey = 7;
@@ -138,15 +294,25 @@ message TransferObjects {
   optional string recipient = 2;
 }
 
+// Stage 9d-C2: AddStake is balance-mode — no coin reference. The
+// executor debits `amount` SOMA from the sender's accumulator.
 message AddStake {
-  optional string address = 1;
-  optional ObjectReference coin_ref = 2;
-  optional uint64 amount = 3;
+  // Validator's SOMA address (hex string).
+  optional string validator = 1;
+  // Stake principal in shannons.
+  optional uint64 amount = 2;
 }
 
 
+// Stage 9d-C3: WithdrawStake is balance-mode and keys off the F1
+// (pool, sender) row. The executor pays pending rewards + the
+// requested principal to the sender's SOMA accumulator.
 message WithdrawStake {
-  optional ObjectReference staked_soma = 1;
+  // StakingPool ObjectID (hex string).
+  optional string pool_id = 1;
+  // Principal to withdraw, in shannons. Omit (or set to 0) to drain
+  // the entire row.
+  optional uint64 amount = 2;
 }
 
 message Metadata {
@@ -294,6 +460,45 @@ message ConsensusCommitPrologue {
   optional string additional_state_digest = 6;
 }
 
+// Per-consensus-commit accumulator settlement system transaction.
+//
+// The consensus handler injects exactly one of these per commit. Its
+// `changes` field carries the aggregated net (owner, coin_type) deltas
+// from every user transaction's emitted balance events; the executor
+// applies them as deltas to the on-chain accumulator-balance table.
+//
+// Sender is always the system address (0x0...0). The
+// (epoch, round, sub_dag_index) triplet makes the digest unique per
+// commit even when `changes` is empty.
+message Settlement {
+  // Epoch of the commit this settlement belongs to.
+  optional uint64 epoch = 1;
+
+  // Consensus round of the commit.
+  optional uint64 round = 2;
+
+  // Sub-DAG index, populated when a round has multiple commits.
+  optional uint64 sub_dag_index = 3;
+
+  // Aggregated net per-(owner, coin_type) deltas. May be empty.
+  // Indexers that don't track balances can ignore this field.
+  repeated SettlementChange changes = 4;
+}
+
+// One entry in a Settlement's `changes` list. Equivalent to a
+// post-aggregation BalanceEvent: net positive deltas surface as
+// `is_credit=true`, net negatives as `is_credit=false`. `amount` is
+// the absolute magnitude of the net delta.
+message SettlementChange {
+  optional string owner = 1;
+  // Coin type label ("USDC", "SOMA", etc.) — same encoding as
+  // elsewhere in the proto.
+  optional string coin_type = 2;
+  optional uint64 amount = 3;
+  // True for net deposits, false for net withdrawals.
+  optional bool is_credit = 4;
+}
+
 // Submit data to a target in the data submission competition.
 message SubmitData {
   optional string target_id = 1;
@@ -351,4 +556,156 @@ message UndoReportChallenge {
 message ClaimChallengeBond {
   // Challenge ID (ObjectID hex string)
   optional string challenge_id = 1;
+}
+
+// === Payment-channel messages ===
+
+// Open a new payment channel. The transaction sender becomes the
+// channel's `payer`. `token` is "SOMA" or "USDC" — Phase 1 only
+// supports USDC.
+message OpenChannel {
+  optional string payee = 1;
+  // Address whose key will sign vouchers. Typically equal to the
+  // payer; differs when the payer wants a hot/cold key split.
+  optional string authorized_signer = 2;
+  // Coin denomination as a string ("SOMA" / "USDC").
+  optional string token = 3;
+  // Stage 8: deposit is debited from the sender's accumulator
+  // balance, not a coin object. Field 4 (deposit_coin) was removed.
+  optional uint64 deposit_amount = 5;
+  // 2026-05-13: canonical model_id from the protocol ModelRegistry.
+  // Channel binds to this model for its lifetime; executor snapshots
+  // the matching (payee, model_id) offering's price + SLA into the
+  // channel at open. Empty string is rejected by the executor.
+  optional string model_id = 6;
+}
+
+// Submit a voucher to the channel for partial payment. Channel
+// stays open. Caller MUST be the payee.
+message Settle {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // Cumulative amount the voucher authorizes — must be strictly
+  // greater than the channel's current settled_amount and at most
+  // the deposit + settled_amount.
+  optional uint64 cumulative_amount = 2;
+  // Voucher signature: BCS-encoded `IntentMessage<Voucher>` with
+  // `IntentScope::PaymentVoucher` signed by the channel's
+  // `authorized_signer`. Encoded via `GenericSignature` so MultiSig
+  // signers work transparently. Bytes form is `flag || sig || pk`.
+  optional bytes voucher_signature = 3;
+  // 2026-05-13: voucher-side cumulative usage breakdown. The
+  // executor reconstructs the full Voucher (incl. these) for
+  // signature verification, so the wire bytes must match the
+  // payer-signed values.
+  optional uint64 cumulative_prompt_tokens = 4;
+  optional uint64 cumulative_completion_tokens = 5;
+  optional uint64 cumulative_cache_read_tokens = 6;
+  optional uint64 cumulative_cache_write_tokens = 7;
+  optional uint64 cumulative_requests = 8;
+}
+
+// Payer-only: start the forced-close grace timer. The Clock's
+// current timestamp is recorded onto the channel.
+message RequestClose {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+}
+
+// Payer-only: after the grace period elapses, return the
+// remaining deposit to the payer and delete the channel.
+message WithdrawAfterTimeout {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // Payee address (hex string) — must match the channel's payee.
+  // Carried in args so the validator can declare the per-payee
+  // `ProviderInbox` shared input from the tx kind alone, without
+  // first reading the channel object during input declaration.
+  optional string payee = 2;
+}
+
+// Payer-only: add `amount` to the channel's deposit, debited from
+// the payer's accumulator in the channel's coin type. Clears any
+// pending close-timer so a renewing payer can withdraw their close
+// request and keep the relationship running.
+message TopUp {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // Coin denomination ("SOMA" / "USDC"). Must match the channel's
+  // token; the executor rejects mismatch.
+  optional string coin_type = 2;
+  // Top-up amount, in the channel's smallest unit. Must be > 0.
+  optional uint64 amount = 3;
+}
+
+// Payer-only: flag a channel as negative (`true`) or positive
+// (`false`). Latest-wins. Requires `channel.settled_amount > 0`
+// (must have actually paid before forming an opinion). The view
+// aggregates a volume-weighted negative-rate per provider.
+message RateChannel {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // True = thumbs down, False = thumbs up.
+  optional bool negative = 2;
+  // 2026-05-13: reason code (0=Quality, 1=TtftBreach, 2=TtotBreach,
+  // 3=NoResponse, 255=Other). Unknown values project to Other on
+  // the receive side for forward-compat.
+  optional uint32 reason_code = 3;
+}
+
+// Per-(provider, model) offering tx kinds (2026-05-13).
+message RegisterOffering {
+  optional string model_id = 1;
+  optional uint64 prompt_micros_per_1k = 2;
+  optional uint64 completion_micros_per_1k = 3;
+  optional uint64 cache_read_micros_per_1k = 4;
+  optional uint64 cache_write_micros_per_1k = 5;
+  optional uint64 request_micros = 6;
+  optional uint32 ttft_bound_ms = 7;
+  optional uint32 ttot_bound_ms = 8;
+}
+
+message UpdateOffering {
+  optional string offering_id = 1;
+  optional string model_id = 2;
+  optional uint64 prompt_micros_per_1k = 3;
+  optional uint64 completion_micros_per_1k = 4;
+  optional uint64 cache_read_micros_per_1k = 5;
+  optional uint64 cache_write_micros_per_1k = 6;
+  optional uint64 request_micros = 7;
+  optional uint32 ttft_bound_ms = 8;
+  optional uint32 ttot_bound_ms = 9;
+}
+
+message DeactivateOffering {
+  optional string offering_id = 1;
+  optional string model_id = 2;
+}
+
+// Register the signer as a provider on-chain. Creates a Provider
+// shared object at Provider::derive_id(signer). Hard-fails if one
+// already exists for the signer (use UpdateProvider).
+message RegisterProvider {
+  // HTTP(S) endpoint for the provider's /soma/info and /v1/* APIs.
+  optional string endpoint = 1;
+  // The provider's iroh EndpointId (canonical z-base-32 string), or
+  // empty for HTTP-only providers. A dedicated transport key buyers
+  // dial over iroh.
+  optional string iroh_endpoint_id = 2;
+}
+
+// Update the signer's provider record. Doubles as a heartbeat —
+// the executor stamps `registered_at_ms` from the Clock on every
+// call regardless of whether the endpoint changed.
+message UpdateProvider {
+  // Provider object ID (hex string). Carried explicitly so the
+  // scheduler can declare it as a shared input from the tx kind
+  // alone. The executor verifies that
+  // `provider_id == Provider::derive_id(signer)`.
+  optional string provider_id = 1;
+  // New (or unchanged) endpoint URL.
+  optional string endpoint = 2;
+  // New (or unchanged) iroh EndpointId (canonical z-base-32), or empty
+  // for HTTP-only. Lets a provider rotate its transport key.
+  optional string iroh_endpoint_id = 3;
 }

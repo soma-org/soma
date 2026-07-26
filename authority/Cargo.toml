@@ -7,8 +7,6 @@ version.workspace = true
 sync.workspace = true
 consensus.workspace = true
 types.workspace = true
-blobs.workspace = true
-bytes.workspace = true
 utils.workspace = true
 protocol-config.workspace = true
 # test-cluster.workspace = true
@@ -34,8 +32,6 @@ msim.workspace = true
 tonic-health.workspace = true
 store.workspace = true
 tempfile.workspace = true
-object_store.workspace = true
-url.workspace = true
 pin-project-lite.workspace = true
 rand.workspace = true
 soma-http.workspace = true
@@ -61,9 +57,6 @@ axum.workspace = true
 hex = "0.4"
 rpc.workspace = true
 sdk.workspace = true
-runtime.workspace = true
-scoring = { workspace = true, default-features = false }
-burn.workspace = true
 sysinfo = "0.35.2"
 diffy = { version = "0.3", default-features = false }
 im = "15"

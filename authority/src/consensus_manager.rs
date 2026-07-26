@@ -29,9 +29,7 @@ use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::consensus_adapter::{
     BlockStatusReceiver, ConsensusAdapter, ConsensusClient, SubmitToConsensus,
 };
-use crate::consensus_handler::{
-    ConsensusBlockHandler, ConsensusHandlerInitializer, MysticetiConsensusHandler,
-};
+use crate::consensus_handler::{ConsensusHandlerInitializer, MysticetiConsensusHandler};
 use crate::consensus_validator::TxValidator;
 use crate::mysticeti_adapter::LazyMysticetiClient;
 #[derive(PartialEq)]
@@ -143,22 +141,18 @@ impl ConsensusManager {
         let replay_after_commit_index =
             last_processed_commit_index.saturating_sub(num_prior_commits);
 
-        let (commit_consumer, commit_receiver, block_receiver) =
+        let (commit_consumer, commit_receiver, _block_receiver) =
             CommitConsumerArgs::new(replay_after_commit_index, last_processed_commit_index);
         let monitor = commit_consumer.monitor();
 
-        // Spin up the new Mysticeti consensus handler to listen for committed sub dags, before starting authority.
-        let consensus_block_handler = ConsensusBlockHandler::new(
-            epoch_store.clone(),
-            consensus_handler.execution_scheduler_sender().clone(),
-            consensus_handler_initializer.backpressure_subscriber(),
-        );
+        // Stage 5b: `_block_receiver` is intentionally dropped — the per-block
+        // fastpath handler is gone and every transaction now flows through
+        // consensus commits via `commit_receiver`. Mysticeti will simply
+        // discard block-level certifications without a subscriber.
         let handler = MysticetiConsensusHandler::new(
             last_processed_commit_index,
             consensus_handler,
-            consensus_block_handler,
             commit_receiver,
-            block_receiver,
             monitor.clone(),
         );
         let mut consensus_handler = self.consensus_handler.lock().await;

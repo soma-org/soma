@@ -1801,31 +1801,3 @@ impl FromStr for GenericSignature {
         Self::decode_base64(s).map_err(|e| eyre!("Fail to decode base64 {}", e.to_string()))
     }
 }
-
-/// AES-256 symmetric decryption key for encrypted model weights.
-/// 32 bytes. Used with AES-256-CTR for actual encryption/decryption
-/// of model weights in the CLI/inference-engine.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DecryptionKey(crate::digests::Digest);
-
-impl DecryptionKey {
-    pub fn new(key: [u8; 32]) -> Self {
-        Self(crate::digests::Digest::new(key))
-    }
-
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        self.0.inner()
-    }
-}
-
-impl AsRef<[u8]> for DecryptionKey {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl Debug for DecryptionKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "DecryptionKey(<redacted>)")
-    }
-}

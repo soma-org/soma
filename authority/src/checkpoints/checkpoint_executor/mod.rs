@@ -51,9 +51,7 @@ use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::backpressure_manager::BackpressureManager;
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
 use crate::checkpoints::CheckpointStore;
-use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
-    load_checkpoint, store_checkpoint_locally,
-};
+use crate::checkpoints::checkpoint_executor::data_ingestion_handler::load_checkpoint;
 use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
 use crate::global_state_hasher::GlobalStateHasher;
 
@@ -496,9 +494,7 @@ impl CheckpointExecutor {
     }
 
     fn checkpoint_data_enabled(&self) -> bool {
-        self.subscription_service_checkpoint_sender.is_some()
-            || self.state.rpc_index.is_some()
-            || self.config.data_ingestion_dir.is_some()
+        self.subscription_service_checkpoint_sender.is_some() || self.state.rpc_index.is_some()
     }
 
     fn insert_finalized_transactions(
@@ -529,18 +525,11 @@ impl CheckpointExecutor {
         )
         .expect("failed to load checkpoint data");
 
-        if self.state.rpc_index.is_some() || self.config.data_ingestion_dir.is_some() {
-            // Index the checkpoint. this is done out of order and is not written and committed to the
-            // DB until later (committing must be done in-order)
-            if let Some(rpc_index) = &self.state.rpc_index {
-                let checkpoint_data = checkpoint.clone().into();
-                rpc_index.index_checkpoint(&checkpoint_data);
-            }
-
-            if let Some(path) = &self.config.data_ingestion_dir {
-                store_checkpoint_locally(path, &checkpoint)
-                    .expect("failed to store checkpoint locally");
-            }
+        // Index the checkpoint. This is done out of order and is not written and committed to
+        // the DB until later (committing must be done in-order).
+        if let Some(rpc_index) = &self.state.rpc_index {
+            let checkpoint_data = checkpoint.clone().into();
+            rpc_index.index_checkpoint(&checkpoint_data);
         }
 
         Some(checkpoint)

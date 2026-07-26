@@ -1,6 +1,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+//! Tests for AddStake (Stage 9d-C2: balance-mode) and WithdrawStake.
+//!
+//! Stake principal is SOMA, debited from the sender's accumulator
+//! balance — no SOMA coin input. Gas is paid in USDC (still
+//! coin-mode here for simplicity). The F1 fold-to-balance path is
+//! verified separately via the dual-write delegation tests.
+
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
@@ -10,7 +17,7 @@ use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
 };
 use types::error::SomaError;
-use types::object::{Object, ObjectID, ObjectRef};
+use types::object::{CoinType, Object, ObjectID};
 use types::transaction::{TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
@@ -18,128 +25,87 @@ use crate::authority::AuthorityState;
 use crate::authority_test_utils::send_and_confirm_transaction_;
 use crate::test_authority_builder::TestAuthorityBuilder;
 
-// Default fees from protocol config v1
-const BASE_FEE: u64 = 1000;
-const WRITE_FEE: u64 = 300;
-const VALUE_FEE_BPS: u64 = 10;
-const BPS_DENOMINATOR: u64 = 10000;
-// Staking gets half the normal value fee
-const STAKING_VALUE_FEE_BPS: u64 = VALUE_FEE_BPS / 2; // = 5
-
-// =============================================================================
-// AddStake success cases
-// =============================================================================
+// Default `unit_fee` from protocol config v1.
+const UNIT_FEE: u64 = 1000;
+// Staking ops cost a fixed 2 units (see StakingExecutor::fee_units).
+const STAKING_FEE_UNITS: u64 = 2;
+const STAKING_FEE: u64 = UNIT_FEE * STAKING_FEE_UNITS;
 
 #[tokio::test]
-async fn test_add_stake_specific_amount() {
+async fn test_add_stake_balance_mode_succeeds() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
+    let stake_amount = 10_000_000u64;
+    let starting_balance = 50_000_000u64;
 
-    let res = execute_add_stake(coin, Some(10_000_000), sender, SomaKeyPair::Ed25519(key)).await;
+    let res =
+        execute_add_stake(starting_balance, stake_amount, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Should create a StakedSoma object
-    assert!(effects.created().len() >= 1, "Should create at least one StakedSoma object");
-
-    // Source coin should still exist with reduced balance
-    let gas_used = effects.transaction_fee().total_fee;
-    let source_obj = res.authority_state.get_object(&coin_id).await.unwrap();
+    // Stage 9d-C4: AddStake no longer creates a StakedSomaV1
+    // object — the F1 delegation row is the sole user-visible
+    // record of the stake. Stage 9d-C5 deleted the StakedSomaV1 type
+    // and the `as_staked_soma` accessor; the cheapest invariant here
+    // is the count of created objects.
     assert_eq!(
-        source_obj.as_coin().unwrap(),
-        50_000_000 - 10_000_000 - gas_used,
-        "Source coin balance should be original - stake_amount - fees"
+        effects.created().len(),
+        0,
+        "Stage 9d-C5: AddStake creates no objects (F1 row only)",
+    );
+
+    // Flush so the writeback cache's settlement events land in the
+    // perpetual store (unit tests skip the checkpoint executor that
+    // does this in production — same plumbing concern as
+    // delegation_dual_write tests).
+    let tx_digest = effects.transaction_digest();
+    let epoch = res.authority_state.epoch_store_for_testing().epoch();
+    let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
+    res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+
+    let store = res.authority_state.database_for_testing();
+    let post_balance = store.get_balance(sender, CoinType::Soma).unwrap();
+    assert_eq!(
+        post_balance,
+        starting_balance - stake_amount,
+        "stake_amount must be debited from the SOMA accumulator",
     );
 }
 
 #[tokio::test]
-async fn test_add_stake_entire_coin_as_gas() {
-    // Stake all (amount=None) when coin is also gas coin
-    // Should deduct fees first, then stake the remainder
+async fn test_add_stake_zero_amount_rejected() {
+    // Stage 9d-C2: zero is now an explicit error in the executor.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let balance = 50_000_000u64;
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, balance);
-
-    let res = execute_add_stake(
-        coin,
-        None, // stake all
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(50_000_000, 0, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-    // Coin should be deleted (entire balance staked minus fees)
-    let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
-    assert!(deleted_ids.contains(&coin_id), "Coin should be deleted when staking all");
-
-    // Should have created a StakedSoma object
-    assert!(effects.created().len() >= 1, "Should create StakedSoma");
+    assert!(!effects.status().is_ok(), "zero stake amount must fail");
 }
 
-// =============================================================================
-// AddStake fee handling (half value fee)
-// =============================================================================
-
 #[tokio::test]
-async fn test_add_stake_half_value_fee() {
-    // Staking should get half the normal value fee rate
+async fn test_add_stake_charges_fixed_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_amount = 10_000_000u64;
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 50_000_000);
-
-    let res = execute_add_stake(coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key)).await;
+    let res = execute_add_stake(50_000_000, 10_000_000, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     let fee = effects.transaction_fee();
-    // Value fee should be half the normal rate: amount * (value_fee_bps / 2) / BPS_DENOMINATOR
-    let expected_value_fee = (stake_amount * STAKING_VALUE_FEE_BPS) / BPS_DENOMINATOR;
-    assert_eq!(
-        fee.value_fee, expected_value_fee,
-        "Staking value fee should be half normal rate: got {}, expected {}",
-        fee.value_fee, expected_value_fee
-    );
-
-    assert_eq!(fee.base_fee, BASE_FEE, "Base fee should be standard");
-    assert_eq!(fee.total_fee, fee.base_fee + fee.operation_fee + fee.value_fee);
-}
-
-// =============================================================================
-// AddStake failure cases
-// =============================================================================
-
-#[tokio::test]
-async fn test_add_stake_insufficient_balance_specific_amount() {
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    // Balance that covers base fee but not stake amount + remaining fees
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 5000);
-
-    let res = execute_add_stake(
-        coin,
-        Some(4500), // + base_fee(1000) + operation_fee + value_fee > 5000
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    assert!(!effects.status().is_ok(), "Should fail: stake amount + fees > balance");
+    assert_eq!(fee.total_fee, STAKING_FEE);
 }
 
 #[tokio::test]
 async fn test_add_stake_insufficient_gas() {
-    // Balance below base fee
+    // Force a failure by giving a USDC gas coin smaller than STAKING_FEE.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 500);
-
-    let res = execute_add_stake(coin, Some(100), sender, SomaKeyPair::Ed25519(key)).await;
+    let res = execute_add_stake_with_gas(
+        50_000_000,
+        1_000,
+        500, // USDC gas coin balance < STAKING_FEE (2000)
+        sender,
+        SomaKeyPair::Ed25519(key),
+    )
+    .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(
@@ -148,91 +114,181 @@ async fn test_add_stake_insufficient_gas() {
     );
 }
 
+/// A successful AddStake against an *active* pool lands the staked
+/// amount in the row's pending bucket — the new stake doesn't count
+/// toward current-epoch rewards. `pending_added_at_epoch` records the
+/// epoch in which it was added so the next-epoch promotion logic can
+/// distinguish matured pending from fresh deposits.
 #[tokio::test]
-async fn test_add_stake_entire_coin_insufficient_for_fees() {
-    // Stake-all where the balance is barely above base_fee but not enough for
-    // value + operation fees
+async fn test_add_stake_writes_pending_bucket() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1100);
+    let stake_amount = 7_500_000u64;
 
-    let res = execute_add_stake(
-        coin,
-        None, // stake all
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
-
+    let res = execute_add_stake(50_000_000, stake_amount, sender, SomaKeyPair::Ed25519(key)).await;
     let effects = res.txn_result.unwrap().into_data();
-    // After base fee (1000), only 100 left. Operation fee for 1 object = 300.
-    // So total remaining fee > 100. Should fail.
+    assert_eq!(*effects.status(), ExecutionStatus::Success);
+
+    // Flush so the delegation row lands in perpetual_tables before we
+    // read it.
+    let tx_digest = effects.transaction_digest();
+    let epoch = res.authority_state.epoch_store_for_testing().epoch();
+    let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
+    res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+
+    // Exactly one row exists for this staker.
+    let store = res.authority_state.database_for_testing();
+    let listed = store.iter_delegations_for_staker(sender).unwrap();
+    assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
+    let (pool, delegation) = listed[0];
+
+    // Active-pool AddStake: amount lands in pending, not principal.
+    assert_eq!(
+        delegation.principal, 0,
+        "active-pool AddStake leaves principal at 0 (no current-epoch reward share)",
+    );
+    assert_eq!(
+        delegation.pending_principal, stake_amount,
+        "active-pool AddStake credits pending bucket with the full amount",
+    );
+
+    // `pending_added_at_epoch` records the staking epoch.
+    use types::system_state::SystemStateTrait;
+    let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
+    assert_eq!(
+        delegation.pending_added_at_epoch,
+        system_state.epoch(),
+        "pending_added_at_epoch must equal the current epoch",
+    );
+
+    // `index_at_last_collect` snapshots the pool's cumulative_index
+    // at settlement time. For a first-time staker on a fresh pool
+    // this is zero; for any pool that has already deposited rewards
+    // it must equal the live `cumulative_index`.
+    let pool_state = &system_state
+        .validators()
+        .validators
+        .iter()
+        .find(|v| v.staking_pool.id == pool)
+        .expect("pool must exist on a validator")
+        .staking_pool;
+    assert_eq!(
+        delegation.index_at_last_collect, pool_state.cumulative_index,
+        "AddStake must snapshot the pool's cumulative_index",
+    );
+}
+
+/// A successful WithdrawStake drains the (pool, sender) delegation
+/// row to zero — `apply_delegation_events` then deletes it outright
+/// per the row-deletion contract. The withdrawn principal lands in
+/// the sender's SOMA balance accumulator.
+#[tokio::test]
+async fn test_withdraw_stake_drains_delegation_row() {
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let sender_key = SomaKeyPair::Ed25519(key);
+    let stake_amount = 4_500_000u64;
+
+    let authority_state = TestAuthorityBuilder::new().build().await;
+
+    // Stage 13c: seed both SOMA (stake principal) and USDC (gas).
+    let store = authority_state.database_for_testing();
+    store.set_balance(sender, CoinType::Soma, 50_000_000).unwrap();
+    store.set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
+
+    let validator_address = {
+        let system_state = authority_state.get_system_state_object_for_testing().unwrap();
+        system_state.validators().validators[0].metadata.soma_address
+    };
+
+    // Step 1: AddStake (Stage 13c: balance-mode for stake + gas).
+    let add_data = TransactionData::new(
+        TransactionKind::AddStake { validator: validator_address, amount: stake_amount },
+        sender,
+        vec![],
+    );
+    let add_tx = to_sender_signed_transaction(add_data, &sender_key);
+    let (_, add_effects) =
+        send_and_confirm_transaction_(&authority_state, None, add_tx, true).await.unwrap();
+    let add_effects = add_effects.into_data();
+    assert_eq!(*add_effects.status(), ExecutionStatus::Success);
+
+    // Flush so the delegation row lands in perpetual_tables before we
+    // read it.
+    let add_tx_digest = add_effects.transaction_digest();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
+    let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*add_tx_digest]);
+    authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*add_tx_digest]);
+
+    let store = authority_state.database_for_testing();
+    let listed = store.iter_delegations_for_staker(sender).unwrap();
+    assert_eq!(listed.len(), 1, "AddStake must create exactly one row");
+    let pool = listed[0].0;
+    assert_eq!(
+        listed[0].1.pending_principal, stake_amount,
+        "active-pool AddStake credits the pending bucket",
+    );
+
+    // Step 2: WithdrawStake (Stage 13c: balance-mode, drains the row).
+    // Top up USDC so the second tx can pay gas.
+    store.set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
+    let withdraw_data = TransactionData::new(
+        TransactionKind::WithdrawStake { pool_id: pool, amount: None },
+        sender,
+        vec![],
+    );
+    let withdraw_tx = to_sender_signed_transaction(withdraw_data, &sender_key);
+    let (_, withdraw_effects) =
+        send_and_confirm_transaction_(&authority_state, None, withdraw_tx, true).await.unwrap();
+    let withdraw_effects = withdraw_effects.into_data();
+    assert_eq!(*withdraw_effects.status(), ExecutionStatus::Success, "WithdrawStake must succeed",);
+
+    let withdraw_tx_digest = withdraw_effects.transaction_digest();
+    let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*withdraw_tx_digest]);
+    authority_state.get_cache_commit().commit_transaction_outputs(
+        epoch,
+        batch,
+        &[*withdraw_tx_digest],
+    );
+
+    let drained = store.get_delegation(pool, sender).unwrap();
+    assert_eq!(drained.principal, 0, "active principal drained");
+    assert_eq!(drained.pending_principal, 0, "pending principal drained");
+    let listed = store.iter_delegations_for_staker(sender).unwrap();
     assert!(
-        !effects.status().is_ok(),
-        "Should fail: after base_fee, not enough for stake-all fees"
+        listed.is_empty(),
+        "no delegation rows should remain for `sender` after the only stake is withdrawn \
+         (got {:?})",
+        listed,
     );
 }
 
 // =============================================================================
-// AddStake gas coin awareness
-// =============================================================================
-
-#[tokio::test]
-async fn test_add_stake_gas_coin_reserves_for_fees() {
-    // When gas coin == stake coin with specific amount, executor should check
-    // that balance >= stake_amount + fees (not just stake_amount)
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let balance = 10_000_000u64;
-    let stake_amount = 9_990_000u64;
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, balance);
-
-    // After base_fee (1000), balance = 9_999_000
-    // stake_amount (9_990_000) + operation_fee (2*300=600) + value_fee > 9_999_000?
-    // Let's calculate: value_fee = 9_990_000 * 5 / 10000 = 4995
-    // Total needed = 9_990_000 + 600 + 4995 = 9_995_595
-    // Available after base fee = 9_999_000
-    // This should succeed (9_999_000 > 9_995_595)
-
-    let res = execute_add_stake(coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key)).await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-}
-
-// =============================================================================
-// WithdrawStake tests (basic validation only — requires active epoch with staked objects)
-// Note: Full withdraw testing requires the staking pool to accept the withdrawal
-// request, which needs a proper epoch context. These tests verify the execution
-// path handles basic validation.
+// WithdrawStake tests
 // =============================================================================
 
 #[tokio::test]
 async fn test_withdraw_stake_nonexistent_object() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let gas_id = ObjectID::random();
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(gas.clone()).await;
+    authority_state.database_for_testing().set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
 
-    let fake_staked_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
-    let gas_ref = gas.compute_object_reference();
-
+    // Stage 13c: WithdrawStake against a pool the sender has no
+    // stake in. Executor reads the prefetched (pool, sender) row,
+    // finds none, errors out.
     let data = TransactionData::new(
-        TransactionKind::WithdrawStake { staked_soma: fake_staked_ref },
+        TransactionKind::WithdrawStake { pool_id: ObjectID::random(), amount: None },
         sender,
-        vec![gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &key);
     let result = send_and_confirm_transaction_(&authority_state, None, tx, true).await;
 
-    // Should fail because the staked soma object doesn't exist
-    // The exact error depends on input loading phase
     match result {
         Ok((_, effects)) => {
             assert!(!effects.status().is_ok(), "Should fail: nonexistent staked object");
         }
         Err(_) => {
-            // Also acceptable — input loading may reject before execution
+            // Also acceptable — input loading may reject before execution.
         }
     }
 }
@@ -246,29 +302,44 @@ struct TransactionResult {
     txn_result: Result<SignedTransactionEffects, SomaError>,
 }
 
+/// Submit an AddStake (balance-mode) where the sender's SOMA
+/// accumulator is pre-funded with `soma_balance`. A USDC gas coin
+/// (with default funding) is created automatically.
 async fn execute_add_stake(
-    coin: Object,
-    amount: Option<u64>,
+    soma_balance: u64,
+    amount: u64,
+    sender: SomaAddress,
+    sender_key: SomaKeyPair,
+) -> TransactionResult {
+    execute_add_stake_with_gas(soma_balance, amount, 10_000_000, sender, sender_key).await
+}
+
+async fn execute_add_stake_with_gas(
+    soma_balance: u64,
+    amount: u64,
+    gas_balance: u64,
     sender: SomaAddress,
     sender_key: SomaKeyPair,
 ) -> TransactionResult {
     let authority_state = TestAuthorityBuilder::new().build().await;
-    let coin_ref = coin.compute_object_reference();
-    authority_state.insert_genesis_object(coin).await;
 
-    // Get the first validator's soma_address from the system state
+    // Stage 13c: AddStake debits SOMA from the accumulator and gas
+    // (USDC) from the accumulator. Both balances are seeded directly.
+    let store = authority_state.database_for_testing();
+    store.set_balance(sender, CoinType::Soma, soma_balance).unwrap();
+    store.set_balance(sender, CoinType::Usdc, gas_balance).unwrap();
+
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
         system_state.validators().validators[0].metadata.soma_address
     };
 
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount },
+        TransactionKind::AddStake { validator: validator_address, amount },
         sender,
-        vec![coin_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
-    // AddStake requires SystemState (shared object) — must use with_shared: true
     let txn_result = send_and_confirm_transaction_(&authority_state, None, tx, true)
         .await
         .map(|(_, effects)| effects);

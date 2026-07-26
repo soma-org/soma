@@ -1,0 +1,43 @@
+---
+title: Become a provider
+description: Register, publish offerings, run the daemon, withdraw earnings.
+---
+
+A provider sells inference. You decide which models you serve, what you charge, and what infrastructure you use to serve them. Soma handles registration, payment, and discovery.
+
+## The path
+
+1. **Register your provider record.** One transaction; binds your wallet address to a public HTTPS endpoint that buyers' proxies will hit.
+
+    ```sh
+    soma provider register --endpoint https://my-inference.example.com
+    ```
+
+2. **Publish an offering for each model you sell.** Prices are in micro-USDC per 1000 tokens. The `--model-id` must be one of the canonical IDs in the protocol's [ModelRegistry](/reference/cli/) — list them with `soma model list`.
+
+    ```sh
+    soma offering register \
+        --model-id anthropic/claude-haiku-4.5 \
+        --prompt-micros-per-1k 1000 \
+        --completion-micros-per-1k 5000
+    ```
+
+3. **Run the daemon.** It accepts OpenAI-compatible requests at your endpoint, verifies each one carries a valid voucher, forwards to your upstream (your own GPUs, OpenRouter, Anthropic — anything), streams responses back, and stores vouchers.
+
+    ```sh
+    soma start provider --config provider.toml
+    ```
+
+    Config schema is in `soma start provider --help`.
+
+4. **Withdraw earnings.** Voucher settlement happens automatically while the daemon runs. To move USDC back to Base:
+
+    ```sh
+    soma bridge withdraw --amount <USDC> --recipient <ETH_ADDR> --target-chain base-sepolia
+    ```
+
+## What you don't have to do
+
+- **Stake.** Providers don't stake anything. Staking is for validators.
+- **Run a validator.** Independent role. Most providers won't.
+- **Prove availability.** There's no on-chain liveness oracle. If your endpoint is down, the proxy routes elsewhere; your rating drops over time and traffic falls. That's the incentive.

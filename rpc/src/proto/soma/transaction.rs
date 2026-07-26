@@ -125,12 +125,17 @@ impl Merge<crate::types::Transaction> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = source.gas_payment.into_iter().map(Into::into).collect();
         }
+
+        // Stage 5.5: expiration is part of the signed BCS payload —
+        // dropping it on the wire breaks signature verification for
+        // any tx with non-default expiration.
+        self.expiration = Some(transaction_expiration_to_proto(&source.expiration));
     }
 }
 
 impl Merge<&Transaction> for Transaction {
     fn merge(&mut self, source: &Transaction, mask: &FieldMaskTree) {
-        let Transaction { digest, kind, sender, gas_payment } = source;
+        let Transaction { digest, kind, sender, gas_payment, expiration } = source;
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -147,6 +152,8 @@ impl Merge<&Transaction> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = gas_payment.clone();
         }
+
+        self.expiration = expiration.clone();
     }
 }
 
@@ -154,12 +161,6 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
     type Error = TryFromProtoError;
 
     fn try_from(value: &Transaction) -> Result<Self, Self::Error> {
-        // if let Some(bcs) = &value.bcs {
-        //     return bcs
-        //         .deserialize()
-        //         .map_err(|e| TryFromProtoError::invalid(Transaction::BCS_FIELD, e));
-        // }
-
         let kind =
             value.kind.as_ref().ok_or_else(|| TryFromProtoError::missing("kind"))?.try_into()?;
 
@@ -173,8 +174,67 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
         let gas_payment =
             value.gas_payment.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        Ok(Self { kind, sender, gas_payment })
+        // Stage 5.5: parse expiration. If absent on the wire, default
+        // to None (covers older clients submitting txs without
+        // declared expiration). If present, decode the variant.
+        let expiration = match &value.expiration {
+            Some(proto) => transaction_expiration_from_proto(proto)?,
+            None => types::transaction::TransactionExpiration::None,
+        };
+
+        Ok(Self { kind, sender, gas_payment, expiration })
     }
+}
+
+/// Convert a domain `TransactionExpiration` to its proto form. The
+/// chain identifier is encoded via BCS (32 bytes of the underlying
+/// CheckpointDigest) to round-trip cleanly.
+fn transaction_expiration_to_proto(
+    src: &types::transaction::TransactionExpiration,
+) -> super::TransactionExpiration {
+    use super::transaction_expiration::Value;
+    let value = match src {
+        types::transaction::TransactionExpiration::None => Value::None(()),
+        types::transaction::TransactionExpiration::ValidDuring {
+            min_epoch,
+            max_epoch,
+            chain,
+            nonce,
+        } => Value::ValidDuring(super::ValidDuring {
+            min_epoch: *min_epoch,
+            max_epoch: *max_epoch,
+            chain: Some(bcs::to_bytes(chain).expect("ChainIdentifier serialize").into()),
+            nonce: Some(*nonce),
+        }),
+    };
+    super::TransactionExpiration { value: Some(value) }
+}
+
+/// Convert a proto `TransactionExpiration` back to the domain type.
+fn transaction_expiration_from_proto(
+    src: &super::TransactionExpiration,
+) -> Result<types::transaction::TransactionExpiration, TryFromProtoError> {
+    use super::transaction_expiration::Value;
+    let Some(value) = &src.value else {
+        return Ok(types::transaction::TransactionExpiration::None);
+    };
+    Ok(match value {
+        Value::None(_) => types::transaction::TransactionExpiration::None,
+        Value::ValidDuring(v) => {
+            let chain_bytes = v
+                .chain
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("expiration.valid_during.chain"))?;
+            let chain: types::digests::ChainIdentifier = bcs::from_bytes(chain_bytes)
+                .map_err(|e| TryFromProtoError::invalid("expiration.valid_during.chain", e))?;
+            types::transaction::TransactionExpiration::ValidDuring {
+                min_epoch: v.min_epoch,
+                max_epoch: v.max_epoch,
+                chain,
+                nonce: v.nonce.unwrap_or(0),
+            }
+        }
+    })
 }
 
 //
@@ -200,22 +260,19 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             UpdateValidatorMetadata(args) => Kind::UpdateValidatorMetadata(args.into()),
             SetCommissionRate { new_rate } => Kind::SetCommissionRate(new_rate.into()),
 
-            // Transfers and payments
-            TransferCoin { coin, amount, recipient } => {
-                Kind::TransferCoin(TransferCoinArgs { coin, amount, recipient }.into())
-            }
-            PayCoins { coins, amounts, recipients } => {
-                Kind::PayCoins(PayCoinsArgs { coins, amounts, recipients }.into())
-            }
+            // Stage 13b: Transfer / MergeCoins deleted from the
+            // proto enum.
             TransferObjects { objects, recipient } => {
                 Kind::TransferObjects(TransferObjectsArgs { objects, recipient }.into())
             }
 
             // Staking
-            AddStake { address, coin_ref, amount } => {
-                Kind::AddStake(AddStakeArgs { address, coin_ref, amount }.into())
+            AddStake { validator, amount } => {
+                Kind::AddStake(AddStakeArgs { validator, amount }.into())
             }
-            WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
+            WithdrawStake { pool_id, amount } => {
+                Kind::WithdrawStake(WithdrawStakeArgs { pool_id, amount }.into())
+            }
 
             // Model transactions
             CreateModel(args) => Kind::CreateModel(super::CreateModel {
@@ -282,6 +339,211 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     target_id: Some(target_id.to_string()),
                 })
             }
+
+            // Bridge transactions
+            BridgeDeposit(args) => Kind::BridgeDeposit(super::BridgeDeposit {
+                nonce: Some(args.nonce),
+                eth_tx_hash: Some(args.eth_tx_hash.clone().into()),
+                recipient: Some(args.recipient.to_string()),
+                amount: Some(args.amount),
+                timestamp_ms: Some(args.timestamp_ms),
+                sender_eth_address: Some(args.sender_eth_address.clone().into()),
+                target_chain: Some(args.target_chain as u32),
+                token_type: Some(args.token_type as u32),
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| super::PubkeySig {
+                        signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                        signature: Some(s.signature.clone().into()),
+                    })
+                    .collect(),
+            }),
+            BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
+                amount: Some(args.amount),
+                recipient_eth_address: Some(args.recipient_eth_address.clone().into()),
+                target_chain: Some(args.target_chain as u32),
+            }),
+            BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(super::BridgeEmergencyPause {
+                nonce: Some(args.nonce),
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| super::PubkeySig {
+                        signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                        signature: Some(s.signature.clone().into()),
+                    })
+                    .collect(),
+            }),
+            BridgeEmergencyUnpause(args) => {
+                Kind::BridgeEmergencyUnpause(super::BridgeEmergencyUnpause {
+                    nonce: Some(args.nonce),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
+                })
+            }
+            BridgeAttachWithdrawalSignatures(args) => {
+                Kind::BridgeAttachWithdrawalSignatures(super::BridgeAttachWithdrawalSignatures {
+                    nonce: Some(args.nonce),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
+                })
+            }
+            BridgeUpdateCommitteeBlocklist(args) => {
+                let mut flat = Vec::with_capacity(args.eth_addresses.len() * 20);
+                for a in &args.eth_addresses {
+                    flat.extend_from_slice(a);
+                }
+                Kind::BridgeUpdateCommitteeBlocklist(super::BridgeUpdateCommitteeBlocklist {
+                    nonce: Some(args.nonce),
+                    is_blocklist: Some(args.is_blocklist),
+                    eth_addresses: Some(flat.into()),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| super::PubkeySig {
+                            signer_pubkey: Some(s.signer_pubkey.clone().into()),
+                            signature: Some(s.signature.clone().into()),
+                        })
+                        .collect(),
+                })
+            }
+            BridgeRegisterBridgeKey(args) => {
+                Kind::BridgeRegisterBridgeKey(super::BridgeRegisterBridgeKey {
+                    bridge_pubkey: Some(args.bridge_pubkey.clone().into()),
+                    http_url: Some(args.http_url.clone()),
+                })
+            }
+
+            // Payment-channel transactions
+            OpenChannel(args) => Kind::OpenChannel(super::OpenChannel {
+                payee: Some(args.payee.to_string()),
+                authorized_signer: Some(args.authorized_signer.to_string()),
+                token: Some(args.token.to_string()),
+                deposit_amount: Some(args.deposit_amount),
+                model_id: Some(args.model_id.clone()),
+            }),
+            Settle(args) => Kind::Settle(super::Settle {
+                channel_id: Some(args.channel_id.to_string()),
+                cumulative_amount: Some(args.cumulative_amount),
+                cumulative_prompt_tokens: Some(args.cumulative_prompt_tokens),
+                cumulative_completion_tokens: Some(args.cumulative_completion_tokens),
+                cumulative_cache_read_tokens: Some(args.cumulative_cache_read_tokens),
+                cumulative_cache_write_tokens: Some(args.cumulative_cache_write_tokens),
+                cumulative_requests: Some(args.cumulative_requests),
+                voucher_signature: Some(args.voucher_signature.clone().into()),
+            }),
+            RequestClose(args) => Kind::RequestClose(super::RequestClose {
+                channel_id: Some(args.channel_id.to_string()),
+            }),
+            WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(super::WithdrawAfterTimeout {
+                channel_id: Some(args.channel_id.to_string()),
+                payee: Some(args.payee.to_string()),
+            }),
+            TopUp(args) => Kind::TopUp(super::TopUp {
+                channel_id: Some(args.channel_id.to_string()),
+                coin_type: Some(args.coin_type.to_string()),
+                amount: Some(args.amount),
+            }),
+            RateChannel(args) => Kind::RateChannel(super::RateChannel {
+                channel_id: Some(args.channel_id.to_string()),
+                negative: Some(args.negative),
+                reason_code: Some(args.reason_code as u32),
+            }),
+
+            // Provider registry
+            RegisterProvider(args) => Kind::RegisterProvider(super::RegisterProvider {
+                endpoint: Some(args.endpoint.clone()),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id.clone()),
+            }),
+            UpdateProvider(args) => Kind::UpdateProvider(super::UpdateProvider {
+                provider_id: Some(args.provider_id.to_string()),
+                endpoint: Some(args.endpoint.clone()),
+                iroh_endpoint_id: Some(args.iroh_endpoint_id.clone()),
+            }),
+
+            Settlement(settlement) => Kind::Settlement(super::Settlement {
+                epoch: Some(settlement.epoch),
+                round: Some(settlement.round),
+                sub_dag_index: settlement.sub_dag_index,
+                changes: settlement
+                    .changes
+                    .iter()
+                    .map(|ev| {
+                        let (owner, coin_type, amount, is_credit) = match ev {
+                            types::balance::BalanceEvent::Deposit { owner, coin_type, amount } => {
+                                (*owner, *coin_type, *amount, true)
+                            }
+                            types::balance::BalanceEvent::Withdraw { owner, coin_type, amount } => {
+                                (*owner, *coin_type, *amount, false)
+                            }
+                        };
+                        super::SettlementChange {
+                            owner: Some(owner.to_string()),
+                            coin_type: Some(
+                                match coin_type {
+                                    types::object::CoinType::Usdc => "USDC",
+                                    types::object::CoinType::Soma => "SOMA",
+                                }
+                                .to_string(),
+                            ),
+                            amount: Some(amount),
+                            is_credit: Some(is_credit),
+                        }
+                    })
+                    .collect(),
+            }),
+
+            BalanceTransfer(args) => Kind::BalanceTransfer(super::BalanceTransfer {
+                coin_type: Some(args.coin_type.to_string()),
+                transfers: args
+                    .transfers
+                    .iter()
+                    .map(|(recipient, amount)| super::BalanceTransferEntry {
+                        recipient: Some(recipient.to_string()),
+                        amount: Some(*amount),
+                    })
+                    .collect(),
+            }),
+
+            // Per-(provider, model) offering tx kinds.
+            RegisterOffering(args) => Kind::RegisterOffering(super::RegisterOffering {
+                model_id: Some(args.model_id.clone()),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            UpdateOffering(args) => Kind::UpdateOffering(super::UpdateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id.clone()),
+                prompt_micros_per_1k: Some(args.prompt_micros_per_1k),
+                completion_micros_per_1k: Some(args.completion_micros_per_1k),
+                cache_read_micros_per_1k: Some(args.cache_read_micros_per_1k),
+                cache_write_micros_per_1k: Some(args.cache_write_micros_per_1k),
+                request_micros: Some(args.request_micros),
+                ttft_bound_ms: Some(args.ttft_bound_ms),
+                ttot_bound_ms: Some(args.ttot_bound_ms),
+            }),
+            DeactivateOffering(args) => Kind::DeactivateOffering(super::DeactivateOffering {
+                offering_id: Some(args.offering_id.to_string()),
+                model_id: Some(args.model_id.clone()),
+            }),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -328,30 +590,21 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 new_rate: rate.new_rate.ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
             },
 
-            // Transfers and payments
-            Kind::TransferCoin(transfer) => Self::TransferCoin {
-                coin: transfer
-                    .coin
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin"))?
-                    .try_into()?,
-                amount: transfer.amount,
-                recipient: transfer
-                    .recipient
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("recipient"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
-            },
-            Kind::PayCoins(pay) => Self::PayCoins {
-                coins: pay.coins.iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
-                amounts: Some(pay.amounts.clone()),
-                recipients: pay
-                    .recipients
-                    .iter()
-                    .map(|r| r.parse().map_err(|e| TryFromProtoError::invalid("recipients", e)))
-                    .collect::<Result<_, _>>()?,
-            },
+            // Stage 13b: legacy proto TransferCoin / PayCoins are
+            // rejected — domain Transfer / MergeCoins variants are
+            // gone. Callers must send proto BalanceTransfer.
+            Kind::TransferCoin(_) => {
+                return Err(TryFromProtoError::invalid(
+                    "kind",
+                    "TransferCoin is deleted (Stage 13b). Use BalanceTransfer.",
+                ));
+            }
+            Kind::PayCoins(_) => {
+                return Err(TryFromProtoError::invalid(
+                    "kind",
+                    "PayCoins is deleted (Stage 13b). Use BalanceTransfer.",
+                ));
+            }
             Kind::TransferObjects(transfer) => Self::TransferObjects {
                 objects: transfer
                     .objects
@@ -366,28 +619,25 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
             },
 
-            // Staking
+            // Staking (Stage 9d-C2: balance-mode AddStake, no coin_ref)
             Kind::AddStake(stake) => Self::AddStake {
-                address: stake
-                    .address
+                validator: stake
+                    .validator
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("address"))?
+                    .ok_or_else(|| TryFromProtoError::missing("validator"))?
                     .parse()
-                    .map_err(|e| TryFromProtoError::invalid("address", e))?,
-                coin_ref: stake
-                    .coin_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
-                    .try_into()?,
-                amount: stake.amount,
+                    .map_err(|e| TryFromProtoError::invalid("validator", e))?,
+                amount: stake.amount.ok_or_else(|| TryFromProtoError::missing("amount"))?,
             },
 
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
-                staked_soma: withdraw
-                    .staked_soma
+                pool_id: withdraw
+                    .pool_id
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("staked_soma"))?
-                    .try_into()?,
+                    .ok_or_else(|| TryFromProtoError::missing("pool_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("pool_id", e))?,
+                amount: withdraw.amount,
             },
 
             // Model transactions
@@ -554,6 +804,108 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
             },
+            // Bridge transactions
+            Kind::BridgeDeposit(args) => Self::BridgeDeposit(crate::types::BridgeDepositArgs {
+                nonce: args.nonce.unwrap_or(0),
+                eth_tx_hash: args.eth_tx_hash.as_deref().unwrap_or_default().to_vec(),
+                recipient: args
+                    .recipient
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("recipient"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
+                amount: args.amount.unwrap_or(0),
+                timestamp_ms: args.timestamp_ms.unwrap_or(0),
+                sender_eth_address: args.sender_eth_address.as_deref().unwrap_or_default().to_vec(),
+                target_chain: args.target_chain.unwrap_or(0) as u8,
+                token_type: args.token_type.unwrap_or(0) as u8,
+                signatures: args
+                    .signatures
+                    .iter()
+                    .map(|s| crate::types::PubkeySig {
+                        signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                        signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                    })
+                    .collect(),
+            }),
+            Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
+                amount: args.amount.unwrap_or(0),
+                recipient_eth_address: args
+                    .recipient_eth_address
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_vec(),
+                target_chain: args.target_chain.unwrap_or(0) as u8,
+            }),
+            Kind::BridgeEmergencyPause(args) => {
+                Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
+                })
+            }
+            Kind::BridgeEmergencyUnpause(args) => {
+                Self::BridgeEmergencyUnpause(crate::types::BridgeEmergencyUnpauseArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
+                })
+            }
+            Kind::BridgeAttachWithdrawalSignatures(args) => Self::BridgeAttachWithdrawalSignatures(
+                crate::types::BridgeAttachWithdrawalSignaturesArgs {
+                    nonce: args.nonce.unwrap_or(0),
+                    signatures: args
+                        .signatures
+                        .iter()
+                        .map(|s| crate::types::PubkeySig {
+                            signer_pubkey: s.signer_pubkey.as_deref().unwrap_or_default().to_vec(),
+                            signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                        })
+                        .collect(),
+                },
+            ),
+            Kind::BridgeUpdateCommitteeBlocklist(args) => {
+                let flat = args.eth_addresses.as_deref().unwrap_or_default();
+                let eth_addresses = flat.chunks_exact(20).map(|c| c.to_vec()).collect::<Vec<_>>();
+                Self::BridgeUpdateCommitteeBlocklist(
+                    crate::types::BridgeUpdateCommitteeBlocklistArgs {
+                        nonce: args.nonce.unwrap_or(0),
+                        is_blocklist: args.is_blocklist.unwrap_or(false),
+                        eth_addresses,
+                        signatures: args
+                            .signatures
+                            .iter()
+                            .map(|s| crate::types::PubkeySig {
+                                signer_pubkey: s
+                                    .signer_pubkey
+                                    .as_deref()
+                                    .unwrap_or_default()
+                                    .to_vec(),
+                                signature: s.signature.as_deref().unwrap_or_default().to_vec(),
+                            })
+                            .collect(),
+                    },
+                )
+            }
+            Kind::BridgeRegisterBridgeKey(args) => {
+                Self::BridgeRegisterBridgeKey(crate::types::BridgeRegisterBridgeKeyArgs {
+                    bridge_pubkey: args.bridge_pubkey.as_deref().unwrap_or_default().to_vec(),
+                    http_url: args.http_url.clone().unwrap_or_default(),
+                })
+            }
+
             // Challenge variants removed — reject if received from proto
             Kind::InitiateChallenge(_)
             | Kind::ReportChallenge(_)
@@ -563,6 +915,282 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     "kind",
                     "challenge transactions are no longer supported",
                 ));
+            }
+
+            // Payment-channel variants. Proto schema (Mar 2026) does
+            // not yet carry `model_id` / `cumulative_*` token fields /
+            // `reason_code` — they're plumbed at the rpc::types layer
+            // and on chain. Until the proto regen, this conversion
+            // surfaces a request that hits the chain executor with
+            // legacy-shaped args (model_id empty, usage breakdown 0).
+            // Such a tx will be rejected by the executor (no offering
+            // for empty model_id) — which is the correct safety
+            // posture pre-codegen: explicit failure rather than a
+            // silent zero-binding.
+            Kind::OpenChannel(args) => Self::OpenChannel(crate::types::OpenChannelArgs {
+                payee: args
+                    .payee
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("payee"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("payee", e))?,
+                authorized_signer: args
+                    .authorized_signer
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("authorized_signer"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("authorized_signer", e))?,
+                token: args
+                    .token
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("token"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| TryFromProtoError::invalid("token", e))?,
+                deposit_amount: args
+                    .deposit_amount
+                    .ok_or_else(|| TryFromProtoError::missing("deposit_amount"))?,
+                model_id: args
+                    .model_id
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+            }),
+
+            Kind::Settle(args) => Self::Settle(crate::types::SettleArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                cumulative_amount: args
+                    .cumulative_amount
+                    .ok_or_else(|| TryFromProtoError::missing("cumulative_amount"))?,
+                cumulative_prompt_tokens: args.cumulative_prompt_tokens.unwrap_or(0),
+                cumulative_completion_tokens: args.cumulative_completion_tokens.unwrap_or(0),
+                cumulative_cache_read_tokens: args.cumulative_cache_read_tokens.unwrap_or(0),
+                cumulative_cache_write_tokens: args.cumulative_cache_write_tokens.unwrap_or(0),
+                cumulative_requests: args.cumulative_requests.unwrap_or(0),
+                voucher_signature: args
+                    .voucher_signature
+                    .as_deref()
+                    .ok_or_else(|| TryFromProtoError::missing("voucher_signature"))?
+                    .to_vec(),
+            }),
+
+            Kind::RequestClose(args) => Self::RequestClose(crate::types::RequestCloseArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+            }),
+
+            Kind::WithdrawAfterTimeout(args) => {
+                Self::WithdrawAfterTimeout(crate::types::WithdrawAfterTimeoutArgs {
+                    channel_id: args
+                        .channel_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                    payee: args
+                        .payee
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("payee"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("payee", e))?,
+                })
+            }
+
+            Kind::TopUp(args) => Self::TopUp(crate::types::TopUpArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                coin_type: args
+                    .coin_type
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("coin_type"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| TryFromProtoError::invalid("coin_type", e))?,
+                amount: args.amount.ok_or_else(|| TryFromProtoError::missing("amount"))?,
+            }),
+
+            Kind::RateChannel(args) => Self::RateChannel(crate::types::RateChannelArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                negative: args.negative.ok_or_else(|| TryFromProtoError::missing("negative"))?,
+                reason_code: args.reason_code.unwrap_or(0) as u8,
+            }),
+
+            Kind::RegisterOffering(args) => {
+                Self::RegisterOffering(crate::types::RegisterOfferingArgs {
+                    model_id: args
+                        .model_id
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                    prompt_micros_per_1k: args
+                        .prompt_micros_per_1k
+                        .ok_or_else(|| TryFromProtoError::missing("prompt_micros_per_1k"))?,
+                    completion_micros_per_1k: args
+                        .completion_micros_per_1k
+                        .ok_or_else(|| TryFromProtoError::missing("completion_micros_per_1k"))?,
+                    cache_read_micros_per_1k: args.cache_read_micros_per_1k.unwrap_or(0),
+                    cache_write_micros_per_1k: args.cache_write_micros_per_1k.unwrap_or(0),
+                    request_micros: args.request_micros.unwrap_or(0),
+                    ttft_bound_ms: args.ttft_bound_ms.unwrap_or(0),
+                    ttot_bound_ms: args.ttot_bound_ms.unwrap_or(0),
+                })
+            }
+
+            Kind::UpdateOffering(args) => Self::UpdateOffering(crate::types::UpdateOfferingArgs {
+                offering_id: args
+                    .offering_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("offering_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("offering_id", e))?,
+                model_id: args
+                    .model_id
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                prompt_micros_per_1k: args.prompt_micros_per_1k.unwrap_or(0),
+                completion_micros_per_1k: args.completion_micros_per_1k.unwrap_or(0),
+                cache_read_micros_per_1k: args.cache_read_micros_per_1k.unwrap_or(0),
+                cache_write_micros_per_1k: args.cache_write_micros_per_1k.unwrap_or(0),
+                request_micros: args.request_micros.unwrap_or(0),
+                ttft_bound_ms: args.ttft_bound_ms.unwrap_or(0),
+                ttot_bound_ms: args.ttot_bound_ms.unwrap_or(0),
+            }),
+
+            Kind::DeactivateOffering(args) => {
+                Self::DeactivateOffering(crate::types::DeactivateOfferingArgs {
+                    offering_id: args
+                        .offering_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("offering_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("offering_id", e))?,
+                    model_id: args
+                        .model_id
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?,
+                })
+            }
+
+            Kind::RegisterProvider(args) => {
+                Self::RegisterProvider(crate::types::RegisterProviderArgs {
+                    endpoint: args
+                        .endpoint
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
+                    iroh_endpoint_id: args.iroh_endpoint_id.clone().unwrap_or_default(),
+                })
+            }
+
+            Kind::UpdateProvider(args) => Self::UpdateProvider(crate::types::UpdateProviderArgs {
+                provider_id: args
+                    .provider_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("provider_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("provider_id", e))?,
+                endpoint: args
+                    .endpoint
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("endpoint"))?,
+                iroh_endpoint_id: args.iroh_endpoint_id.clone().unwrap_or_default(),
+            }),
+
+            Kind::Settlement(settlement) => {
+                let mut changes = Vec::with_capacity(settlement.changes.len());
+                for change in &settlement.changes {
+                    let owner = change
+                        .owner
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.owner"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("settlement.changes.owner", e))?;
+                    let coin_type_label = change
+                        .coin_type
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.coin_type"))?
+                        .as_str();
+                    let coin_type = match coin_type_label {
+                        "USDC" => types::object::CoinType::Usdc,
+                        "SOMA" => types::object::CoinType::Soma,
+                        other => {
+                            return Err(TryFromProtoError::invalid(
+                                "settlement.changes.coin_type",
+                                format!("unknown coin type {other:?}"),
+                            ));
+                        }
+                    };
+                    let amount = change
+                        .amount
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.amount"))?;
+                    let is_credit = change.is_credit.ok_or_else(|| {
+                        TryFromProtoError::missing("settlement.changes.is_credit")
+                    })?;
+                    changes.push(if is_credit {
+                        types::balance::BalanceEvent::deposit(owner, coin_type, amount)
+                    } else {
+                        types::balance::BalanceEvent::withdraw(owner, coin_type, amount)
+                    });
+                }
+                Self::Settlement(crate::types::SettlementTransaction {
+                    epoch: settlement
+                        .epoch
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.epoch"))?,
+                    round: settlement
+                        .round
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.round"))?,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes,
+                    // Stage 14d: proto has not been extended for
+                    // delegation_changes yet; the wire shape stays
+                    // balance-only at this layer. Empty here means
+                    // proto-roundtripped settlements lose delegation
+                    // metadata, which is fine as long as proto isn't
+                    // used for inter-validator routing (it isn't —
+                    // SettlementScheduler dispatches via the in-process
+                    // ExecutionScheduler, not over the network).
+                    delegation_changes: vec![],
+                })
+            }
+
+            Kind::BalanceTransfer(args) => {
+                let coin_type = args
+                    .coin_type
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("balance_transfer.coin_type"))?
+                    .parse::<types::object::CoinType>()
+                    .map_err(|e| TryFromProtoError::invalid("balance_transfer.coin_type", e))?;
+                let mut transfers = Vec::with_capacity(args.transfers.len());
+                for entry in &args.transfers {
+                    let recipient = entry
+                        .recipient
+                        .as_ref()
+                        .ok_or_else(|| {
+                            TryFromProtoError::missing("balance_transfer.transfers.recipient")
+                        })?
+                        .parse()
+                        .map_err(|e| {
+                            TryFromProtoError::invalid("balance_transfer.transfers.recipient", e)
+                        })?;
+                    let amount = entry.amount.ok_or_else(|| {
+                        TryFromProtoError::missing("balance_transfer.transfers.amount")
+                    })?;
+                    transfers.push((recipient, amount));
+                }
+                Self::BalanceTransfer(crate::types::BalanceTransferArgs { coin_type, transfers })
             }
         }
         .pipe(Ok)
@@ -581,7 +1209,6 @@ impl From<crate::types::AddValidatorArgs> for AddValidator {
             net_address: Some(value.net_address.into()),
             p2p_address: Some(value.p2p_address.into()),
             primary_address: Some(value.primary_address.into()),
-            proxy_address: Some(value.proxy_address.into()),
             proof_of_possession: Some(value.proof_of_possession.into()),
         }
     }
@@ -627,11 +1254,6 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("primary_address"))?
                 .into(),
-            proxy_address: value
-                .proxy_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("proxy_address"))?
-                .into(),
         })
     }
 }
@@ -664,7 +1286,6 @@ impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.map(|v| v.into()),
-            next_epoch_proxy_address: value.next_epoch_proxy_address.map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
@@ -681,7 +1302,6 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.clone().map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.clone().map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.clone().map(|v| v.into()),
-            next_epoch_proxy_address: value.next_epoch_proxy_address.clone().map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
@@ -833,24 +1453,7 @@ impl From<u64> for SetCommissionRate {
     }
 }
 
-// TransferCoin conversions (create a wrapper struct)
-pub struct TransferCoinArgs {
-    pub coin: crate::types::ObjectReference,
-    pub amount: Option<u64>,
-    pub recipient: crate::types::Address,
-}
-
-impl From<TransferCoinArgs> for TransferCoin {
-    fn from(args: TransferCoinArgs) -> Self {
-        Self {
-            coin: Some(args.coin.into()),
-            amount: args.amount,
-            recipient: Some(args.recipient.to_string()),
-        }
-    }
-}
-
-// PayCoins conversions
+// PayCoins conversions (used for both Transfer and MergeCoins)
 pub struct PayCoinsArgs {
     pub coins: Vec<crate::types::ObjectReference>,
     pub amounts: Option<Vec<u64>>,
@@ -882,26 +1485,26 @@ impl From<TransferObjectsArgs> for TransferObjects {
     }
 }
 
-// AddStake conversions
+// AddStake conversions (Stage 9d-C2: balance-mode, no coin_ref)
 pub struct AddStakeArgs {
-    pub address: crate::types::Address,
-    pub coin_ref: crate::types::ObjectReference,
-    pub amount: Option<u64>,
+    pub validator: crate::types::Address,
+    pub amount: u64,
 }
 
 impl From<AddStakeArgs> for AddStake {
     fn from(args: AddStakeArgs) -> Self {
-        Self {
-            address: Some(args.address.to_string()),
-            coin_ref: Some(args.coin_ref.into()),
-            amount: args.amount,
-        }
+        Self { validator: Some(args.validator.to_string()), amount: Some(args.amount) }
     }
 }
 
-// WithdrawStake conversions
-impl From<crate::types::ObjectReference> for WithdrawStake {
-    fn from(staked_soma: crate::types::ObjectReference) -> Self {
-        Self { staked_soma: Some(staked_soma.into()) }
+// WithdrawStake conversions (Stage 9d-C3: balance-mode, no staked_soma)
+pub struct WithdrawStakeArgs {
+    pub pool_id: crate::types::Address,
+    pub amount: Option<u64>,
+}
+
+impl From<WithdrawStakeArgs> for WithdrawStake {
+    fn from(args: WithdrawStakeArgs) -> Self {
+        Self { pool_id: Some(args.pool_id.to_string()), amount: args.amount }
     }
 }

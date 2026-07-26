@@ -41,6 +41,7 @@ roaring = { version = "0.10.12", default-features = false }
 blake2 = "0.10.6"
 fastcrypto.workspace = true
 thiserror.workspace = true
+hex.workspace = true
 zstd = "0.13.3"
 
 # Optional server deps
@@ -53,7 +54,7 @@ tonic-reflection = { version = "0.13", optional = true }
 default = ["server", "tls"]
 server = [
     "dep:axum", "dep:tonic-web", "dep:tonic-health", "dep:tonic-reflection",
-    "types/storage", "types/ml", "types/cloud-storage", "types/server", "types/tls",
+    "types/storage", "types/cloud-storage", "types/server", "types/tls",
 ]
 tls = ["tonic/tls-ring", "tonic/tls-webpki-roots", "types/tls"]
 

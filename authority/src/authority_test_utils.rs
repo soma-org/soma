@@ -133,6 +133,29 @@ pub async fn execute_certificate_with_execution_error(
             )
             .await;
     }
+
+    // Stage 14d: unit-test paths bypass the consensus/CheckpointBuilder
+    // pipeline, so settlement never runs for these txs. The CF would
+    // stay stale and `get_balance` / `get_delegation` would read
+    // pre-tx values. Synchronously aggregate the tx's accumulator and
+    // delegation events into the CF here — mirrors what
+    // `CheckpointBuilder::construct_and_execute_settlement` would do
+    // in the real pipeline, minus the object-side mutation (state-hash
+    // coverage of accumulator objects requires the e2e harness).
+    let effects_data = result.inner().data();
+    if let Err(e) =
+        authority.database_for_testing().flush_pending_settlement_for_testing(effects_data)
+    {
+        tracing::warn!(?e, "test-only settlement flush failed");
+    }
+    if let Some(fullnode) = fullnode {
+        if let Err(e) =
+            fullnode.database_for_testing().flush_pending_settlement_for_testing(effects_data)
+        {
+            tracing::warn!(?e, "test-only settlement flush on fullnode failed");
+        }
+    }
+
     Ok((certificate.into_inner(), result.into_inner(), execution_error_opt))
 }
 
@@ -261,6 +284,49 @@ pub fn init_transfer_transaction(
     let data = TransactionData::new_transfer(recipient, object_ref, sender, vec![gas_object_ref]);
     let tx = to_sender_signed_transaction(data, secret);
     authority_state.epoch_store_for_testing().verify_transaction(tx).unwrap()
+}
+
+/// Stage 13c helper: construct a balance-mode BalanceTransfer
+/// TransactionData. Gas comes from the sender's USDC accumulator
+/// (callers must seed it via `seed_balance_mode_funds`); the SOMA
+/// debit comes from the sender's SOMA accumulator. The
+/// `gas_payment` is empty — no coin gas object exists anymore.
+pub fn balance_transfer_data_legacy(
+    recipient: SomaAddress,
+    sender: SomaAddress,
+    amount: Option<u64>,
+) -> TransactionData {
+    use types::object::CoinType;
+    use types::transaction::{BalanceTransferArgs, TransactionKind};
+    let amt = amount.unwrap_or(1);
+    TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: CoinType::Soma,
+            transfers: vec![(recipient, amt)],
+        }),
+        sender,
+        vec![],
+    )
+}
+
+/// Stage 13c helper: seed the sender's balance accumulator for
+/// balance-mode tests. Tests that previously created a Coin gas
+/// object should now call this to fund USDC (gas) and SOMA (the
+/// transferable balance), then submit a tx with empty `gas_payment`.
+pub fn seed_balance_mode_funds(
+    authority_state: &AuthorityState,
+    sender: SomaAddress,
+    soma: u64,
+    usdc: u64,
+) {
+    use types::object::CoinType;
+    let store = authority_state.database_for_testing();
+    if soma > 0 {
+        store.set_balance(sender, CoinType::Soma, soma).unwrap();
+    }
+    if usdc > 0 {
+        store.set_balance(sender, CoinType::Usdc, usdc).unwrap();
+    }
 }
 
 pub fn init_certified_transfer_transaction(

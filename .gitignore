@@ -228,6 +228,11 @@ __pycache__/
 .venv/
 env/
 bin/
+# Negate the Python-virtualenv `bin/` pattern above for our Rust `[[bin]]`
+# directories. Cargo discovers per-crate auxiliary binaries from
+# `<crate>/src/bin/` (each .rs file becomes a separate binary target).
+!**/src/bin/
+!**/src/bin/**
 build/
 develop-eggs/
 dist/
@@ -285,6 +290,12 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+# Key material (TLS / wallet / validator artifacts written by local
+# soma runs and tests). Never check these in — they're private keys.
+*.key
+*.keystore
+*.pem
 
 # AI context / planning docs
 CLAUDE.md

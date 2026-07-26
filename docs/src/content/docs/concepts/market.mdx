@@ -1,0 +1,31 @@
+---
+title: The market
+description: Providers, offerings, payment channels, and how settlement actually works.
+---
+
+The market has three on-chain objects and one off-chain mechanism.
+
+## Providers
+
+A **Provider** is a registered seller of inference: one wallet, one Provider record, one public HTTPS endpoint. Anyone can register — there's no gatekeeping or staking. The provider runs an HTTP service that accepts OpenAI-compatible requests and forwards them to whatever upstream they use (their own GPUs, OpenRouter, Anthropic, anything).
+
+## Offerings
+
+An **Offering** is a single (provider, model) pair on chain, with prices in micro-USDC per 1000 tokens and advisory latency SLAs. A provider has one offering per model they sell.
+
+The set of valid model IDs is the **ModelRegistry** — a static, protocol-config-defined table of canonical names like `anthropic/claude-haiku-4.5`. Adding a new model requires a protocol upgrade.
+
+## Channels
+
+Paying on chain for every call would be impossibly slow and expensive. Instead, a buyer and a seller open a **Channel** — a shared object that holds a USDC deposit from the buyer.
+
+For each call, the buyer's proxy signs an off-chain **voucher** authorizing a cumulative spend. The provider stores the latest voucher; no per-call on-chain tx is needed. The provider settles on chain whenever they want (typically a few times per epoch). When the buyer is done, `channel request-close` returns unused balance after a grace period.
+
+## What the chain enforces
+
+- Vouchers are signed by the channel's buyer.
+- Cumulative amounts are monotonic.
+- A channel can't be drained faster than it was funded.
+- Settled funds are immediately withdrawable by the provider; the buyer can't claw them back.
+
+What the chain *doesn't* enforce: completion quality, or that the provider returned anything at all. Latency SLAs on offerings are advisory — used by the proxy's rating system to suppress traffic to providers that miss them.

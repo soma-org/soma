@@ -166,9 +166,22 @@ impl From<crate::types::ObjectType> for String {
     fn from(value: crate::types::ObjectType) -> Self {
         match value {
             crate::types::ObjectType::SystemState => "SystemState".to_string(),
-            crate::types::ObjectType::Coin => "Coin".to_string(),
+            crate::types::ObjectType::Coin(types::object::CoinType::Soma) => {
+                "Coin(SOMA)".to_string()
+            }
+            crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => {
+                "Coin(USDC)".to_string()
+            }
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
-            crate::types::ObjectType::Target => "Target".to_string(),
+            crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
+            crate::types::ObjectType::BridgeRecord => "BridgeRecord".to_string(),
+            crate::types::ObjectType::Clock => "Clock".to_string(),
+            crate::types::ObjectType::Channel => "Channel".to_string(),
+            crate::types::ObjectType::BalanceAccumulator => "BalanceAccumulator".to_string(),
+            crate::types::ObjectType::DelegationAccumulator => "DelegationAccumulator".to_string(),
+            crate::types::ObjectType::Provider => "Provider".to_string(),
+            crate::types::ObjectType::ProviderInbox => "ProviderInbox".to_string(),
+            crate::types::ObjectType::Offering => "Offering".to_string(),
         }
     }
 }
@@ -179,9 +192,18 @@ impl FromStr for crate::types::ObjectType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "SystemState" => Ok(Self::SystemState),
-            "Coin" => Ok(Self::Coin),
+            "Coin" | "Coin(SOMA)" => Ok(Self::Coin(types::object::CoinType::Soma)),
+            "Coin(USDC)" => Ok(Self::Coin(types::object::CoinType::Usdc)),
             "StakedSoma" => Ok(Self::StakedSoma),
-            "Target" => Ok(Self::Target),
+            "PendingWithdrawal" => Ok(Self::PendingWithdrawal),
+            "BridgeRecord" => Ok(Self::BridgeRecord),
+            "Clock" => Ok(Self::Clock),
+            "Channel" => Ok(Self::Channel),
+            "BalanceAccumulator" => Ok(Self::BalanceAccumulator),
+            "DelegationAccumulator" => Ok(Self::DelegationAccumulator),
+            "Provider" => Ok(Self::Provider),
+            "ProviderInbox" => Ok(Self::ProviderInbox),
+            "Offering" => Ok(Self::Offering),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }
@@ -248,6 +270,16 @@ impl From<crate::types::Owner> for Owner {
                 OwnerKind::Shared
             }
             Immutable => OwnerKind::Immutable,
+            Accumulator { kind: acc_kind } => {
+                message.accumulator_kind = Some(
+                    match acc_kind {
+                        crate::types::AccumulatorKind::Balance => "BALANCE",
+                        crate::types::AccumulatorKind::Delegation => "DELEGATION",
+                    }
+                    .to_string(),
+                );
+                OwnerKind::Accumulator
+            }
             _ => OwnerKind::Unknown,
         };
 
@@ -275,6 +307,20 @@ impl TryFrom<&Owner> for crate::types::Owner {
 
             OwnerKind::Shared => Self::Shared(value.version()),
             OwnerKind::Immutable => Self::Immutable,
+            OwnerKind::Accumulator => {
+                let kind_str = value.accumulator_kind().to_string();
+                let kind = match kind_str.as_str() {
+                    "BALANCE" => crate::types::AccumulatorKind::Balance,
+                    "DELEGATION" => crate::types::AccumulatorKind::Delegation,
+                    other => {
+                        return Err(TryFromProtoError::invalid(
+                            "accumulator_kind",
+                            format!("unknown accumulator kind: {other}"),
+                        ));
+                    }
+                };
+                Self::Accumulator { kind }
+            }
         }
         .pipe(Ok)
     }

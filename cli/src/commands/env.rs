@@ -2,7 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Result, anyhow, bail, ensure};
 use clap::Parser;
 use sdk::client_config::SomaEnv;
 use sdk::wallet_context::WalletContext;
@@ -70,17 +70,20 @@ pub async fn execute(
                 bail!("Environment '{}' already exists", alias);
             }
 
-            let env = SomaEnv { alias: alias.clone(), rpc, basic_auth, chain_id: None };
+            let mut env = SomaEnv { alias: alias.clone(), rpc, basic_auth, chain_id: None };
 
-            // Verify connection
-            env.create_rpc_client(None).await?;
+            // Connect to the *new* env (not the active one) and fetch its
+            // chain ID up front. Doing every fallible step before the
+            // single `save()` keeps the command atomic: a down active env
+            // can't fail it after the new env is already persisted.
+            let client = env.create_rpc_client(None).await?;
+            let chain_id = client.get_chain_identifier().await.map_err(|e| {
+                anyhow!("Failed to fetch chain ID from {}: {}", env.rpc, e.message())
+            })?;
+            env.chain_id = Some(chain_id.clone());
 
-            context.config.envs.push(env.clone());
+            context.config.envs.push(env);
             context.config.save()?;
-
-            // Cache chain ID
-            let client = context.get_client().await?;
-            let chain_id = context.cache_chain_id(&client).await?;
 
             Ok(ClientCommandResponse::NewEnv(NewEnvOutput { alias, chain_id }))
         }

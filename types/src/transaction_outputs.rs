@@ -5,7 +5,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::base::FullObjectID;
+use crate::base::{FullObjectID, SomaAddress};
+use crate::committee::EpochId;
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 use crate::full_checkpoint_content::ObjectSet;
 use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
@@ -16,6 +17,14 @@ use crate::transaction::{TransactionData, VerifiedTransaction};
 pub type ObjectMap = BTreeMap<ObjectID, Object>;
 pub type WrittenObjects = BTreeMap<ObjectID, Object>;
 /// TransactionOutputs
+///
+/// Per-tx artifacts the perpetual store needs to persist alongside the
+/// effects struct. Balance/delegation events used to live as dedicated
+/// fields here; Stage 13m made `effects` the single source of truth, so
+/// callers read them via `effects.balance_events()` /
+/// `effects.delegation_events()`. This keeps the dual-path discipline:
+/// any new state family added to effects is automatically visible to
+/// the writer without a parallel field to remember.
 pub struct TransactionOutputs {
     pub transaction: Arc<VerifiedTransaction>,
     pub effects: TransactionEffects,

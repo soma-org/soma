@@ -22,7 +22,8 @@ use types::crypto::SignatureScheme;
 use types::digests::{ObjectDigest, TransactionDigest};
 use types::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI};
 use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
-use types::system_state::staking::StakedSomaV1;
+// Stage 9d-C5: StakedSomaV1 deleted; the CLI's response shape no
+// longer carries stake-object contents.
 use types::tx_fee::TransactionFee;
 
 // =============================================================================
@@ -160,9 +161,20 @@ pub struct OwnedObjectRef {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OwnerDisplay {
-    AddressOwner { address: SomaAddress },
-    Shared { initial_shared_version: Version },
+    AddressOwner {
+        address: SomaAddress,
+    },
+    Shared {
+        initial_shared_version: Version,
+    },
     Immutable,
+    /// Stage 14a: system-managed accumulator (account-balance or
+    /// F1 delegation). The kind discriminator is rendered as a
+    /// human-readable string ("balance" / "delegation") so JSON
+    /// consumers can branch on it without parsing the SDK enum.
+    Accumulator {
+        kind: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -186,12 +198,19 @@ impl TransactionStatus {
 
 impl From<Owner> for OwnerDisplay {
     fn from(owner: Owner) -> Self {
+        use types::object::AccumulatorKind;
         match owner {
             Owner::AddressOwner(address) => OwnerDisplay::AddressOwner { address },
             Owner::Shared { initial_shared_version } => {
                 OwnerDisplay::Shared { initial_shared_version }
             }
             Owner::Immutable => OwnerDisplay::Immutable,
+            Owner::Accumulator { kind } => OwnerDisplay::Accumulator {
+                kind: match kind {
+                    AccumulatorKind::Balance => "balance".to_string(),
+                    AccumulatorKind::Delegation => "delegation".to_string(),
+                },
+            },
         }
     }
 }
@@ -330,10 +349,7 @@ impl TransactionResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
-        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
+        builder.push_record(["Total Fee", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -384,6 +400,7 @@ impl TransactionResponse {
                     format!("Shared (v{})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
+                OwnerDisplay::Accumulator { kind } => format!("Accumulator ({kind})"),
             };
             builder.push_record([
                 obj.object_id.to_string(),
@@ -436,7 +453,6 @@ pub enum ClientCommandResponse {
     ChainInfo(ChainInfoOutput),
     Object(ObjectOutput),
     Objects(ObjectsOutput),
-    Gas(GasCoinsOutput),
     Balance(BalanceOutput),
     Transaction(TransactionResponse),
     TransactionDigest(TransactionDigest),
@@ -495,7 +511,6 @@ impl Display for ClientCommandResponse {
             ClientCommandResponse::ChainInfo(output) => write!(f, "{}", output),
             ClientCommandResponse::Object(output) => write!(f, "{}", output),
             ClientCommandResponse::Objects(output) => write!(f, "{}", output),
-            ClientCommandResponse::Gas(output) => write!(f, "{}", output),
             ClientCommandResponse::Balance(output) => write!(f, "{}", output),
             ClientCommandResponse::Transaction(output) => write!(f, "{}", output),
             ClientCommandResponse::TransactionDigest(digest) => {
@@ -815,18 +830,8 @@ impl Display for ChainInfoOutput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ObjectContent {
-    Coin { balance: u64 },
-    StakedSoma(StakedSomaDisplay),
     SystemState,
-    Target,
     Unknown,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct StakedSomaDisplay {
-    pub pool_id: ObjectID,
-    pub stake_activation_epoch: u64,
-    pub principal: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -866,16 +871,12 @@ impl ObjectOutput {
 
     fn extract_content(obj: &Object) -> Option<ObjectContent> {
         match obj.type_() {
-            ObjectType::Coin => obj.as_coin().map(|balance| ObjectContent::Coin { balance }),
-            ObjectType::StakedSoma => obj.as_staked_soma().map(|s| {
-                ObjectContent::StakedSoma(StakedSomaDisplay {
-                    pool_id: s.pool_id,
-                    stake_activation_epoch: s.stake_activation_epoch,
-                    principal: s.principal,
-                })
-            }),
+            // Stage 13k: Object::as_coin deleted. Coin objects don't
+            // exist in production (Stage 13a stopped genesis from
+            // creating them), so the CLI doesn't surface coin
+            // balances via this path. Use `soma balance` instead.
             ObjectType::SystemState => Some(ObjectContent::SystemState),
-            ObjectType::Target => Some(ObjectContent::Target),
+            _ => None,
         }
     }
 }
@@ -895,6 +896,7 @@ impl Display for ObjectOutput {
                     format!("Shared (initial version: {})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
+                OwnerDisplay::Accumulator { kind } => format!("Accumulator ({kind})"),
             };
             builder.push_record(["Owner", &owner_str]);
         }
@@ -910,49 +912,13 @@ impl Display for ObjectOutput {
         if let Some(content) = &self.content {
             writeln!(f)?;
             match content {
-                ObjectContent::Coin { balance } => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Balance (shannons)", &balance.to_string()]);
-                    builder.push_record(["Balance (SOMA)", &format_soma(*balance as u128)]);
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Coin Data"));
-                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
-                ObjectContent::StakedSoma(staked) => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Pool ID", &staked.pool_id.to_string()]);
-                    builder.push_record(["Principal (shannons)", &staked.principal.to_string()]);
-                    builder
-                        .push_record(["Principal (SOMA)", &format_soma(staked.principal as u128)]);
-                    builder.push_record([
-                        "Activation Epoch",
-                        &staked.stake_activation_epoch.to_string(),
-                    ]);
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Staked SOMA Data"));
-                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
-
+                // Stage 13k: ObjectContent::Coin variant deleted.
+                // Stage 9d-C5: StakedSomaV1 variant gone.
                 ObjectContent::SystemState => {
                     writeln!(
                         f,
                         "{}",
                         "System State object (use specialized queries for details)".dimmed()
-                    )?;
-                }
-                ObjectContent::Target => {
-                    writeln!(
-                        f,
-                        "{}",
-                        "Target object (use 'soma target info <id>' for details)".dimmed()
                     )?;
                 }
                 ObjectContent::Unknown => {}
@@ -1008,64 +974,25 @@ impl Display for ObjectsOutput {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub struct GasCoinsOutput {
-    pub address: SomaAddress,
-    pub coins: Vec<(ObjectRef, u64)>,
-}
-
-impl Display for GasCoinsOutput {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.coins.is_empty() {
-            return writeln!(f, "{}", format!("No gas coins owned by {}", self.address).yellow());
-        }
-
-        let mut builder = TableBuilder::default();
-        builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
-
-        let mut total: u128 = 0;
-        for (obj_ref, balance) in &self.coins {
-            total += *balance as u128;
-            builder.push_record([
-                obj_ref.0.to_string(),
-                balance.to_string(),
-                format_soma(*balance as u128),
-            ]);
-        }
-
-        let mut table = builder.build();
-        table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Gas Coins ({} coins)", self.coins.len())));
-        table.with(TablePanel::footer(format!(
-            "Total: {} shannons ({})",
-            format_with_commas(total),
-            format_soma(total)
-        )));
-        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
-        table.with(TableModify::new(TableCols::new(1..)).with(TableAlignment::right()));
-        table.with(tabled::settings::style::BorderSpanCorrection);
-
-        writeln!(f, "{}", table)
-    }
-}
-
+/// Per-coin-type accumulator balance for an address. Both SOMA and
+/// USDC are shown in human-readable form and in base units (shannons
+/// / microdollars).
 #[derive(Debug, Serialize)]
 pub struct BalanceOutput {
     pub address: SomaAddress,
-    pub total_balance: u128,
-    pub coin_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub coins: Option<Vec<(ObjectID, u64)>>,
+    pub usdc: u64,
+    pub soma: u64,
 }
 
 impl Display for BalanceOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record(["Total (SOMA)", &format_soma(self.total_balance).green().to_string()]);
-        builder.push_record(["Total (shannons)", &self.total_balance.to_string()]);
-        builder.push_record(["Coin Count", &self.coin_count.to_string()]);
+        builder
+            .push_record(["USDC", &crate::usdc_amount::format_usdc(self.usdc).green().to_string()]);
+        builder.push_record(["USDC (microdollars)", &self.usdc.to_string()]);
+        builder.push_record(["SOMA", &format_soma(self.soma as u128).green().to_string()]);
+        builder.push_record(["SOMA (shannons)", &self.soma.to_string()]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1073,29 +1000,6 @@ impl Display for BalanceOutput {
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
-
-        if let Some(coins) = &self.coins {
-            writeln!(f)?;
-            let mut builder = TableBuilder::default();
-            builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
-
-            for (id, balance) in coins {
-                builder.push_record([
-                    id.to_string(),
-                    balance.to_string(),
-                    format_soma(*balance as u128),
-                ]);
-            }
-
-            let mut table = builder.build();
-            table.with(TableStyle::rounded());
-            table.with(TablePanel::header("Individual Coins"));
-            table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
-            table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
-            table.with(tabled::settings::style::BorderSpanCorrection);
-            writeln!(f, "{}", table)?;
-        }
 
         Ok(())
     }
@@ -1141,7 +1045,9 @@ pub struct StatusOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub balance: Option<u64>,
+    pub soma_balance: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usdc_balance: Option<u64>,
     pub server_reachable: bool,
 }
 
@@ -1168,9 +1074,11 @@ impl Display for StatusOutput {
         if let Some(ref addr) = self.active_address {
             builder.push_record(["Active Address", addr]);
         }
-        if let Some(bal) = self.balance {
-            let soma = format_soma(bal as u128);
-            builder.push_record(["Balance", &soma]);
+        if let Some(bal) = self.soma_balance {
+            builder.push_record(["SOMA Balance", &format_soma(bal as u128)]);
+        }
+        if let Some(bal) = self.usdc_balance {
+            builder.push_record(["USDC Balance", &crate::usdc_amount::format_usdc(bal)]);
         }
 
         let mut table = builder.build();
@@ -1232,10 +1140,7 @@ impl Display for SimulationResponse {
 
         let mut builder = TableBuilder::default();
         builder.push_record(["Status", &status_str]);
-        builder.push_record([
-            "Estimated Gas",
-            &format!("{} shannons ({})", self.gas_used, format_soma(self.gas_used as u128)),
-        ]);
+        builder.push_record(["Estimated Fee", &format_fee(self.gas_used)]);
 
         if !self.created.is_empty() {
             builder.push_record(["Would Create", &format!("{} object(s)", self.created.len())]);
@@ -1384,10 +1289,7 @@ impl TransactionQueryResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
-        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
+        builder.push_record(["Total Fee", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1579,9 +1481,14 @@ impl Display for ValidatorSummary {
 // HELPER FUNCTIONS
 // =============================================================================
 
-/// Format a fee value showing SOMA first with shannons in parentheses.
-fn format_fee(shannons: u64) -> String {
-    format!("{} ({} shannons)", format_soma(shannons as u128), format_with_commas(shannons as u128))
+/// Format a transaction fee. Fees are charged in USDC microdollars —
+/// debited from the sender's USDC accumulator, not in SOMA.
+fn format_fee(microdollars: u64) -> String {
+    format!(
+        "{} ({} microdollars)",
+        crate::usdc_amount::format_usdc(microdollars),
+        format_with_commas(microdollars as u128)
+    )
 }
 
 /// Format a balance in shannons as SOMA with appropriate suffix (public API).

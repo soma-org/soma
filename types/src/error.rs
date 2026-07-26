@@ -4,8 +4,6 @@
 
 use std::collections::BTreeMap;
 
-#[cfg(feature = "ml")]
-use burn::store::SafetensorsStoreError;
 use fastcrypto::error;
 use fastcrypto::error::FastCryptoError;
 use fastcrypto::hash::Digest;
@@ -16,7 +14,8 @@ use strum::IntoStaticStr;
 use thiserror::Error;
 use tonic::Status;
 
-use crate::base::AuthorityName;
+use crate::balance::ReservationFailure;
+use crate::base::{AuthorityName, SomaAddress};
 use crate::checkpoints::CheckpointSequenceNumber;
 use crate::committee::{AuthorityIndex, Committee, Epoch, EpochId, Stake, VotingPower};
 use crate::consensus::block::{BlockRef, Round};
@@ -26,7 +25,7 @@ use crate::digests::{
     CheckpointContentsDigest, ObjectDigest, TransactionDigest, TransactionEffectsDigest,
 };
 use crate::effects::ExecutionFailureStatus;
-use crate::object::{ObjectID, ObjectRef, Version};
+use crate::object::{CoinType, ObjectID, ObjectRef, Version};
 use crate::peer_id::PeerId;
 use crate::transaction::TransactionKind;
 
@@ -79,10 +78,6 @@ pub enum SomaError {
     #[error("Operations for epoch {0} have ended")]
     EpochEnded(EpochId),
 
-    /// Error when advancing to a new epoch
-    #[error("Error when advancing epoch: {:?}", error)]
-    AdvanceEpochError { error: String },
-
     /// Error when an operation times out
     #[error("Operation timed out")]
     TimeoutError,
@@ -98,6 +93,18 @@ pub enum SomaError {
     /// Generic authority-related error
     #[error("Authority Error: {error:?}")]
     GenericAuthorityError { error: String },
+
+    /// A transaction's declared balance withdrawals exceed the
+    /// sender's available accumulator balance. Surfaced by the
+    /// best-effort funds check at submission/simulation time so the
+    /// client fails fast with a clear reason, instead of waiting out
+    /// the finality timeout while the consensus reservation pre-pass
+    /// silently drops the transaction.
+    #[error(
+        "Insufficient {coin_type} balance: address {owner} has {available} but the transaction \
+         requires {required}"
+    )]
+    InsufficientBalance { owner: SomaAddress, coin_type: CoinType, required: u64, available: u64 },
 
     /// Error when committee information is missing for an epoch
     #[error("Missing committee information for epoch {0}")]
@@ -309,6 +316,20 @@ pub enum SomaError {
     #[error("Use of disabled feature: {error}")]
     UnsupportedFeatureError { error: String },
 
+    /// Stage 5.5: tx declared a chain identifier that doesn't match this validator's.
+    #[error("Transaction chain identifier mismatch: expected {expected}, got {actual}")]
+    InvalidChainId { expected: String, actual: String },
+
+    /// Stage 5.5: tx outside its validity window (current_epoch ∉ [min, max]).
+    #[error(
+        "Transaction expired: current_epoch={current_epoch}, valid range [{min_epoch}, {max_epoch}]"
+    )]
+    TransactionExpired { current_epoch: u64, min_epoch: u64, max_epoch: u64 },
+
+    /// Stage 5.5: tx digest already executed in the previous epoch — replay rejected.
+    #[error("Transaction already executed: {digest:?}")]
+    TransactionAlreadyExecuted { digest: TransactionDigest },
+
     #[error("Too many requests")]
     TooManyRequests,
 
@@ -414,6 +435,7 @@ impl SomaError {
             // SomaError::ValidatorOverloadedRetryAfter { .. } => true,
 
             // Non retryable error
+            SomaError::InsufficientBalance { .. } => false,
             SomaError::ExecutionError(..) => false,
             SomaError::ByzantineAuthoritySuspicion { .. } => false,
             SomaError::QuorumFailedToGetEffectsQuorumWhenProcessingTransaction { .. } => false,
@@ -476,6 +498,10 @@ impl SomaError {
                 ErrorCategory::InvalidTransaction
             }
 
+            // An underfunded transaction is a permanent error for this
+            // submission — resubmitting the identical tx won't help.
+            SomaError::InsufficientBalance { .. } => ErrorCategory::InvalidTransaction,
+
             SomaError::Unknown { .. }
             | SomaError::GrpcMessageSerializeError { .. }
             | SomaError::GrpcMessageDeserializeError { .. }
@@ -521,6 +547,30 @@ impl From<SomaError> for Status {
 impl From<SomaError> for ExecutionFailureStatus {
     fn from(error: SomaError) -> Self {
         ExecutionFailureStatus::SomaError(error)
+    }
+}
+
+impl From<ReservationFailure> for SomaError {
+    /// Maps a consensus reservation pre-pass failure to the
+    /// client-facing [`SomaError::InsufficientBalance`].
+    fn from(failure: ReservationFailure) -> Self {
+        match failure {
+            ReservationFailure::InsufficientBalance { owner, coin_type, requested, available } => {
+                SomaError::InsufficientBalance { owner, coin_type, required: requested, available }
+            }
+            // Pathological: two reservations on one tx for the same
+            // (owner, coin_type) summed past u64::MAX. Unreachable
+            // with realistic amounts (total supply ≪ u64::MAX), but
+            // still a permanent, non-retriable rejection of the tx.
+            ReservationFailure::IntraTxOverflow { owner, coin_type } => {
+                SomaError::InsufficientBalance {
+                    owner,
+                    coin_type,
+                    required: u64::MAX,
+                    available: 0,
+                }
+            }
+        }
     }
 }
 
@@ -917,9 +967,6 @@ pub enum ModelError {
     SafeTensorsFailure(String),
     #[error("Failed type verification: {0}")]
     FailedTypeVerification(String),
-    #[cfg(feature = "ml")]
-    #[error("SafeTensor store error: {0}")]
-    SafeTensorStoreError(SafetensorsStoreError),
     #[error("Apply error")]
     ApplyError,
     #[error("Empty data: {0}")]

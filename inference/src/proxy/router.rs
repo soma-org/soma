@@ -1,0 +1,1073 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use ::types::base::SomaAddress;
+use ::types::object::{CoinType, ObjectID};
+use anyhow::Context as _;
+use reqwest::Client;
+use tokio::sync::RwLock;
+
+use crate::catalog::{Architecture, ModelCard, Pricing, TopProvider};
+use crate::chain::{ChannelSurface, ProviderRecord, ProviderRegistry};
+use crate::proxy::config::{Config, RoutingMode, RoutingWeights};
+use crate::proxy::state::{ChannelSlot, ClientStore};
+use crate::reputation::{IndexerClient, ProviderReputation};
+
+/// Order two saturation readings ascending (less-loaded first), treating
+/// NaN as equal. Used as a routing tiebreaker after the primary score.
+fn cmp_saturation(a: f64, b: f64) -> std::cmp::Ordering {
+    a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+}
+
+/// Sum of prompt + completion price (per-token, fixed-point µ-USD).
+/// Pulled out of [`Router::price_score`] so unit tests can call it
+/// without constructing a [`Router`].
+fn price_score(card: &ModelCard) -> u128 {
+    crate::pricing::parse_fixed(&card.pricing.prompt, 12)
+        + crate::pricing::parse_fixed(&card.pricing.completion, 12)
+}
+
+/// Combined provider score for `RoutingMode::Weighted`. Higher = more
+/// preferred.
+///
+/// Formula:
+/// ```text
+///   -w_price·price + w_volume·log(volume_settled_30d + 1)
+///                  + w_buyers·log(distinct_buyers_30d + 1)
+///                  + w_renewal·channel_renewal_rate
+///                  - w_negative_rate·negative_rate_30d
+/// ```
+///
+/// Logs damp high-cardinality signals so a single big provider
+/// doesn't dominate. Reputation `None` contributes 0 (unknown
+/// provider scores strictly worse than one with positive signal).
+/// `negative_rate_30d == None` (no in-window ratings) contributes 0
+/// — absence of complaints is not a positive signal but also not a
+/// negative one. Pulled out of [`Router::weighted_score`] for
+/// unit-testability.
+fn weighted_score(w: &RoutingWeights, card: &ModelCard, rep: Option<ProviderReputation>) -> f64 {
+    let price = price_score(card) as f64;
+    let mut score = -w.price * price;
+    if let Some(r) = rep {
+        score += w.volume * (r.volume_settled_30d as f64 + 1.0).ln();
+        score += w.buyers * (r.distinct_buyers_30d as f64 + 1.0).ln();
+        score += w.renewal * r.channel_renewal_rate;
+        if let Some(neg_rate) = r.negative_rate_30d {
+            score -= w.negative_rate * neg_rate;
+        }
+    }
+    score
+}
+
+/// Build a `ModelCard` from a row of the `soma_offerings` indexer
+/// table — used by the GraphQL-based discovery path to synthesize the
+/// per-provider catalog without an HTTP `/v1/models` call. Fields the
+/// proxy actually consumes (id + pricing + ttft/ttot + a default
+/// `max_completion_tokens`) are filled in; the rest get sensible
+/// defaults. Per-1k prices convert as `micros_per_1k → USD/token =
+/// micros / 1e9`; `request_micros` converts as `micros → USD =
+/// micros / 1e6`.
+fn modelcard_from_offering_micros(
+    model_id: &str,
+    prompt_micros_per_1k: u64,
+    completion_micros_per_1k: u64,
+    cache_read_micros_per_1k: u64,
+    cache_write_micros_per_1k: u64,
+    request_micros: u64,
+    ttft_bound_ms: u32,
+    ttot_bound_ms: u32,
+) -> ModelCard {
+    let per_token = |m: u64| format!("{:.12}", m as f64 / 1e9);
+    let per_request = |m: u64| format!("{:.12}", m as f64 / 1e6);
+    ModelCard {
+        id: model_id.to_string(),
+        canonical_slug: None,
+        hugging_face_id: None,
+        name: model_id.to_string(),
+        created: 0,
+        description: None,
+        context_length: 0,
+        architecture: Architecture {
+            input_modalities: vec!["text".into()],
+            output_modalities: vec!["text".into()],
+            tokenizer: String::new(),
+            instruct_type: None,
+        },
+        top_provider: TopProvider {
+            context_length: 0,
+            // `worst_case_for_request` falls back to this when the
+            // ChatRequest omits `max_tokens` — give it a sane default.
+            max_completion_tokens: Some(4096),
+            is_moderated: false,
+        },
+        supported_parameters: vec!["max_tokens".into(), "temperature".into()],
+        default_parameters: None,
+        expiration_date: None,
+        ttft_bound_ms: Some(ttft_bound_ms),
+        ttot_bound_ms: Some(ttot_bound_ms),
+        pricing: Pricing {
+            prompt: per_token(prompt_micros_per_1k),
+            completion: per_token(completion_micros_per_1k),
+            request: per_request(request_micros),
+            image: "0".into(),
+            input_cache_read: per_token(cache_read_micros_per_1k),
+            input_cache_write: per_token(cache_write_micros_per_1k),
+        },
+        soma: None,
+    }
+}
+
+#[derive(Clone)]
+pub struct ProviderInfo {
+    pub address: SomaAddress,
+    pub pubkey_hex: String,
+    pub endpoint: String,
+    /// Parsed iroh dial address if the provider advertises an `EndpointId`.
+    /// When set, the relay dials this provider over iroh instead of HTTP.
+    pub iroh_addr: Option<crate::transport::EndpointAddr>,
+    pub catalog: Vec<ModelCard>,
+}
+
+/// Assemble a [`ProviderInfo`] from a discovery record + its model catalog,
+/// parsing the iroh dial address (id + optional direct addrs).
+fn provider_info_from(rec: &ProviderRecord, catalog: Vec<ModelCard>) -> ProviderInfo {
+    let iroh_addr = if rec.iroh_endpoint_id.is_empty() {
+        None
+    } else {
+        let direct: Vec<std::net::SocketAddr> =
+            rec.iroh_direct_addrs.iter().filter_map(|a| a.parse().ok()).collect();
+        match crate::transport::dial_addr(&rec.iroh_endpoint_id, &direct) {
+            Ok(addr) => Some(addr),
+            Err(e) => {
+                tracing::debug!(provider = %rec.address, err = %e, "ignoring malformed iroh_endpoint_id");
+                None
+            }
+        }
+    };
+    ProviderInfo {
+        address: rec.address,
+        pubkey_hex: String::new(),
+        endpoint: rec.endpoint.clone(),
+        iroh_addr,
+        catalog,
+    }
+}
+
+/// Typed error returned by [`Router::ensure_channel`] when an
+/// `OpenChannel` tx fails because the payer wallet doesn't hold enough
+/// USDC to fund the deposit. Carried inside `anyhow::Error` so callers
+/// can `downcast_ref` to render a structured HTTP 402 instead of the
+/// generic `channel_error` 500.
+///
+/// `available_micros` and `required_micros` are best-effort: the chain
+/// abort message embeds both, but if parsing fails they're left at 0
+/// and the requested deposit, respectively.
+#[derive(Debug, thiserror::Error)]
+#[error("Soma balance too low ({available_micros} micros available, {required_micros} required)")]
+pub struct InsufficientBalance {
+    pub available_micros: u64,
+    pub required_micros: u64,
+}
+
+/// Detect an insufficient-USDC-balance error in a stringified chain
+/// failure. The on-chain abort surfaces as
+/// `Insufficient USDC balance: address 0x.. has <N> but the
+/// transaction requires <M>` (via `SomaError::InsufficientBalance`);
+/// the lower-level execution failure variant surfaces as
+/// `Insufficient coin balance for operation.` (coin-type agnostic).
+/// Either substring matches.
+///
+/// Returns the parsed `(available, required)` pair when present,
+/// `(0, required_fallback)` when only the high-level marker matches.
+pub(crate) fn parse_insufficient_balance(
+    err_chain: &str,
+    required_fallback: u64,
+) -> Option<InsufficientBalance> {
+    if !err_chain.contains("Insufficient USDC balance")
+        && !err_chain.contains("Insufficient coin balance for operation")
+    {
+        return None;
+    }
+    let available = err_chain
+        .split("has ")
+        .nth(1)
+        .and_then(|t| t.split_whitespace().next())
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(0);
+    let required = err_chain
+        .split("requires ")
+        .nth(1)
+        .and_then(|t| t.split(|c: char| !c.is_ascii_digit()).find(|s| !s.is_empty()))
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(required_fallback);
+    Some(InsufficientBalance { available_micros: available, required_micros: required })
+}
+
+pub struct Router {
+    pub registry: Arc<dyn ProviderRegistry>,
+    pub chain: Arc<dyn ChannelSurface>,
+    pub http: Client,
+    pub store: ClientStore,
+    pub cfg: Arc<Config>,
+    pub client_address: SomaAddress,
+    cache: Arc<RwLock<CacheState>>,
+    /// Optional reputation client. Populated only when
+    /// `cfg.routing.indexer_url` is set; weighted routing falls back
+    /// to price-only with a warning when this is `None`.
+    indexer: Option<IndexerClient>,
+    /// somacode-style trusted-providers filter. `Some` when
+    /// `cfg.trusted_providers_url` is configured; the filter is
+    /// applied before scoring to limit the candidate set to addresses
+    /// approved on the points service's authorized list.
+    trusted: Option<Arc<crate::proxy::TrustedProviders>>,
+    /// Per-provider liveness cache. `Some` when `cfg.probe_liveness`
+    /// is on; the router skips providers whose `/health` endpoint
+    /// doesn't respond, before scoring. This makes stale on-chain
+    /// registrations (a provider that took its endpoint down without
+    /// deregistering) non-fatal — the router quietly routes around
+    /// them instead of failing the request with `channel_error`.
+    liveness: Option<Arc<crate::proxy::LivenessCache>>,
+}
+
+struct CacheState {
+    last_refresh: Option<Instant>,
+    providers: Vec<ProviderInfo>,
+}
+
+impl Router {
+    pub fn new(
+        registry: Arc<dyn ProviderRegistry>,
+        chain: Arc<dyn ChannelSurface>,
+        store: ClientStore,
+        cfg: Arc<Config>,
+        client_address: SomaAddress,
+        iroh: Arc<crate::transport::IrohBuyer>,
+    ) -> Self {
+        let http =
+            Client::builder().timeout(Duration::from_secs(120)).build().expect("build http client");
+        let indexer = cfg.routing.indexer_url.as_ref().map(|url| IndexerClient::new(url.clone()));
+        let trusted = if cfg.trusted_providers_only {
+            cfg.trusted_providers_url.as_ref().map(|url| {
+                let t = Arc::new(crate::proxy::TrustedProviders::new(
+                    url.clone(),
+                    cfg.trusted_providers_refresh_secs,
+                ));
+                t.spawn_refresher();
+                t
+            })
+        } else {
+            None
+        };
+        let liveness = if cfg.probe_liveness {
+            Some(Arc::new(crate::proxy::LivenessCache::new(
+                iroh,
+                cfg.liveness_timeout_ms,
+                cfg.liveness_refresh_secs,
+            )))
+        } else {
+            None
+        };
+        Self {
+            registry,
+            chain,
+            http,
+            store,
+            cfg,
+            client_address,
+            cache: Arc::new(RwLock::new(CacheState { last_refresh: None, providers: Vec::new() })),
+            indexer,
+            trusted,
+            liveness,
+        }
+    }
+
+    /// Snapshot every known provider's `(address, iroh_addr)` for the
+    /// liveness refresher. Returns an empty vec if the cache hasn't
+    /// been populated yet (refresher will retry on the next tick).
+    async fn provider_endpoints_snapshot(
+        &self,
+    ) -> Vec<(SomaAddress, Option<crate::transport::EndpointAddr>)> {
+        let g = self.cache.read().await;
+        g.providers.iter().map(|p| (p.address, p.iroh_addr.clone())).collect()
+    }
+
+    /// Start the background liveness refresher, if liveness probing is
+    /// enabled. Spawns a tokio task that walks the discovery cache
+    /// every `refresh_interval` and bulk-probes each provider's
+    /// `/health`. Cheap when probing is disabled — this returns
+    /// without spawning.
+    pub fn spawn_liveness_refresher(self: &Arc<Self>) {
+        let Some(liveness) = self.liveness.clone() else { return };
+        let router = self.clone();
+        let interval = liveness.refresh_interval();
+        tokio::spawn(async move {
+            loop {
+                let providers = router.provider_endpoints_snapshot().await;
+                if !providers.is_empty() {
+                    let alive = liveness.probe_all(&providers).await;
+                    tracing::debug!(total = providers.len(), alive, "liveness refresh");
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
+    /// Visible for relay.rs: when a request fails in a way that
+    /// strongly suggests the provider's HTTP endpoint went down
+    /// between the last probe and the request (connection refused,
+    /// channel-open transport error), evict the liveness entry so the
+    /// next pick re-probes instead of selecting the same dead provider.
+    pub async fn mark_provider_dead(&self, addr: &SomaAddress) {
+        if let Some(l) = &self.liveness {
+            l.mark_dead(addr).await;
+        }
+    }
+
+    pub async fn refresh_providers(&self) -> anyhow::Result<()> {
+        let recs: Vec<ProviderRecord> = self.registry.list_providers().await?;
+        // Non-indexer registries (tests) supply catalogs directly; production
+        // resolves offerings via the indexer GraphQL.
+        let providers = if let Some(catalogs) = self.registry.catalogs().await {
+            recs.iter()
+                .filter_map(|rec| {
+                    let catalog = catalogs.get(&rec.address).cloned().unwrap_or_default();
+                    (!catalog.is_empty()).then(|| provider_info_from(rec, catalog))
+                })
+                .collect()
+        } else {
+            self.refresh_via_offerings(&recs)
+                .await
+                .context("refresh_via_offerings (indexer-driven discovery)")?
+        };
+        let mut g = self.cache.write().await;
+        g.providers = providers;
+        g.last_refresh = Some(Instant::now());
+        Ok(())
+    }
+
+    /// Bulk-read every active `(provider, model_id)` offering from the
+    /// indexer in one GraphQL call, group by provider, and assemble
+    /// each `ProviderInfo.catalog`. The proxy used to fall back to a
+    /// per-provider HTTP `/v1/models` fan-out when `soma-graphql`
+    /// didn't expose `offerings()`; with v0.1.28 on testnet that
+    /// fallback is gone — the chain mirror is the only source.
+    async fn refresh_via_offerings(
+        &self,
+        recs: &[ProviderRecord],
+    ) -> anyhow::Result<Vec<ProviderInfo>> {
+        let indexer_url = self
+            .registry
+            .indexer_url()
+            .ok_or_else(|| anyhow::anyhow!("registry has no indexer_url; cannot run discovery"))?;
+        // Note: async-graphql's default camelCaser renders
+        // `prompt_micros_per_1k` as `promptMicrosPer1K` (capital K at
+        // the tail). Match what the schema actually exposes.
+        // `first` matches the schema's `max_page_size` (50). The complexity
+        // limiter charges against the requested `first` regardless of the
+        // server clamp, so requesting more would be rejected as "too
+        // complex." For higher provider counts we'd need cursor-based
+        // pagination here.
+        let query = r#"query Offerings {
+            offerings(active: true, first: 50) {
+                edges { node {
+                    provider modelId
+                    promptMicrosPer1K completionMicrosPer1K
+                    cacheReadMicrosPer1K cacheWriteMicrosPer1K
+                    requestMicros
+                    ttftBoundMs ttotBoundMs
+                } }
+            }
+        }"#;
+        let body = serde_json::json!({ "query": query });
+        let resp = self
+            .http
+            .post(indexer_url)
+            .json(&body)
+            .send()
+            .await
+            .context("posting offerings query")?;
+        if !resp.status().is_success() {
+            anyhow::bail!("indexer returned status {}", resp.status());
+        }
+        let v: serde_json::Value = resp.json().await.context("decoding offerings response body")?;
+        if let Some(errs) = v.get("errors") {
+            anyhow::bail!("indexer offerings query returned errors: {errs}");
+        }
+        let edges = v
+            .pointer("/data/offerings/edges")
+            .and_then(|x| x.as_array())
+            .ok_or_else(|| anyhow::anyhow!("missing data.offerings.edges in response"))?;
+
+        // Group offerings by provider address. Per-row parse failures
+        // are skipped (not fatal): a malformed row shouldn't take the
+        // whole refresh down.
+        let mut by_provider: HashMap<SomaAddress, Vec<ModelCard>> = HashMap::new();
+        for edge in edges {
+            let Some(node) = edge.get("node") else { continue };
+            let Some(provider_str) = node.get("provider").and_then(|x| x.as_str()) else {
+                continue;
+            };
+            let Some(model_id) = node.get("modelId").and_then(|x| x.as_str()) else { continue };
+            // BigInt scalars come back as JSON strings.
+            let bigint = |k: &str| -> Option<i64> {
+                node.get(k).and_then(|x| x.as_str()).and_then(|s| s.parse().ok())
+            };
+            let int32 =
+                |k: &str| -> Option<i32> { node.get(k).and_then(|x| x.as_i64()).map(|i| i as i32) };
+            let Some(prompt_m) = bigint("promptMicrosPer1K") else { continue };
+            let Some(completion_m) = bigint("completionMicrosPer1K") else { continue };
+            let cache_r_m = bigint("cacheReadMicrosPer1K").unwrap_or(0) as u64;
+            let cache_w_m = bigint("cacheWriteMicrosPer1K").unwrap_or(0) as u64;
+            let request_m = bigint("requestMicros").unwrap_or(0) as u64;
+            let ttft = int32("ttftBoundMs").unwrap_or(0) as u32;
+            let ttot = int32("ttotBoundMs").unwrap_or(0) as u32;
+            let addr_hex = provider_str.strip_prefix("0x").unwrap_or(provider_str);
+            let Ok(addr_bytes) = hex::decode(addr_hex) else { continue };
+            let Ok(address) = SomaAddress::try_from(addr_bytes.as_slice()) else { continue };
+            by_provider.entry(address).or_default().push(modelcard_from_offering_micros(
+                model_id,
+                prompt_m as u64,
+                completion_m as u64,
+                cache_r_m,
+                cache_w_m,
+                request_m,
+                ttft,
+                ttot,
+            ));
+        }
+
+        // For each provider record from the indexer, attach the catalog
+        // we built from its offerings. Skip providers with no offerings
+        // — they have nothing to route.
+        let mut out = Vec::with_capacity(recs.len());
+        for rec in recs {
+            let catalog = by_provider.remove(&rec.address).unwrap_or_default();
+            if catalog.is_empty() {
+                continue;
+            }
+            out.push(provider_info_from(&rec, catalog));
+        }
+        Ok(out)
+    }
+
+    pub async fn ensure_cache(&self) -> anyhow::Result<()> {
+        let need = {
+            let g = self.cache.read().await;
+            match g.last_refresh {
+                Some(t) => {
+                    g.providers.is_empty()
+                        || t.elapsed() > Duration::from_secs(self.cfg.provider_cache_ttl_secs)
+                }
+                None => true,
+            }
+        };
+        if need {
+            self.refresh_providers().await?;
+        }
+        Ok(())
+    }
+
+    pub async fn pick_provider_for_model(
+        &self,
+        model: &str,
+    ) -> anyhow::Result<Option<(ProviderInfo, ModelCard)>> {
+        self.ensure_cache().await?;
+        let g = self.cache.read().await;
+        // Carry each candidate's published saturation alongside it so we
+        // can shed load off devices already at capacity and break ties
+        // toward the least-loaded provider. Unknown ⇒ 0.0 (treat a
+        // provider that doesn't report load as idle).
+        let mut candidates: Vec<(ProviderInfo, ModelCard, f64)> = Vec::new();
+        for p in &g.providers {
+            if let Some(c) = p.catalog.iter().find(|c| c.id == model) {
+                // Never route to our own provider: a user who is both a
+                // provider and a consumer (the day-one model) would otherwise
+                // try to open a payment channel to themselves, which the
+                // executor rejects (`payee must differ from payer`).
+                if p.address == self.client_address {
+                    continue;
+                }
+                // Trusted-providers gate (somacode default). When the
+                // filter is configured but the candidate isn't on the
+                // current authorized snapshot, skip. `is_allowed`
+                // returns `true` if no snapshot has yet loaded, so
+                // cold-start doesn't lock everyone out.
+                if let Some(t) = &self.trusted {
+                    if !t.is_allowed(&p.address).await {
+                        continue;
+                    }
+                }
+                let mut saturation = 0.0;
+                if let Some(l) = &self.liveness {
+                    if !l.is_live(&p.address, p.iroh_addr.as_ref()).await {
+                        continue;
+                    }
+                    // `is_live` just populated the cache entry, so this
+                    // reads the freshly-probed value.
+                    saturation = l.saturation(&p.address).await.unwrap_or(0.0);
+                }
+                candidates.push((p.clone(), c.clone(), saturation));
+            }
+        }
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        // Overload shedding: if any candidate has headroom, drop the
+        // fully-saturated ones so demand flows to devices that can serve
+        // it now. Only kicks in when there's somewhere else to send the
+        // request — never empties the candidate set.
+        if candidates.iter().any(|(_, _, s)| *s < 1.0) {
+            candidates.retain(|(_, _, s)| *s < 1.0);
+        }
+
+        let pick = match self.cfg.routing.mode {
+            RoutingMode::Price => {
+                // Cheapest first; ties broken toward the least-loaded.
+                candidates.sort_by(|a, b| {
+                    self.price_score(&a.1)
+                        .cmp(&self.price_score(&b.1))
+                        .then(cmp_saturation(a.2, b.2))
+                });
+                candidates.remove(0)
+            }
+            RoutingMode::Weighted => {
+                if let Some(indexer) = self.indexer.clone() {
+                    let addrs: Vec<_> = candidates.iter().map(|(p, _, _)| p.address).collect();
+                    let reps = indexer.fetch_many(&addrs).await;
+                    // Pick the highest scorer. Higher = better (price is
+                    // already negated inside `weighted_score`); ties go
+                    // to the least-loaded provider.
+                    candidates.sort_by(|a, b| {
+                        let sa =
+                            self.weighted_score(&a.1, reps.get(&a.0.address).cloned().flatten());
+                        let sb =
+                            self.weighted_score(&b.1, reps.get(&b.0.address).cloned().flatten());
+                        sb.partial_cmp(&sa)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(cmp_saturation(a.2, b.2))
+                    });
+                    candidates.remove(0)
+                } else {
+                    tracing::warn!(
+                        "routing.mode = weighted but no indexer_url configured; falling back to price"
+                    );
+                    candidates.sort_by(|a, b| {
+                        self.price_score(&a.1)
+                            .cmp(&self.price_score(&b.1))
+                            .then(cmp_saturation(a.2, b.2))
+                    });
+                    candidates.remove(0)
+                }
+            }
+        };
+        Ok(Some((pick.0, pick.1)))
+    }
+
+    fn price_score(&self, card: &ModelCard) -> u128 {
+        price_score(card)
+    }
+
+    fn weighted_score(&self, card: &ModelCard, rep: Option<ProviderReputation>) -> f64 {
+        weighted_score(&self.cfg.routing.weights, card, rep)
+    }
+
+    pub async fn aggregate_models(&self) -> HashMap<String, (ProviderInfo, ModelCard)> {
+        let _ = self.ensure_cache().await;
+        let g = self.cache.read().await;
+        let mut out: HashMap<String, (ProviderInfo, ModelCard)> = HashMap::new();
+        for p in &g.providers {
+            for c in &p.catalog {
+                let pa = crate::pricing::parse_fixed(&c.pricing.prompt, 12)
+                    + crate::pricing::parse_fixed(&c.pricing.completion, 12);
+                if let Some(existing) = out.get(&c.id) {
+                    let pe = crate::pricing::parse_fixed(&existing.1.pricing.prompt, 12)
+                        + crate::pricing::parse_fixed(&existing.1.pricing.completion, 12);
+                    if pa < pe {
+                        out.insert(c.id.clone(), (p.clone(), c.clone()));
+                    }
+                } else {
+                    out.insert(c.id.clone(), (p.clone(), c.clone()));
+                }
+            }
+        }
+        out
+    }
+
+    pub async fn aggregate_health(&self) -> bool {
+        let _ = self.ensure_cache().await;
+        let g = self.cache.read().await;
+        for p in &g.providers {
+            let url = format!("{}/health", p.endpoint.trim_end_matches('/'));
+            if let Ok(r) = self.http.get(url).send().await {
+                if r.status().is_success() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Return an open channel to `provider` — reuse an existing one
+    /// if it has meaningful headroom, otherwise lazily open a new
+    /// on-chain channel.
+    ///
+    /// After a proxy restart, the cumulative floor we install here is
+    /// the chain's `settled_amount`, which lags the provider's in-memory
+    /// `cumulative_authorized_micros` by up to one auto-settle window
+    /// (~5 min). The first chat after restart may have its voucher land
+    /// below the provider's floor; the provider returns `402
+    /// PaymentRequired` with `x-soma-required-authorization: <floor>`,
+    /// and `relay.rs:151` resyncs + retries transparently. Discovery is
+    /// indexer-only — there is no provider-side `/soma/channel/{id}`
+    /// endpoint to query for the floor up-front.
+    pub async fn ensure_channel(
+        &self,
+        provider: &ProviderInfo,
+        model_id: &str,
+    ) -> anyhow::Result<Arc<tokio::sync::Mutex<ChannelSlot>>> {
+        if let Some(id) = self.store.read_pointer(&provider.address, model_id).await {
+            if let Ok(chan) = self.chain.get(id).await {
+                if chan.close_requested_at_ms().is_none() {
+                    if let Some(slot) = self.store.slot(&id).await {
+                        let g = slot.lock().await;
+                        if g.state
+                            .deposit_micros
+                            .saturating_sub(g.state.cumulative_authorized_micros)
+                            > 40_000
+                        {
+                            drop(g);
+                            return Ok(slot);
+                        }
+                    } else {
+                        // Pointer exists, slot doesn't — cold-start
+                        // path. Floor at the chain's `settled_amount`;
+                        // the provider's auto-settle (5min) keeps
+                        // its running cumulative within one window of
+                        // settled, so this is safe outside that small
+                        // post-restart drift.
+                        let floor = chan.settled_amount();
+                        if chan.deposit().saturating_sub(floor) > 40_000 {
+                            let slot = self
+                                .store
+                                .install_slot(
+                                    id,
+                                    provider.address,
+                                    provider.endpoint.clone(),
+                                    chan.model_id().to_string(),
+                                    chan.deposit(),
+                                    floor,
+                                )
+                                .await;
+                            return Ok(slot);
+                        }
+                    }
+                }
+            }
+        }
+        // Cold-start / proxy-restart fallback: the in-memory pointer is
+        // empty, but an OPEN channel for (payer, payee, model_id) might
+        // still live on chain (the proxy is stateless on disk). Check
+        // the indexer before paying for a fresh OpenChannel.
+        if let Some(slot) = self.try_rehydrate_from_indexer(provider, model_id).await {
+            return Ok(slot);
+        }
+        // Lazy on-chain open — bind to the requested model_id so the
+        // chain executor snapshots the provider's offering for this
+        // model onto the new channel.
+        //
+        // `chain.open` waits only for finality and returns the new
+        // Channel parsed from the tx's output objects, so no extra
+        // round-trip is needed. We only fall back to `chain.get` when
+        // the underlying impl doesn't surface the object (in-memory
+        // tests).
+        let (id, channel) = match self
+            .chain
+            .open(
+                provider.address,
+                CoinType::Usdc,
+                self.cfg.default_deposit_micros,
+                model_id.to_string(),
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let msg = e.to_string();
+                if let Some(ib) = parse_insufficient_balance(&msg, self.cfg.default_deposit_micros)
+                {
+                    return Err(anyhow::Error::new(ib));
+                }
+                return Err(anyhow::Error::new(e).context("open_channel"));
+            }
+        };
+        let chan = match channel {
+            Some(c) => c,
+            None => self.chain.get(id).await.context("get_channel after open")?,
+        };
+        let slot = self
+            .store
+            .install_slot(
+                id,
+                provider.address,
+                provider.endpoint.clone(),
+                chan.model_id().to_string(),
+                chan.deposit(),
+                chan.settled_amount(),
+            )
+            .await;
+        Ok(slot)
+    }
+
+    /// Look up an existing OPEN channel for (`client_address`, `payee`, `model_id`)
+    /// from the indexer and install a slot for it — so a proxy restart
+    /// doesn't pay a fresh `OpenChannel` when one already lives on chain.
+    /// Returns `None` on any indexer/chain failure or when no usable
+    /// channel is found; the caller falls through to the lazy-open path.
+    async fn try_rehydrate_from_indexer(
+        &self,
+        provider: &ProviderInfo,
+        model_id: &str,
+    ) -> Option<Arc<tokio::sync::Mutex<ChannelSlot>>> {
+        let indexer_url = self.registry.indexer_url()?;
+        let payer_hex = format!("0x{}", hex::encode(self.client_address.to_vec()));
+        let payee_hex = format!("0x{}", hex::encode(provider.address.to_vec()));
+        let query = r#"query OpenChans($p: String!, $e: String!, $m: String!) {
+            channels(payer: $p, payee: $e, modelId: $m, status: OPEN, first: 5) {
+                edges { node { id } }
+            }
+        }"#;
+        let body = serde_json::json!({
+            "query": query,
+            "variables": { "p": payer_hex, "e": payee_hex, "m": model_id },
+        });
+        let resp = self.http.post(indexer_url).json(&body).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let v: serde_json::Value = resp.json().await.ok()?;
+        let edges = v.pointer("/data/channels/edges").and_then(|x| x.as_array())?;
+        for edge in edges {
+            let Some(id_str) = edge.get("node").and_then(|n| n.get("id")).and_then(|x| x.as_str())
+            else {
+                continue;
+            };
+            let Ok(id) = id_str.parse::<ObjectID>() else { continue };
+            let Ok(chan) = self.chain.get(id).await else { continue };
+            if chan.close_requested_at_ms().is_some() {
+                continue;
+            }
+            // Indexer already filtered by `modelId`, but the on-chain
+            // value is the source of truth — assert it matches before
+            // we install a slot bound to it.
+            if chan.model_id() != model_id {
+                continue;
+            }
+            // Floor at the chain's `settled_amount`. The provider's
+            // running cumulative may be above this between auto-settle
+            // ticks (every 5 min). On the first chat after restart, the
+            // proxy signs at `settled_amount + worst_case`, the provider
+            // returns `PaymentRequired { need_micros: <its own floor> }`
+            // via `pre_flight`, and `relay.rs:151` re-signs at that
+            // floor — single retry, transparent to the caller.
+            let floor = chan.settled_amount();
+            if chan.deposit().saturating_sub(floor) <= 40_000 {
+                continue;
+            }
+            let slot = self
+                .store
+                .install_slot(
+                    id,
+                    provider.address,
+                    provider.endpoint.clone(),
+                    chan.model_id().to_string(),
+                    chan.deposit(),
+                    floor,
+                )
+                .await;
+            tracing::info!(
+                channel = %id, model = %model_id,
+                "rehydrated open channel from indexer"
+            );
+            return Some(slot);
+        }
+        None
+    }
+}
+
+// ---------------------------------------------------------------------
+// Unit tests for the routing arithmetic.
+//
+// Constructing a full Router is heavy (registry/chain/store/http
+// stubs), so these tests target the standalone `price_score` and
+// `weighted_score` helpers. The Router methods are 1-line wrappers
+// around them — the math is what's worth pinning down.
+// ---------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::{Architecture, ModelCard, Pricing, TopProvider};
+
+    fn card(prompt: &str, completion: &str) -> ModelCard {
+        ModelCard {
+            id: "m".to_string(),
+            name: "m".to_string(),
+            canonical_slug: None,
+            hugging_face_id: None,
+            created: 0,
+            description: None,
+            context_length: 1024,
+            architecture: Architecture {
+                input_modalities: vec!["text".into()],
+                output_modalities: vec!["text".into()],
+                tokenizer: "x".into(),
+                instruct_type: None,
+            },
+            top_provider: TopProvider {
+                context_length: 1024,
+                max_completion_tokens: None,
+                is_moderated: false,
+            },
+            supported_parameters: vec![],
+            default_parameters: None,
+            expiration_date: None,
+            ttft_bound_ms: None,
+            ttot_bound_ms: None,
+            pricing: Pricing {
+                prompt: prompt.to_string(),
+                completion: completion.to_string(),
+                request: "0".into(),
+                image: "0".into(),
+                input_cache_read: "0".into(),
+                input_cache_write: "0".into(),
+            },
+            soma: None,
+        }
+    }
+
+    fn rep(volume: u64, buyers: u64, renewal: f64) -> ProviderReputation {
+        ProviderReputation {
+            volume_settled_30d: volume,
+            distinct_buyers_30d: buyers,
+            channel_renewal_rate: renewal,
+            mean_channel_span_cps: 0,
+            negative_rate_30d: None,
+            rating_count_30d: 0,
+        }
+    }
+
+    /// Helper: same as `rep` but with an explicit `negative_rate_30d`.
+    fn rep_with_neg(
+        volume: u64,
+        buyers: u64,
+        renewal: f64,
+        negative_rate: f64,
+        rating_count: u64,
+    ) -> ProviderReputation {
+        ProviderReputation {
+            volume_settled_30d: volume,
+            distinct_buyers_30d: buyers,
+            channel_renewal_rate: renewal,
+            mean_channel_span_cps: 0,
+            negative_rate_30d: Some(negative_rate),
+            rating_count_30d: rating_count,
+        }
+    }
+
+    /// `price_score` is monotonic in (prompt + completion).
+    #[test]
+    fn price_score_is_sum() {
+        let cheap = price_score(&card("0.0000001", "0.0000002"));
+        let expensive = price_score(&card("0.0000004", "0.0000005"));
+        assert!(cheap < expensive, "cheap={cheap} >= expensive={expensive}");
+        // 1+2 vs 4+5 in 12-decimal fixed point.
+        assert_eq!(expensive, 9 * cheap / 3);
+    }
+
+    /// In `Price` mode, the cheaper provider wins.
+    #[test]
+    fn price_mode_picks_cheaper() {
+        let cheap = card("0.0000001", "0.0000002"); // 3 units
+        let pricey = card("0.0000010", "0.0000020"); // 30 units
+        assert!(price_score(&cheap) < price_score(&pricey));
+    }
+
+    /// With a strong reputation tilt, a higher-rep / higher-price
+    /// provider beats a low-rep / low-price one.
+    ///
+    /// `price_score` is in 12-decimal fixed point — `"0.0000001"`
+    /// becomes `100_000` units — so weights here look "small" relative
+    /// to typical price-weight defaults. The point is the *ratio*:
+    /// reputation gain (log-scaled, ~10s of units) must exceed the
+    /// price penalty (linear, ~10s–1000s of units) for high-rep
+    /// providers to win against pricier competition.
+    #[test]
+    fn weighted_mode_prefers_high_reputation_when_weights_tilt_that_way() {
+        let w = RoutingWeights {
+            price: 0.00001,
+            volume: 5.0,
+            renewal: 1.0,
+            buyers: 2.0,
+            negative_rate: 0.0,
+        };
+
+        let cheap_low_rep = card("0.0000001", "0.0000002");
+        let cheap_low_rep_rep = Some(rep(0, 0, 0.0));
+
+        let pricey_high_rep = card("0.0000010", "0.0000020");
+        let pricey_high_rep_rep = Some(rep(1_000_000, 50, 0.5));
+
+        let s_cheap = weighted_score(&w, &cheap_low_rep, cheap_low_rep_rep);
+        let s_pricey = weighted_score(&w, &pricey_high_rep, pricey_high_rep_rep);
+        assert!(
+            s_pricey > s_cheap,
+            "expected high-rep to outscore cheap-no-rep: cheap={s_cheap}, pricey={s_pricey}"
+        );
+    }
+
+    /// With a strong price tilt, the cheaper provider still wins
+    /// even against a higher-rep competitor.
+    #[test]
+    fn weighted_mode_falls_back_to_price_when_weights_tilt_that_way() {
+        let w = RoutingWeights {
+            price: 100.0,
+            volume: 0.01,
+            renewal: 0.01,
+            buyers: 0.01,
+            negative_rate: 0.0,
+        };
+
+        let cheap = card("0.0000001", "0.0000002");
+        let pricey = card("0.0000010", "0.0000020");
+
+        let s_cheap = weighted_score(&w, &cheap, Some(rep(0, 0, 0.0)));
+        let s_pricey = weighted_score(&w, &pricey, Some(rep(1_000_000, 100, 1.0)));
+        assert!(
+            s_cheap > s_pricey,
+            "expected cheap to outscore pricey when w_price dominates: cheap={s_cheap}, pricey={s_pricey}"
+        );
+    }
+
+    /// Reputation `None` contributes zero — an unknown provider
+    /// scores strictly less than the same provider with positive
+    /// signal.
+    #[test]
+    fn missing_reputation_scores_lower_than_positive() {
+        let w = RoutingWeights::default();
+        let c = card("0.0000001", "0.0000001");
+        let s_unknown = weighted_score(&w, &c, None);
+        let s_known = weighted_score(&w, &c, Some(rep(100, 5, 0.2)));
+        assert!(
+            s_known > s_unknown,
+            "known reputation must outscore unknown: known={s_known}, unknown={s_unknown}"
+        );
+    }
+
+    /// Equal price + equal reputation → equal score (sanity).
+    #[test]
+    fn identical_inputs_score_identically() {
+        let w = RoutingWeights::default();
+        let c = card("0.0000003", "0.0000004");
+        let r = rep(500, 10, 0.3);
+        let a = weighted_score(&w, &c, Some(r.clone()));
+        let b = weighted_score(&w, &c, Some(r));
+        assert_eq!(a, b);
+    }
+
+    /// Logs damp high-cardinality signals: doubling volume changes
+    /// the score by `w.volume * ln(2)` (in the limit), not by a
+    /// factor of 2. Sanity: 2× volume costs less than 1.0 of price.
+    #[test]
+    fn log_damping_caps_signal_growth() {
+        let w = RoutingWeights {
+            price: 1.0,
+            volume: 1.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 0.0,
+        };
+        let c = card("0.0000000", "0.0000000"); // price = 0
+        let s_lo = weighted_score(&w, &c, Some(rep(1, 0, 0.0)));
+        let s_hi = weighted_score(&w, &c, Some(rep(1_000_000, 0, 0.0)));
+        let delta = s_hi - s_lo;
+        // ln(1_000_001) - ln(2) ≈ 13.13. Generous bounds.
+        assert!(delta > 5.0 && delta < 20.0, "log-scale delta out of expected band: {delta}");
+    }
+
+    /// `negative_rate_30d` lowers the score in proportion to the
+    /// configured weight; identical providers with different
+    /// negative rates rank with the lower-rate one ahead.
+    #[test]
+    fn weighted_mode_penalizes_high_negative_rate() {
+        let w = RoutingWeights {
+            price: 0.0,
+            volume: 0.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 10.0,
+        };
+        let c = card("0.0000001", "0.0000001");
+        let clean = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.0, 8)));
+        let mid = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.5, 8)));
+        let bad = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 1.0, 8)));
+        assert!(clean > mid && mid > bad, "monotonic penalty: clean={clean}, mid={mid}, bad={bad}",);
+        // Exact: clean - bad = w.negative_rate * 1.0 = 10.0.
+        assert!(((clean - bad) - 10.0).abs() < 1e-9);
+    }
+
+    /// SDK-formatted insufficient-balance abort parses both the
+    /// available and required values out of the chain error chain.
+    #[test]
+    fn parse_insufficient_balance_extracts_both_amounts() {
+        let chain = "open_channel: tx: transaction failed: Insufficient USDC balance: \
+                     address 0xabc has 250000 but the transaction requires 5000000";
+        let ib = parse_insufficient_balance(chain, 5_000_000).expect("matches");
+        assert_eq!(ib.available_micros, 250_000);
+        assert_eq!(ib.required_micros, 5_000_000);
+    }
+
+    /// Coin-type-agnostic execution-failure variant also matches; with
+    /// no numbers in the message we fall back to (0, requested).
+    #[test]
+    fn parse_insufficient_balance_matches_coin_balance_variant() {
+        let chain = "open_channel: tx: Insufficient coin balance for operation.";
+        let ib = parse_insufficient_balance(chain, 5_000_000).expect("matches");
+        assert_eq!(ib.available_micros, 0);
+        assert_eq!(ib.required_micros, 5_000_000);
+    }
+
+    /// Unrelated chain failures (e.g. ChannelTooManyOpenForPair) must
+    /// not be mistaken for an insufficient-balance abort — they need
+    /// to keep falling through to the generic `channel_error` 500.
+    #[test]
+    fn parse_insufficient_balance_ignores_unrelated_errors() {
+        let chain = "open_channel: tx: ChannelTooManyOpenForPair { … }";
+        assert!(parse_insufficient_balance(chain, 5_000_000).is_none());
+    }
+
+    /// `negative_rate_30d == None` is a no-op even with a high
+    /// `w.negative_rate`. Absence of complaints isn't punished as
+    /// if it were maximum complaint.
+    #[test]
+    fn missing_negative_rate_is_a_no_op() {
+        let w = RoutingWeights {
+            price: 0.0,
+            volume: 0.0,
+            renewal: 0.0,
+            buyers: 0.0,
+            negative_rate: 10.0,
+        };
+        let c = card("0.0000001", "0.0000001");
+        let no_signal = weighted_score(&w, &c, Some(rep(1_000, 5, 0.0)));
+        let zero_neg = weighted_score(&w, &c, Some(rep_with_neg(1_000, 5, 0.0, 0.0, 8)));
+        assert!(
+            (no_signal - zero_neg).abs() < 1e-9,
+            "None and Some(0.0) should score identically: \
+             none={no_signal}, zero={zero_neg}",
+        );
+    }
+}

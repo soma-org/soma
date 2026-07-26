@@ -1,0 +1,34 @@
+---
+title: Use the network
+description: Run the proxy locally and point any OpenAI-compatible client at it.
+---
+
+To buy inference, you run a local proxy that speaks the OpenAI API. It discovers offerings, picks the cheapest provider, opens a payment channel, and signs vouchers for each call.
+
+## The path
+
+1. **Fund your wallet.** [Bridge USDC in from Base Sepolia](/concepts/bridge/) if you don't have any yet.
+
+2. **Start the proxy.** Listens on `127.0.0.1:8088` by default.
+
+    ```sh
+    soma proxy
+    ```
+
+3. **Point any OpenAI client at it.** Set the base URL to `http://127.0.0.1:8088/v1` and the proxy handles the rest — discovery, channel opening, voucher signing, streaming.
+
+    ```sh
+    curl http://127.0.0.1:8088/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{"model": "anthropic/claude-haiku-4.5", "messages": [{"role": "user", "content": "Hello"}]}'
+    ```
+
+    Same setup works for the OpenAI Python SDK, Claude Code, Cursor, or any tool that respects `OPENAI_BASE_URL`.
+
+4. **Close channels to reclaim USDC** when you're done with a provider. After a short grace period, unused balance returns to you and the provider keeps what you actually consumed.
+
+    ```sh
+    soma channel request-close --channel-id <ID>
+    ```
+
+`soma channel list` shows what's currently open. Full config options are in `soma proxy --help`.

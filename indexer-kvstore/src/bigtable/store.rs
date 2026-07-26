@@ -12,7 +12,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use indexer_store_traits::CommitterWatermark;
+use indexer_store_traits::ConcurrentConnection;
+use indexer_store_traits::ConcurrentStore;
 use indexer_store_traits::Connection;
+use indexer_store_traits::InitWatermark;
 use indexer_store_traits::PrunerWatermark;
 use indexer_store_traits::ReaderWatermark;
 use indexer_store_traits::Store;
@@ -69,17 +72,30 @@ impl Store for BigTableStore {
 }
 
 #[async_trait]
+impl ConcurrentStore for BigTableStore {
+    type ConcurrentConnection<'c> = BigTableConnection<'c>;
+}
+
+#[async_trait]
 impl Connection for BigTableConnection<'_> {
     async fn init_watermark(
         &mut self,
         pipeline_task: &str,
-        _default_next_checkpoint: u64,
-    ) -> Result<Option<u64>> {
-        Ok(self
-            .client
-            .get_pipeline_watermark(pipeline_task)
-            .await?
-            .map(|wm| wm.checkpoint_hi_inclusive))
+        _checkpoint_hi_inclusive: Option<u64>,
+    ) -> Result<Option<InitWatermark>> {
+        Ok(self.client.get_pipeline_watermark(pipeline_task).await?.map(|wm| InitWatermark {
+            checkpoint_hi_inclusive: Some(wm.checkpoint_hi_inclusive),
+            reader_lo: None,
+        }))
+    }
+
+    async fn accepts_chain_id(
+        &mut self,
+        _pipeline_task: &str,
+        _chain_id: [u8; 32],
+    ) -> Result<bool> {
+        // TODO(port): plumb chain_id through to BigTable. For now, accept all.
+        Ok(true)
     }
 
     async fn committer_watermark(
@@ -125,11 +141,11 @@ impl Connection for BigTableConnection<'_> {
 
         Ok(true)
     }
+}
 
-    async fn reader_watermark(
-        &mut self,
-        _pipeline: &'static str,
-    ) -> Result<Option<ReaderWatermark>> {
+#[async_trait]
+impl ConcurrentConnection for BigTableConnection<'_> {
+    async fn reader_watermark(&mut self, _pipeline: &str) -> Result<Option<ReaderWatermark>> {
         Ok(None)
     }
 

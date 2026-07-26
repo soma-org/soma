@@ -40,32 +40,6 @@ use crate::supported_protocol_versions::SupportedProtocolVersions;
 /// Default commission rate of 2%
 pub const DEFAULT_COMMISSION_RATE: u64 = 200;
 
-/// Compute backend for ML inference (scoring service and audit service).
-///
-/// All backends are always compiled in. CUDA requires the NVIDIA CUDA toolkit
-/// to be installed at runtime.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum DeviceConfig {
-    /// CPU backend (NdArray).
-    #[default]
-    Cpu,
-    /// GPU via WebGPU (auto-selects Metal/Vulkan/DX12).
-    Wgpu,
-    /// NVIDIA GPU via CUDA. Requires CUDA toolkit at runtime.
-    Cuda,
-}
-
-impl std::fmt::Display for DeviceConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DeviceConfig::Cpu => write!(f, "cpu"),
-            DeviceConfig::Wgpu => write!(f, "wgpu"),
-            DeviceConfig::Cuda => write!(f, "cuda"),
-        }
-    }
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // #[serde(rename_all = "kebab-case")]
@@ -150,20 +124,6 @@ pub struct NodeConfig {
     /// Configuration for the transaction driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_driver_config: Option<TransactionDriverConfig>,
-
-    /// URL of the remote scoring service for fraud auditing (e.g. "http://gpu-host:9124").
-    /// If None, a local scoring server is started automatically on a free port.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scoring_url: Option<String>,
-
-    /// Compute backend for the local scoring engine (used when `scoring_url` is None).
-    /// Defaults to Wgpu. Only relevant for validators.
-    #[serde(default = "default_scoring_device")]
-    pub scoring_device: DeviceConfig,
-}
-
-fn default_scoring_device() -> DeviceConfig {
-    DeviceConfig::Wgpu
 }
 
 impl NodeConfig {
@@ -558,11 +518,6 @@ pub struct CheckpointExecutorConfig {
     /// If unspecified, this will default to `10`.
     #[serde(default = "default_local_execution_timeout_sec")]
     pub local_execution_timeout_sec: u64,
-
-    /// Optional directory used for data ingestion pipeline
-    /// When specified, each executed checkpoint will be saved in a local directory for post processing
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_ingestion_dir: Option<PathBuf>,
 }
 
 fn default_checkpoint_execution_max_concurrency() -> usize {
@@ -578,7 +533,6 @@ impl Default for CheckpointExecutorConfig {
         Self {
             checkpoint_execution_max_concurrency: default_checkpoint_execution_max_concurrency(),
             local_execution_timeout_sec: default_local_execution_timeout_sec(),
-            data_ingestion_dir: None,
         }
     }
 }
@@ -693,10 +647,7 @@ impl ValidatorConfigBuilder {
 
         let pruning_config = AuthorityStorePruningConfig::default();
 
-        let checkpoint_executor_config = CheckpointExecutorConfig {
-            // TODO: data_ingestion_dir: self.data_ingestion_dir,
-            ..Default::default()
-        };
+        let checkpoint_executor_config = CheckpointExecutorConfig::default();
 
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
@@ -731,8 +682,6 @@ impl ValidatorConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            scoring_url: None,
-            scoring_device: default_scoring_device(),
         }
     }
 
@@ -882,8 +831,6 @@ impl FullnodeConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            scoring_url: None,
-            scoring_device: default_scoring_device(),
         }
     }
 }
@@ -954,8 +901,6 @@ pub enum ExecutionCacheConfig {
         /// Number of uncommitted transactions at which to refuse new transaction
         /// submissions. Defaults to backpressure_threshold if unset.
         backpressure_threshold_for_rpc: Option<u64>,
-
-        fastpath_transaction_outputs_cache_size: Option<u64>,
     },
 }
 
@@ -973,7 +918,6 @@ impl Default for ExecutionCacheConfig {
             executed_effect_cache_size: None,
             effect_cache_size: None,
             transaction_objects_cache_size: None,
-            fastpath_transaction_outputs_cache_size: None,
         }
     }
 }
@@ -1092,18 +1036,6 @@ impl ExecutionCacheConfig {
                 ExecutionCacheConfig::WritebackCache { backpressure_threshold_for_rpc, .. } => {
                     backpressure_threshold_for_rpc.unwrap_or(self.backpressure_threshold())
                 }
-            })
-    }
-
-    pub fn fastpath_transaction_outputs_cache_size(&self) -> u64 {
-        std::env::var("SOMA_FASTPATH_TRANSACTION_OUTPUTS_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    fastpath_transaction_outputs_cache_size,
-                    ..
-                } => fastpath_transaction_outputs_cache_size.unwrap_or(10_000),
             })
     }
 }

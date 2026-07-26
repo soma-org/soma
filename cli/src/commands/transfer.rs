@@ -2,45 +2,75 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow};
+//! `soma transfer {soma, usdc}` — fungible balance transfers.
+//!
+//! Object transfers (the non-fungible kind) live under `soma object
+//! transfer` instead, since the object is the primary subject of the
+//! action.
+
+use anyhow::Result;
+use clap::Parser;
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
-use types::object::ObjectID;
-use types::transaction::TransactionKind;
+use types::object::CoinType;
+use types::transaction::{BalanceTransferArgs, TransactionKind};
 
-use crate::client_commands::TxProcessingArgs;
+use crate::client_commands::{TxProcessingArgs, execute_or_serialize};
 use crate::response::ClientCommandResponse;
+use crate::soma_amount::SomaAmount;
+use crate::usdc_amount::UsdcAmount;
 
-/// Execute the transfer command (transfer an object to a recipient)
-pub async fn execute(
-    context: &mut WalletContext,
-    to: KeyIdentity,
-    object_id: ObjectID,
-    gas: Option<ObjectID>,
-    tx_args: TxProcessingArgs,
-) -> Result<ClientCommandResponse> {
-    let sender = context.get_object_owner(&object_id).await?;
-    let recipient = context.get_identity_address(Some(to))?;
-    let client = context.get_client().await?;
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
+pub enum TransferCommand {
+    /// Transfer SOMA to a recipient.
+    #[clap(after_help = "\
+EXAMPLES:
+    soma transfer soma 10 0x1234...5678
+    soma transfer soma 0.5 alice")]
+    Soma {
+        /// Amount in SOMA (e.g. `10`, `0.5`).
+        amount: SomaAmount,
+        /// Recipient address or alias.
+        recipient: KeyIdentity,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
 
-    // Get the object reference
-    let object =
-        client.get_object(object_id).await.map_err(|e| anyhow!("Failed to get object: {}", e))?;
-    let object_ref = object.compute_object_reference();
+    /// Transfer USDC to a recipient.
+    #[clap(after_help = "\
+EXAMPLES:
+    soma transfer usdc 1.50 0x1234...5678
+    soma transfer usdc 100 alice")]
+    Usdc {
+        /// Amount in USDC (e.g. `1.50`).
+        amount: UsdcAmount,
+        /// Recipient address or alias.
+        recipient: KeyIdentity,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
+}
 
-    let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
+impl TransferCommand {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<ClientCommandResponse> {
+        let (coin_type, amount_base_units, recipient, tx_args) = match self {
+            Self::Soma { amount, recipient, tx_args } => {
+                (CoinType::Soma, amount.shannons(), recipient, tx_args)
+            }
+            Self::Usdc { amount, recipient, tx_args } => {
+                (CoinType::Usdc, amount.microdollars(), recipient, tx_args)
+            }
+        };
 
-    // Resolve gas payment
-    let gas_payment = match gas {
-        Some(gas_id) => {
-            let gas_obj = client
-                .get_object(gas_id)
-                .await
-                .map_err(|e| anyhow!("Failed to get gas object: {}", e))?;
-            vec![gas_obj.compute_object_reference()]
-        }
-        None => vec![],
-    };
+        let sender = context.active_address()?;
+        let recipient_address = context.get_identity_address(Some(recipient))?;
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
+        let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type,
+            transfers: vec![(recipient_address, amount_base_units)],
+        });
+
+        execute_or_serialize(context, sender, kind, tx_args).await
+    }
 }

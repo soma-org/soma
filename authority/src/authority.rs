@@ -25,7 +25,7 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::SYSTEM_STATE_OBJECT_ID;
-use types::base::{AuthorityName, ConciseableName as _, FullObjectID};
+use types::base::{AuthorityName, ConciseableName as _, FullObjectID, SomaAddress};
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
     CheckpointSequenceNumber, CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp,
@@ -40,8 +40,8 @@ use types::digests::{
     TransactionEffectsDigest,
 };
 use types::effects::{
-    InputSharedObject, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
-    VerifiedSignedTransactionEffects,
+    ExecutionFailureStatus, InputSharedObject, SignedTransactionEffects, TransactionEffects,
+    TransactionEffectsAPI, VerifiedSignedTransactionEffects,
 };
 use types::envelope::Message;
 use types::error::{ExecutionError, ExecutionResult, SomaError, SomaResult};
@@ -52,7 +52,7 @@ use types::messages_grpc::{
     HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, TransactionInfoRequest,
     TransactionInfoResponse, TransactionStatus,
 };
-use types::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
+use types::object::{CoinType, OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
 use types::storage::InputKey;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
@@ -100,8 +100,6 @@ use crate::{consensus_quarantine, transaction_checks};
 // #[path = "unit_tests/authority_tests.rs"]
 // pub mod authority_tests;
 
-pub const WAIT_FOR_FASTPATH_INPUT_TIMEOUT: Duration = Duration::from_secs(2);
-
 pub const DEV_INSPECT_GAS_COIN_VALUE: u64 = 1_000_000_000_000_000_000;
 
 /// a Trait object for `Signer` that is:
@@ -126,6 +124,22 @@ pub struct ExecutionEnv {
     /// Transactions that must finish before this transaction can be executed.
     /// Used to schedule barrier transactions after non-exclusive writes.
     pub barrier_dependencies: Vec<TransactionDigest>,
+
+    /// Stage 14c.7: pre-loaded `Owner::Accumulator` objects for the
+    /// settlement system tx. The [`SettlementScheduler`] reads each
+    /// touched accumulator object from the cache at dispatch time
+    /// and passes it through here so the settlement executor can
+    /// `mutate_input_object` it without going through the standard
+    /// `InputObjectKind` pipeline (accumulator objects can't be
+    /// declared as `ImmOrOwnedObject` or `SharedObject` cleanly —
+    /// they have a system-managed `Owner::Accumulator`).
+    ///
+    /// Empty for every other tx kind. The input loader merges these
+    /// into `temp_store.input_objects` after the standard loading
+    /// step runs.
+    ///
+    /// [`SettlementScheduler`]: crate::settlement_scheduler::SettlementScheduler
+    pub pre_loaded_accumulators: Vec<types::object::Object>,
 }
 
 impl Default for ExecutionEnv {
@@ -135,6 +149,7 @@ impl Default for ExecutionEnv {
             expected_effects_digest: None,
             scheduling_source: SchedulingSource::NonFastPath,
             barrier_dependencies: Default::default(),
+            pre_loaded_accumulators: Vec::new(),
         }
     }
 }
@@ -167,6 +182,16 @@ impl ExecutionEnv {
         barrier_dependencies: BTreeSet<TransactionDigest>,
     ) -> Self {
         self.barrier_dependencies = barrier_dependencies.into_iter().collect();
+        self
+    }
+
+    /// Stage 14c.7: attach pre-loaded accumulator objects for the
+    /// settlement system tx. See `ExecutionEnv::pre_loaded_accumulators`.
+    pub fn with_pre_loaded_accumulators(
+        mut self,
+        accumulators: Vec<types::object::Object>,
+    ) -> Self {
+        self.pre_loaded_accumulators = accumulators;
         self
     }
 }
@@ -382,11 +407,10 @@ impl AuthorityState {
             return Ok(HandleTransactionResponse { status });
         }
 
-        if !self.wait_for_fastpath_dependency_objects(&transaction, epoch_store.epoch()).await? {
-            debug!("fastpath input objects are still unavailable after waiting");
-            // Proceed with input checks to generate a proper error.
-        }
-
+        // Stage 5c: previously waited for fastpath dependency objects
+        // here. Without fastpath, the consensus path provides ordering;
+        // unavailable inputs surface as an `InputObjectError` from
+        // input-checks below, which is the correct behavior.
         self.handle_sign_transaction(epoch_store, transaction).await
     }
 
@@ -455,13 +479,56 @@ impl AuthorityState {
             return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
         }
 
+        // Stage 5.5c: replay protection.
+        //
+        // Asymmetric semantics, mirroring Sui SIP-58:
+        // - Current-epoch already-executed → Ok(()) (idempotent re-vote)
+        // - Previous-epoch already-executed → hard reject as replay
+        //
+        // The current-epoch check is below (existing); the prev-epoch
+        // check goes here.
+        let tx_digest = *transaction.digest();
+        let current_epoch = epoch_store.epoch();
+        if self
+            .get_transaction_cache_reader()
+            .was_transaction_executed_in_last_epoch(&tx_digest, current_epoch)
+        {
+            return Err(SomaError::TransactionAlreadyExecuted { digest: tx_digest }.into());
+        }
+
+        // Stage 5.5c: structural expiration check (chain id, window,
+        // width-bound). Runs even for txs with owned inputs — width
+        // bound prevents pathological 100-epoch windows from ever
+        // entering the cache.
+        let tx_data = transaction.data().transaction_data();
+        tx_data.check_expiration(current_epoch, &epoch_store.get_chain_identifier())?;
+
+        // Stage 5.5c: every user tx must have replay protection from
+        // *some* source — either an owned input (gas coin or other)
+        // whose version-bump catches replays, or a `ValidDuring`
+        // declaration. System txs (sender == ZERO) are exempt: they
+        // are injected by the consensus handler and uniqueness is
+        // guaranteed structurally (e.g., commit metadata in
+        // SettlementTransaction).
+        if tx_data.sender() != SomaAddress::ZERO
+            && !tx_data.expiration().is_replay_protected()
+            && tx_data.gas().is_empty()
+        {
+            return Err(SomaError::UnsupportedFeatureError {
+                error: "Stateless transaction must declare \
+                        TransactionExpiration::ValidDuring with both \
+                        min_epoch and max_epoch set"
+                    .to_string(),
+            }
+            .into());
+        }
+
         // Accept executed transactions, instead of voting to reject them.
         // Execution is limited to the current epoch. Otherwise there can be a race where
         // the transaction is accepted but the executed effects are pruned.
-        if let Some(effects) =
-            self.get_transaction_cache_reader().get_executed_effects(transaction.digest())
+        if let Some(effects) = self.get_transaction_cache_reader().get_executed_effects(&tx_digest)
         {
-            if effects.executed_epoch() == epoch_store.epoch() {
+            if effects.executed_epoch() == current_epoch {
                 return Ok(());
             }
         }
@@ -472,6 +539,45 @@ impl AuthorityState {
             result.is_none(),
             "handle_transaction_impl should not return a signed transaction when sign is false"
         );
+        Ok(())
+    }
+
+    /// Best-effort funds check for balance-mode transactions.
+    ///
+    /// Sums the transaction's declared `WithdrawalReservation`s and
+    /// compares them against the sender's current accumulator balance,
+    /// so the client can fail fast with a clear
+    /// [`SomaError::InsufficientBalance`] instead of waiting out the
+    /// finality timeout while the consensus reservation pre-pass
+    /// silently drops the transaction.
+    ///
+    /// This is a *best-effort* check against local state — the
+    /// authoritative, deterministic funds gate remains the consensus
+    /// pre-pass (`run_reservation_prepass`), which is the only thing
+    /// that can resolve the concurrent / cumulative case where two
+    /// individually-affordable txs from one sender share a commit.
+    /// Coin-mode and system transactions declare no reservations and
+    /// pass through untouched.
+    fn check_balance_reservations(
+        &self,
+        epoch_store: &AuthorityPerEpochStore,
+        tx_data: &TransactionData,
+    ) -> SomaResult<()> {
+        let unit_fee = epoch_store.epoch_start_state().fee_parameters().unit_fee;
+        let reservations = tx_data.reservations(unit_fee);
+        if reservations.is_empty() {
+            return Ok(());
+        }
+        let cache_reader = self.get_object_cache_reader();
+        let decisions =
+            types::balance::check_reservations(&[reservations.as_slice()], |owner, coin_type| {
+                cache_reader.get_balance(owner, coin_type)
+            });
+        if let Some(types::balance::ReservationDecision::Drop { reason }) =
+            decisions.into_iter().next()
+        {
+            return Err(reason.into());
+        }
         Ok(())
     }
 
@@ -521,90 +627,13 @@ impl AuthorityState {
             }
         }
 
+        // Best-effort funds check: fail an underfunded balance-mode tx
+        // fast here (non-retriable), rather than letting the client
+        // wait out the finality timeout while the consensus
+        // reservation pre-pass silently drops it.
+        self.check_balance_reservations(epoch_store, transaction.data().transaction_data())?;
+
         Ok(())
-    }
-
-    /// Waits for fastpath (owned, package) dependency objects to become available.
-    /// Returns true if a chosen set of fastpath dependency objects are available,
-    /// returns false otherwise after an internal timeout.
-    pub(crate) async fn wait_for_fastpath_dependency_objects(
-        &self,
-        transaction: &VerifiedTransaction,
-        epoch: EpochId,
-    ) -> SomaResult<bool> {
-        let txn_data = transaction.data().transaction_data();
-        let (objects, receiving_objects) = txn_data.fastpath_dependency_objects()?;
-
-        // Gather and filter input objects to wait for.
-        let fastpath_dependency_objects: Vec<_> = objects
-            .into_iter()
-            .filter_map(|obj_ref| self.should_wait_for_dependency_object(obj_ref))
-            .collect();
-        let receiving_keys: HashSet<_> = receiving_objects
-            .into_iter()
-            .filter_map(|receiving_obj_ref| {
-                self.should_wait_for_dependency_object(receiving_obj_ref)
-            })
-            .collect();
-        if fastpath_dependency_objects.is_empty() && receiving_keys.is_empty() {
-            return Ok(true);
-        }
-
-        // Use shorter wait timeout in simtests to exercise server-side error paths and
-        // client-side retry logic.
-        let max_wait =
-            if cfg!(msim) { Duration::from_millis(200) } else { WAIT_FOR_FASTPATH_INPUT_TIMEOUT };
-
-        match timeout(
-            max_wait,
-            self.get_object_cache_reader().notify_read_input_objects(
-                &fastpath_dependency_objects,
-                &receiving_keys,
-                epoch,
-            ),
-        )
-        .await
-        {
-            Ok(()) => Ok(true),
-            // Maybe return an error for unavailable input objects,
-            // and allow the caller to skip the rest of input checks?
-            Err(_) => Ok(false),
-        }
-    }
-
-    /// Returns Some(inputKey) if the object reference should be waited on until it is
-    /// finalized, before proceeding to input checks.
-    ///
-    /// Incorrect decisions here should only affect user experience, not safety:
-    /// - Waiting unnecessarily adds latency to transaction signing and submission.
-    /// - Not waiting when needed may cause the transaction to be rejected because input object is unavailable.
-    fn should_wait_for_dependency_object(&self, obj_ref: ObjectRef) -> Option<InputKey> {
-        let (obj_id, cur_version, _digest) = obj_ref;
-        let Some(latest_obj_ref) =
-            self.get_object_cache_reader().get_latest_object_ref_or_tombstone(obj_id)
-        else {
-            // Object might not have been created.
-            return Some(InputKey::VersionedObject {
-                id: FullObjectID::new(obj_id, None),
-                version: cur_version,
-            });
-        };
-        let latest_digest = latest_obj_ref.2;
-        if latest_digest == ObjectDigest::OBJECT_DIGEST_DELETED {
-            // Do not wait for deleted object and rely on input check instead.
-            return None;
-        }
-        let latest_version = latest_obj_ref.1;
-        if cur_version <= latest_version {
-            // Do not wait for version that already exists or has been consumed.
-            // Let the input check to handle them and return the proper error.
-            return None;
-        }
-        // Wait for the object version to become available.
-        Some(InputKey::VersionedObject {
-            id: FullObjectID::new(obj_id, None),
-            version: cur_version,
-        })
     }
 
     /// Wait for a certificate to be executed.
@@ -744,36 +773,20 @@ impl AuthorityState {
             return ExecutionOutput::EpochEnded;
         }
 
-        let scheduling_source = execution_env.scheduling_source;
-        let mysticeti_fp_outputs = tx_cache_reader.get_mysticeti_fastpath_outputs(tx_digest);
-
-        let (transaction_outputs, execution_error_opt) = if let Some(outputs) = mysticeti_fp_outputs
-        {
-            assert!(
-                !certificate.is_consensus_tx(),
-                "Mysticeti fastpath executed transactions cannot be consensus transactions"
-            );
-            // If this transaction is not scheduled from fastpath, it must be either
-            // from consensus or from checkpoint, i.e. it must be finalized.
-            // To avoid re-executing fastpath transactions, we check if the outputs are already
-            // in the mysticeti fastpath outputs cache. If so, we skip the execution and commit the transaction.
-            debug!(
-                ?tx_digest,
-                "Mysticeti fastpath certified transaction outputs found in cache, skipping execution and committing"
-            );
-            (outputs, None)
-        } else {
-            let (transaction_outputs, execution_error_opt) = match self.process_certificate(
-                &tx_guard,
-                &execution_guard,
-                certificate,
-                execution_env,
-                epoch_store,
-            ) {
-                ExecutionOutput::Success(result) => result,
-                output => return output.unwrap_err(),
-            };
-            (Arc::new(transaction_outputs), execution_error_opt)
+        // Stage 5c: pre-fastpath-removal we'd first check the
+        // mysticeti-fastpath outputs cache and short-circuit re-execution
+        // if the tx had already been certified. The cache is gone, the
+        // certificates' producers are gone, so every certificate now
+        // goes through `process_certificate`.
+        let (transaction_outputs, execution_error_opt) = match self.process_certificate(
+            &tx_guard,
+            &execution_guard,
+            certificate,
+            execution_env,
+            epoch_store,
+        ) {
+            ExecutionOutput::Success(result) => (Arc::new(result.0), result.1),
+            output => return output.unwrap_err(),
         };
 
         let effects = transaction_outputs.effects.clone();
@@ -784,17 +797,16 @@ impl AuthorityState {
             (execution_start_time.elapsed().as_micros() as f64) / 1000.0
         );
 
-        if scheduling_source == SchedulingSource::MysticetiFastPath {
-            self.get_cache_writer().write_fastpath_transaction_outputs(transaction_outputs);
-        } else {
-            utils::fail_point!("crash-before-commit-certificate");
-            let commit_result =
-                self.commit_certificate(certificate, transaction_outputs, epoch_store);
-            if let Err(err) = commit_result {
-                error!(?tx_digest, "Error committing transaction: {err}");
-                tx_guard.release();
-                return ExecutionOutput::Fatal(err);
-            }
+        // Stage 5b: previously branched on `scheduling_source ==
+        // MysticetiFastPath` to write to a separate fastpath cache.
+        // The fastpath path is gone — every certificate now goes
+        // through the consensus commit path.
+        utils::fail_point!("crash-before-commit-certificate");
+        let commit_result = self.commit_certificate(certificate, transaction_outputs, epoch_store);
+        if let Err(err) = commit_result {
+            error!(?tx_digest, "Error committing transaction: {err}");
+            tx_guard.release();
+            return ExecutionOutput::Fatal(err);
         }
 
         tx_guard.commit_tx();
@@ -930,6 +942,7 @@ impl AuthorityState {
             input_objects,
             expected_effects_digest,
             epoch_store,
+            execution_env.pre_loaded_accumulators,
         )
     }
 
@@ -971,6 +984,7 @@ impl AuthorityState {
         input_objects: InputObjects,
         expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
+        pre_loaded_accumulators: Vec<types::object::Object>,
     ) -> ExecutionOutput<(TransactionOutputs, Option<ExecutionError>)> {
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1010,6 +1024,54 @@ impl AuthorityState {
             None => ExecutionOrEarlyError::Ok(()),
         };
 
+        // Stage 6c: pre-read sender's USDC balance for balance-mode gas.
+        // We only need this when `gas_payment` is empty AND the tx isn't
+        // a system tx — otherwise prepare_gas's coin-mode (or system-tx
+        // skip) handles fees without consulting the accumulator.
+        // Stage 13c: balance-mode gas is the sole path. Always
+        // pre-read the sender's USDC balance for non-system txs.
+        let sender_usdc_balance = if !kind.is_system_tx() {
+            Some(
+                self.database_for_testing()
+                    .get_balance(signer, types::object::CoinType::Usdc)
+                    .unwrap_or(0),
+            )
+        } else {
+            None
+        };
+
+        // Pre-read delegation rows the executor needs.
+        // - AddStake/WithdrawStake: signer's rows so we can settle and
+        //   mutate without reaching into the perpetual store.
+        // - ChangeEpoch: every validator's *own* delegation row so
+        //   commission credits compound correctly into their existing
+        //   principal (rather than overwriting from a default-empty
+        //   row).
+        let prefetched_delegations = match &kind {
+            types::transaction::TransactionKind::AddStake { .. }
+            | types::transaction::TransactionKind::WithdrawStake { .. } => self
+                .database_for_testing()
+                .iter_delegations_for_staker(signer)
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default(),
+            types::transaction::TransactionKind::ChangeEpoch(_) => {
+                let mut map = std::collections::BTreeMap::new();
+                if let Ok(state) = self.get_system_state_object_for_testing() {
+                    for v in &state.validators().validators {
+                        let pool = v.staking_pool.id;
+                        if let Ok(row) = self
+                            .database_for_testing()
+                            .get_delegation(pool, v.metadata.soma_address)
+                        {
+                            map.insert(pool, row);
+                        }
+                    }
+                }
+                map
+            }
+            _ => std::collections::BTreeMap::new(),
+        };
+
         #[allow(unused_mut)]
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
@@ -1023,6 +1085,9 @@ impl AuthorityState {
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
+            sender_usdc_balance,
+            prefetched_delegations,
+            pre_loaded_accumulators,
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1115,7 +1180,7 @@ impl AuthorityState {
             &self.config.transaction_deny_config,
         )?;
 
-        let (mut input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
+        let (input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
             // We don't want to cache this transaction since it's a simulation.
             None,
             &input_object_kinds,
@@ -1123,21 +1188,11 @@ impl AuthorityState {
             epoch_store.epoch(),
         )?;
 
-        // mock a gas object if one was not provided
-        let mock_gas_id = if transaction.gas().is_empty() {
-            let mock_gas_object = Object::new_coin(
-                ObjectID::MAX,
-                DEV_INSPECT_GAS_COIN_VALUE,
-                Owner::AddressOwner(transaction.sender()),
-                TransactionDigest::genesis_marker(),
-            );
-            let mock_gas_object_ref = mock_gas_object.compute_object_reference();
-            *transaction.gas_mut() = vec![mock_gas_object_ref];
-            input_objects.push(ObjectReadResult::new_from_gas_object(&mock_gas_object));
-            Some(mock_gas_object.id())
-        } else {
-            None
-        };
+        // Stage 13c: gas is balance-mode. Simulation no longer
+        // mocks a gas object — `transaction.gas()` is expected to
+        // be empty for non-system txs and the executor reads the
+        // sender's USDC accumulator directly (see
+        // `sender_usdc_balance` below).
 
         let checked_input_objects = transaction_checks::check_transaction_input(
             epoch_store.protocol_config(),
@@ -1146,15 +1201,54 @@ impl AuthorityState {
             &receiving_objects,
         )?;
 
+        // F22: simulation must model the consensus reservation
+        // pre-pass. An over-balance balance-mode tx would be dropped
+        // on-chain, so surface it here as a predetermined execution
+        // failure instead of executing it and reporting "Would
+        // Succeed" (the executor itself has no balance check — funds
+        // sufficiency is enforced only by the pre-pass).
+        let reservation_error: Option<ExecutionFailureStatus> = self
+            .check_balance_reservations(&epoch_store, &transaction)
+            .err()
+            .map(ExecutionFailureStatus::from);
+
         let (kind, signer, gas_payment) = transaction.execution_parts();
         let early_execution_error = get_early_execution_error(
             &transaction.digest(),
             &checked_input_objects,
             self.config.certificate_deny_config.certificate_deny_set(),
-        );
+        )
+        .or(reservation_error);
         let execution_params = match early_execution_error {
             Some(error) => ExecutionOrEarlyError::Err(error),
             None => ExecutionOrEarlyError::Ok(()),
+        };
+
+        // Stage 6c: pre-read sender's USDC balance for balance-mode gas.
+        // Stage 13c: balance-mode gas is the sole path. Always
+        // pre-read the sender's USDC balance for non-system txs.
+        let sender_usdc_balance = if !kind.is_system_tx() {
+            Some(
+                self.database_for_testing()
+                    .get_balance(signer, types::object::CoinType::Usdc)
+                    .unwrap_or(0),
+            )
+        } else {
+            None
+        };
+
+        // Stage 9d-C2: pre-read signer's delegations for staking txs.
+        let prefetched_delegations = if matches!(
+            &kind,
+            types::transaction::TransactionKind::AddStake { .. }
+                | types::transaction::TransactionKind::WithdrawStake { .. }
+        ) {
+            self.database_for_testing()
+                .iter_delegations_for_staker(signer)
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default()
+        } else {
+            std::collections::BTreeMap::new()
         };
 
         let (inner, effects, execution_error_opt) = execute_transaction(
@@ -1169,6 +1263,12 @@ impl AuthorityState {
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
+            sender_usdc_balance,
+            prefetched_delegations,
+            // This `dry_run`-style execution path is for testing/
+            // simulation — settlement isn't dispatched here, so no
+            // accumulator pre-loading is needed.
+            Vec::new(),
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {
@@ -1199,12 +1299,7 @@ impl AuthorityState {
             set
         };
 
-        Ok(SimulateTransactionResult {
-            objects: object_set,
-            effects,
-            execution_result,
-            mock_gas_id,
-        })
+        Ok(SimulateTransactionResult { objects: object_set, effects, execution_result })
     }
 
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> bool {
@@ -1355,6 +1450,8 @@ impl AuthorityState {
             tx_ready_certificates,
             &epoch_store,
         ));
+        // Stage 14c.5e: SettlementScheduler holds a clone of the
+        // ExecutionScheduler. Routes incoming schedulables —
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let _authority_per_epoch_pruner = AuthorityPerEpochStorePruner::new(
@@ -1623,7 +1720,7 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
     ) {
         use types::config::genesis_config::TOTAL_SUPPLY_SHANNONS;
-        use types::object::ObjectType;
+        use types::object::{CoinType, ObjectType};
 
         // Get system state from the object store for accurate balance accounting
         let system_state = self
@@ -1634,70 +1731,93 @@ impl AuthorityState {
 
         // Emission pool
         system_state_balance += system_state.emission_pool().balance as u128;
-        // Safe mode accumulators
-        system_state_balance += system_state.safe_mode_accumulated_fees() as u128;
-        system_state_balance += system_state.safe_mode_accumulated_emissions() as u128;
 
-        // Validator staking pools (active, pending, inactive)
+        // Auto-compound F1: every shannon held by the system as
+        // stake lives in `active_stake` (rewards-eligible) or
+        // `pending_active_stake` (same-epoch addition awaiting
+        // promotion). No separate reward bank — rewards are folded
+        // directly into `active_stake` at each boundary.
         for v in &system_state.validators().validators {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
         for v in &system_state.validators().pending_validators {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
         for v in system_state.validators().inactive_validators.values() {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
 
-        // Model staking pools (all states)
-        for model in system_state.model_registry().models.values() {
-            let pool = model.staking_pool();
-            system_state_balance += pool.soma_balance as u128;
-            system_state_balance += pool.pending_stake as u128;
-        }
-
-        // Iterate all live objects to sum coin and target balances
-        let mut coin_balance: u128 = 0;
-        let mut target_balance: u128 = 0;
-        let mut object_count: u64 = 0;
-
-        for live_obj in self.get_global_state_hash_store().iter_live_object_set() {
-            let obj = match live_obj {
-                types::object::LiveObject::Normal(obj) => obj,
-            };
-            object_count += 1;
-
-            match obj.type_() {
-                ObjectType::Coin => {
-                    if let Some(balance) = obj.as_coin() {
-                        coin_balance += balance as u128;
-                    }
+        // Stage 13a+13k: SOMA lives entirely in the balance
+        // accumulator post-Stage-13a (no Coin objects in genesis)
+        // and the production Coin object API was deleted in
+        // Stage 13k. Sum SOMA entries from the accumulator only;
+        // USDC entries are bridged-in microdollars, not part of
+        // SOMA supply.
+        let mut accumulator_soma: u128 = 0;
+        if let Ok(rows) = self.database_for_testing().iter_all_balances() {
+            for ((_, coin_type), balance) in rows {
+                if matches!(coin_type, CoinType::Soma) {
+                    accumulator_soma += balance as u128;
                 }
-                ObjectType::Target => {
-                    if let Some(target) = obj.as_target() {
-                        target_balance += target.reward_pool as u128;
-                        target_balance += target.bond_amount as u128;
-                    }
-                }
-                // SystemState: accounted above via get_system_state_object_for_testing
-                // StakedSoma, Submission: no SOMA value (receipts only)
-                _ => {}
             }
         }
 
-        let total_accounted = coin_balance + system_state_balance + target_balance;
+        // SOMA escrowed in payment channels: not in iter_all_balances
+        // (channels are objects, not BalanceAccumulators) and not in
+        // any system_state pool. Walk the live object set and add the
+        // SOMA-typed channels' deposits. Without this, opening a SOMA
+        // channel would falsely trip the conservation panic.
+        let mut channel_soma: u128 = 0;
+        for live_object in self.database_for_testing().iter_live_object_set() {
+            let types::object::LiveObject::Normal(obj) = live_object;
+            if let Some(channel) = obj.as_channel() {
+                if matches!(channel.token(), CoinType::Soma) {
+                    channel_soma += channel.deposit() as u128;
+                }
+            }
+        }
+
+        // Auto-compound audit: pool counter must NOT undercount the
+        // on-disk delegation rows. Under auto-compound, the pool's
+        // `active_stake + pending_active_stake` includes any
+        // unclaimed compound (rewards already deposited but not yet
+        // settled into delegation rows), so the strict equality of
+        // the prior model doesn't hold — the counter can be larger
+        // than the CF sum. We only flag the inverse (CF sum exceeds
+        // counter), which would mean a row gained principal without
+        // the pool tracking it.
+        for v in &system_state.validators().validators {
+            let pool_id = v.staking_pool.id;
+            if let Ok(cf_total) = self.database_for_testing().sum_delegations_for_pool(pool_id) {
+                let counter = v.staking_pool.active_stake + v.staking_pool.pending_active_stake;
+                if cf_total > counter {
+                    let msg = format!(
+                        "delegations CF exceeds pool counter at epoch {}: \
+                         pool {pool_id} cf_total={cf_total} counter={counter}",
+                        cur_epoch_store.epoch(),
+                    );
+                    if cfg!(msim) {
+                        panic!("{msg}");
+                    } else {
+                        error!("{msg}");
+                    }
+                }
+            }
+        }
+
+        let total_accounted = accumulator_soma + channel_soma + system_state_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;
 
         if total_accounted != expected {
             let msg = format!(
                 "SUPPLY CONSERVATION VIOLATION at epoch {}! \
                  Expected {expected}, got {total_accounted} \
-                 (coins={coin_balance}, system_state={system_state_balance}, \
-                 targets={target_balance}, \
-                 objects_scanned={object_count})",
+                 (accumulator_soma={accumulator_soma}, \
+                 channel_soma={channel_soma}, \
+                 system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );
             if cfg!(msim) {
@@ -1708,9 +1828,9 @@ impl AuthorityState {
         } else {
             info!(
                 "Supply conservation check passed for epoch {} \
-                 (total={expected}, coins={coin_balance}, \
-                 system_state={system_state_balance}, targets={target_balance}, \
-                 objects={object_count})",
+                 (total={expected}, accumulator_soma={accumulator_soma}, \
+                 channel_soma={channel_soma}, \
+                 system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );
         }
@@ -2392,7 +2512,14 @@ impl AuthorityState {
         info!("Input objects for advance epoch: {:?}", input_objects);
 
         let (transaction_outputs, _execution_error_opt) = self
-            .execute_certificate(&execution_guard, &executable_tx, input_objects, None, epoch_store)
+            .execute_certificate(
+                &execution_guard,
+                &executable_tx,
+                input_objects,
+                None,
+                epoch_store,
+                Vec::new(),
+            )
             .unwrap();
         let system_obj = get_system_state(&transaction_outputs.written)
             .expect("change epoch tx must write to system object");

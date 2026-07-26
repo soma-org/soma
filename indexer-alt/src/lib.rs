@@ -26,10 +26,10 @@ pub(crate) mod test_utils;
 ///   `kv_epoch_starts`, `kv_epoch_ends`. Data is duplicated in BigTable, so pruning
 ///   is safe once the KvLoader fallback is configured in GraphQL.
 /// - **Tier B (Indexes)**: `tx_digests`, `tx_affected_*`, `tx_balance_changes`,
-///   `tx_kinds`, `tx_calls`. No BigTable equivalent — pruning shrinks the queryable
+///   `tx_kinds`. No BigTable equivalent — pruning shrinks the queryable
 ///   window for historical index-backed queries.
-/// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`, `coin_balance_buckets`.
-///   Prunable — only latest versions needed for explorer, BigTable has historical BCS.
+/// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`. Prunable — only latest
+///   versions needed for explorer; BigTable has historical BCS.
 /// - **Tier C (Never prune)**: `cp_sequence_numbers` and all `soma_*` tables.
 #[derive(Debug, Clone, Default)]
 pub struct PruningConfig {
@@ -125,15 +125,19 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .await
         .context("Failed to register tx_balance_changes pipeline")?;
 
+    // Stage 13m: per-(owner, coin_type) signed deltas keyed by
+    // checkpoint, sourced directly from `effects.balance_events()`.
+    // GraphQL `balance(addr)` SUMs over this table to return the
+    // current balance — no executor replay needed.
+    indexer
+        .concurrent_pipeline(handlers::soma_balance_deltas::SomaBalanceDeltas, no_prune.clone())
+        .await
+        .context("Failed to register soma_balance_deltas pipeline")?;
+
     indexer
         .concurrent_pipeline(handlers::tx_kinds::TxKinds, index_config.clone())
         .await
         .context("Failed to register tx_kinds pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::tx_calls::TxCalls, index_config.clone())
-        .await
-        .context("Failed to register tx_calls pipeline")?;
 
     // --- Tier B+: Object state tables (prunable — BigTable has historical BCS) ---
     indexer
@@ -146,49 +150,15 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .await
         .context("Failed to register obj_info pipeline")?;
 
-    indexer
-        .concurrent_pipeline(
-            handlers::coin_balance_buckets::CoinBalanceBuckets,
-            index_config.clone(),
-        )
-        .await
-        .context("Failed to register coin_balance_buckets pipeline")?;
+    // Stage 13i: coin_balance_buckets pipeline removed. The
+    // accumulator is the sole source of truth for fungible
+    // balances; the indexer doesn't need to track Coin objects.
 
     // --- Tier C: Soma-specific pipelines (never pruned) ---
-    indexer
-        .concurrent_pipeline(handlers::soma_targets::SomaTargets, no_prune.clone())
-        .await
-        .context("Failed to register soma_targets pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_models::SomaModels, no_prune.clone())
-        .await
-        .context("Failed to register soma_models pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_rewards::SomaRewards, no_prune.clone())
-        .await
-        .context("Failed to register soma_rewards pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_reward_balances::SomaRewardBalances, no_prune.clone())
-        .await
-        .context("Failed to register soma_reward_balances pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_staked_soma::SomaStakedSoma, no_prune.clone())
-        .await
-        .context("Failed to register soma_staked_soma pipeline")?;
-
     indexer
         .concurrent_pipeline(handlers::soma_epoch_state::SomaEpochState, no_prune.clone())
         .await
         .context("Failed to register soma_epoch_state pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_target_reports::SomaTargetReports, no_prune.clone())
-        .await
-        .context("Failed to register soma_target_reports pipeline")?;
 
     indexer
         .concurrent_pipeline(handlers::soma_tx_details::SomaTxDetails, no_prune.clone())
@@ -196,9 +166,47 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_tx_details pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune)
+        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune.clone())
         .await
         .context("Failed to register soma_validators pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_channels::SomaChannels, no_prune.clone())
+        .await
+        .context("Failed to register soma_channels pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_channel_events::SomaChannelEvents, no_prune.clone())
+        .await
+        .context("Failed to register soma_channel_events pipeline")?;
+
+    indexer
+        .concurrent_pipeline(
+            handlers::soma_inference_settlements::SomaInferenceSettlements,
+            no_prune.clone(),
+        )
+        .await
+        .context("Failed to register soma_inference_settlements pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_offerings::SomaOfferings, no_prune.clone())
+        .await
+        .context("Failed to register soma_offerings pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_channel_ratings::SomaChannelRatings, no_prune.clone())
+        .await
+        .context("Failed to register soma_channel_ratings pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_providers::SomaProviders, no_prune.clone())
+        .await
+        .context("Failed to register soma_providers pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_bridge_deposits::SomaBridgeDeposits, no_prune)
+        .await
+        .context("Failed to register soma_bridge_deposits pipeline")?;
 
     Ok(())
 }

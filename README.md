@@ -203,7 +203,6 @@ SOMA builds on the work of many open source projects, including:
 - [mysten-sim](https://github.com/MystenLabs/mysten-sim) deterministic simulator (Mysten Labs)
 - [Burn](https://burn.dev) deep learning framework
 - [Tokio](https://tokio.rs) async runtime
-- [PyO3](https://pyo3.rs) / [Maturin](https://www.maturin.rs) Python bindings
 
 ## License
 

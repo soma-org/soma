@@ -26,6 +26,7 @@ use types::envelope::Message as _;
 use types::object::{ObjectID, Version};
 use types::storage::ObjectKey;
 
+use crate::authority_store::AuthorityStore;
 use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use crate::checkpoints::{CheckpointStore, CheckpointWatermark};
 use crate::rpc_index::RpcIndexStore;
@@ -581,6 +582,19 @@ impl AuthorityStorePruner {
                     _ = objects_prune_interval.tick(), if config.num_epochs_to_retain != u64::MAX => {
                         if let Err(err) = Self::prune_objects_for_eligible_epochs(&perpetual_db, &checkpoint_store, rpc_index.as_deref(), pruner_db.as_ref(), config.clone(),  epoch_duration_ms).await {
                             error!("Failed to prune objects: {:?}", err);
+                        }
+                        // Stage 5.5d: piggyback on the objects-prune
+                        // tick to drop expired digests. Cheap (one
+                        // range-delete per call) and doesn't need its
+                        // own interval.
+                        let current_epoch = checkpoint_store
+                            .get_highest_executed_checkpoint()
+                            .ok()
+                            .flatten()
+                            .map(|c| c.epoch())
+                            .unwrap_or_default();
+                        if let Err(err) = AuthorityStore::prune_executed_transaction_digests_inner(&perpetual_db, current_epoch) {
+                            error!("Failed to prune executed_transaction_digests: {:?}", err);
                         }
                     },
                     _ = checkpoints_prune_interval.tick(), if !matches!(config.num_epochs_to_retain_for_checkpoints(), None | Some(u64::MAX) | Some(0)) => {

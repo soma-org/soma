@@ -1,0 +1,84 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Run the local agent-facing inference proxy
+
+Listens on `127.0.0.1:<port>` and speaks the OpenAI API. Agents point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks one per model, and signs vouchers per request.
+
+Usage: soma proxy [OPTIONS] --indexer-url <INDEXER_URL>
+
+Options:
+      --address <ADDRESS>
+          Address whose key signs both on-chain ops and HTTP vouchers. Defaults to the wallet's active address
+
+      --client <CLIENT>
+          Path to the soma client config (defaults to ~/.soma/client.yaml)
+
+      --soma-home <SOMA_HOME>
+          Soma home (for the off-chain provider registry + per-channel client state). Defaults to ~/.soma
+
+      --listen <LISTEN>
+          HTTP listen address
+          
+          [default: 127.0.0.1:7662]
+
+      --default-deposit-micros <DEFAULT_DEPOSIT_MICROS>
+          Default deposit (micros) when lazily opening a new channel
+          
+          [default: 5000000]
+
+      --provider-cache-ttl-secs <PROVIDER_CACHE_TTL_SECS>
+          Provider-list cache TTL (seconds)
+          
+          [default: 30]
+
+      --routing <ROUTING>
+          Provider-routing mode: `price` (default) or `weighted`. `weighted` requires reputation from the indexer
+          
+          [default: price]
+
+      --indexer-url <INDEXER_URL>
+          GraphQL HTTP endpoint of the indexer. Required: provider discovery and (in `weighted` mode) reputation are sourced from here
+
+      --trusted-providers-url <TRUSTED_PROVIDERS_URL>
+          HTTP endpoint of the points service that publishes the per-season authorized-providers allowlist (e.g. `https://points.soma.org`). When set, the proxy refreshes the allowlist periodically and skips routing to any provider not on it. somacode defaults to ON via the `points.soma.org` endpoint; set `--include-untrusted` to opt out
+
+      --trusted-providers-refresh-secs <TRUSTED_PROVIDERS_REFRESH_SECS>
+          Refresh interval (seconds) for the trusted-providers snapshot. Defaults to 10 minutes — short enough to pick up a fresh authorization quickly without hammering the points service
+          
+          [default: 600]
+
+      --include-untrusted
+          Disable the trusted-providers filter entirely. Routes through every provider that satisfies the price / SLA filters regardless of authorization status. Use this in localnet, in tests, and when running with a custom `--indexer-url` whose providers aren't on the public points list
+
+      --prewarm-model <PREWARM_MODEL>
+          On boot, after discovery surfaces a provider for this model, pre-open a payment channel against it — so the first user request doesn't pay the ~3–5 s channel-open latency. Omit to keep the lazy-on-first-request behaviour
+
+      --no-probe-liveness
+          Disable the per-provider liveness probe. Default is to probe each provider's `/health` endpoint with a short timeout and skip ones that don't respond before routing. Turn off when running against a fixture / localnet provider that doesn't expose `/health`
+
+      --liveness-refresh-secs <LIVENESS_REFRESH_SECS>
+          Refresh cadence (seconds) for the liveness cache. Probes older than this are re-issued on demand. Lower-bounded to 5 s internally
+          
+          [default: 30]
+
+      --liveness-timeout-ms <LIVENESS_TIMEOUT_MS>
+          Per-probe HTTP timeout (milliseconds). Lower-bounded to 100 ms internally. The default is short enough that a single bad provider doesn't add noticeable latency to a chat request that has to fall through to the next candidate
+          
+          [default: 1500]
+
+      --local-token <LOCAL_TOKEN>
+          Shared secret required in the `Authorization: Bearer …` header on inbound requests. Omit to disable inbound auth. Also read from `SOMA_LOCAL_TOKEN` when the flag is absent
+
+      --low-balance-threshold-micros <LOW_BALANCE_THRESHOLD_MICROS>
+          Headroom (in micros) below which `/health` flips `can_serve` to `false` and the desktop surfaces a low-balance prompt. Also read from `SOMA_LOW_BALANCE_THRESHOLD_MICROS`
+
+      --wallet-address <WALLET_ADDRESS>
+          Display-only wallet address surfaced via `GET /health` so callers (the desktop) can render a fund prompt without re-querying the chain. Defaults to the signing address. Also read from `SOMA_WALLET_ADDRESS`
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+EXAMPLE:
+    soma proxy --listen 127.0.0.1:7662 --indexer-url ...

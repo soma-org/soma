@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use types::base::SomaAddress;
+use types::object::CoinType;
 
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
@@ -28,7 +29,21 @@ pub fn get_balance(service: &RpcService, request: GetBalanceRequest) -> Result<G
                 .with_reason(ErrorReason::FieldInvalid)
         })?;
 
-    let balance_info = indexes.get_balance(&owner)?.unwrap_or_default(); // Use default (zero) if no balance found
+    // Stage 13c: balances live in the per-(owner, coin_type)
+    // accumulator. Default to USDC when the request omits coin_type
+    // — that's the gas / typical transferable currency.
+    let coin_type = match request.coin_type.as_deref() {
+        None | Some("") | Some("USDC") => CoinType::Usdc,
+        Some("SOMA") => CoinType::Soma,
+        Some(other) => {
+            return Err(FieldViolation::new("coin_type")
+                .with_description(format!("unknown coin_type: {other}"))
+                .with_reason(ErrorReason::FieldInvalid)
+                .into());
+        }
+    };
+
+    let balance_info = indexes.get_balance(&owner, coin_type)?.unwrap_or_default();
 
     let response = GetBalanceResponse { balance: Some(balance_info.balance), ..Default::default() };
     Ok(response)

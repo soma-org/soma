@@ -40,13 +40,14 @@ impl Processor for TxBalanceChanges {
 
             let changes = derive_balance_changes_2(&tx.effects, object_set);
 
-            // Convert to the schema's BalanceChange format
+            // Stage 13m: coin_type now sourced from the actual
+            // BalanceChange (was hard-coded "SOMA" pre-13m before
+            // effects carried per-tx events).
             let stored_changes: Vec<BalanceChange> = changes
                 .into_iter()
                 .map(|c| BalanceChange::V1 {
                     owner: c.address.to_vec(),
-                    // Soma has a single native coin type
-                    coin_type: "SOMA".to_string(),
+                    coin_type: c.coin_type.to_string(),
                     amount: c.amount,
                 })
                 .collect();

@@ -10,7 +10,7 @@ use types::object::{Object, ObjectRef, Owner};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for object transfer transactions
 pub struct ObjectExecutor;
@@ -38,6 +38,24 @@ impl ObjectExecutor {
         for object_ref in &object_refs {
             let object_id = object_ref.0;
             let object = store.read_object(&object_id).unwrap();
+
+            // Stage 14a: accumulator objects are system-managed and
+            // must never be transferable by user transactions.
+            // `check_ownership` would already reject them because they
+            // have no `AddressOwner`, but the resulting
+            // `InvalidOwnership` error is misleading; reject up-front
+            // with a dedicated reason so the failure mode is named
+            // correctly. This is defense-in-depth: the transaction
+            // input check layer also blocks this path.
+            if object.owner().is_accumulator() {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!(
+                        "Cannot transfer accumulator object {object_id:?}: \
+                         accumulator objects are system-managed and not transferable",
+                    ),
+                });
+            }
+
             check_ownership(&object, signer)?;
 
             // Update object ownership
@@ -51,13 +69,21 @@ impl ObjectExecutor {
 }
 
 impl TransactionExecutor for ObjectExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
+        match kind {
+            TransactionKind::TransferObjects { objects, .. } => {
+                objects.len().try_into().unwrap_or(u32::MAX)
+            }
+            _ => 1,
+        }
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::TransferObjects { objects, recipient } => {
@@ -67,8 +93,6 @@ impl TransactionExecutor for ObjectExecutor {
         }
     }
 }
-
-impl FeeCalculator for ObjectExecutor {}
 
 /// Checks ownership of an object against the expected owner
 pub(crate) fn check_ownership(

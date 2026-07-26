@@ -6,13 +6,13 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner};
-use types::system_state::SystemState;
+use types::object::{CoinType, ObjectID};
+use types::system_state::staking::{Delegation, auto_settle};
+use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub};
+use super::TransactionExecutor;
 
 pub struct StakingExecutor;
 
@@ -21,32 +21,41 @@ impl StakingExecutor {
         Self {}
     }
 
-    /// Execute AddStake transaction with coin handling
+    /// Execute AddStake under the auto-compound F1 model.
+    ///
+    /// Flow:
+    /// 1. Read the prefetched `(pool, signer)` delegation row (or
+    ///    default-empty for a first-time staker).
+    /// 2. `auto_settle` against the validator's pool: any accrued
+    ///    rewards on the existing principal compound into the row's
+    ///    principal; matured pending stake promotes alongside its
+    ///    accrued share.
+    /// 3. Add `amount` to the appropriate bucket on the pool — direct
+    ///    `active_stake` for preactive pools (so the first
+    ///    `deposit_staker_rewards` has a divisor), or
+    ///    `pending_active_stake` for active pools (so the new stake
+    ///    doesn't earn current-epoch rewards).
+    /// 4. Mirror the bucket choice on the delegation row's
+    ///    `principal` / `pending_principal`.
+    /// 5. Withdraw `amount` SOMA from the staker's balance accumulator.
+    /// 6. Emit the post-mutation row as a `DelegationEvent` so the
+    ///    dual-write step persists it atomically with the rest of
+    ///    this commit.
     fn execute_add_stake(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        address: SomaAddress,
-        coin_ref: ObjectRef,
-        amount: Option<u64>,
-        tx_digest: TransactionDigest,
-        value_fee: u64,
+        validator: SomaAddress,
+        amount: u64,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        let coin_id = coin_ref.0;
-        let is_gas_coin = store.gas_object_id == Some(coin_id);
+        if amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Stake amount cannot be 0".to_string(),
+            }
+            .into());
+        }
 
-        // Get source coin
-        let source_object = store
-            .read_object(&coin_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: coin_id })?;
-
-        // Check ownership
-        check_ownership(&source_object, signer)?;
-
-        // Check this is a coin object and get balance
-        let source_balance = verify_coin(&source_object)?;
-
-        // Get system state object
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
             .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
@@ -54,7 +63,6 @@ impl StakingExecutor {
             })?
             .clone();
 
-        // Deserialize system state
         let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
             .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -63,135 +71,67 @@ impl StakingExecutor {
                 )))
             })?;
 
-        match amount {
-            // Stake specific amount
-            Some(stake_amount) => {
-                // If this is a gas coin, we need to ensure there's enough left for fees
-                if is_gas_coin {
-                    // Write fee accounts for all written objects the pipeline will see:
-                    // StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3
-                    let write_fee = self.calculate_operation_fee(store, 3);
+        let current_epoch = state.epoch();
 
-                    // Total fee needed
-                    let total_fee = checked_add(value_fee, write_fee)?;
+        // Look up the pool (active or pending) to read the current
+        // cumulative_index for auto_settle, plus the pool_id and
+        // preactive flag for downstream routing.
+        let (pool_id, is_preactive, current_index) = {
+            let v = state
+                .validators()
+                .find_validator(validator)
+                .or_else(|| {
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator)
+                })
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            (v.staking_pool.id, v.staking_pool.is_preactive(), v.staking_pool.cumulative_index)
+        };
 
-                    // Check sufficient balance for both staking and the fee
-                    if source_balance < checked_add(stake_amount, total_fee)? {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Request to add stake
-                    let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
-
-                    // Create StakedSoma object
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        staked_soma,
-                        Owner::AddressOwner(signer),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
-
-                    // Calculate remaining balance after staking and fees
-                    let remaining_balance = checked_sub(source_balance, stake_amount)?;
-
-                    // Update source coin with remaining balance
-                    let mut updated_source = source_object.clone();
-                    updated_source.update_coin_balance(remaining_balance);
-                    store.mutate_input_object(updated_source);
-                } else {
-                    // Not a gas coin, proceed normally
-                    // Check sufficient balance
-                    if source_balance < stake_amount {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Request to add stake
-                    let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
-
-                    // Create StakedSoma object
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        staked_soma,
-                        Owner::AddressOwner(signer),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
-
-                    // If staking the entire balance, delete the coin
-                    if stake_amount == source_balance {
-                        store.delete_input_object(&coin_id);
-                    } else {
-                        // Otherwise update coin with remaining balance
-                        let remaining_balance = checked_sub(source_balance, stake_amount)?;
-                        let mut updated_source = source_object.clone();
-                        updated_source.update_coin_balance(remaining_balance);
-                        store.mutate_input_object(updated_source);
-                    }
-                }
-            }
-
-            // Stake entire coin
-            None => {
-                let stake_amount;
-
-                if is_gas_coin {
-                    // For gas coin, we need to account for fees
-                    // Write fee: StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3
-                    let write_fee = self.calculate_operation_fee(store, 3);
-
-                    // Total fee needed
-                    let total_fee = checked_add(value_fee, write_fee)?;
-
-                    // Check sufficient balance
-                    if source_balance <= total_fee {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Calculate amount to stake (total - fee)
-                    stake_amount = checked_sub(source_balance, total_fee)?;
-
-                    // Request to add stake
-                    let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
-
-                    // Create StakedSoma object
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        staked_soma,
-                        Owner::AddressOwner(signer),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
-
-                    // Keep the coin with remaining fee amount — pipeline will deduct fees
-                    // from the gas object via calculate_and_deduct_remaining_fees.
-                    // Do NOT delete: the gas coin must remain readable for fee deduction.
-                    let mut updated_source = source_object.clone();
-                    updated_source.update_coin_balance(total_fee);
-                    store.mutate_input_object(updated_source);
-                } else {
-                    // Not a gas coin, stake entire amount
-                    stake_amount = source_balance;
-
-                    // Request to add stake
-                    let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
-
-                    // Create StakedSoma object
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        staked_soma,
-                        Owner::AddressOwner(signer),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
-
-                    // Delete the coin since we're staking all of it
-                    store.delete_input_object(&coin_id);
-                }
-            }
+        // Auto-compound any prior accrual into the row's principal,
+        // then bump the appropriate bucket by `amount`.
+        let mut row = store.prefetched_delegations.get(&pool_id).copied().unwrap_or_default();
+        {
+            let pool_view = state
+                .validators()
+                .find_validator(validator)
+                .or_else(|| {
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator)
+                })
+                .map(|v| &v.staking_pool)
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            auto_settle(&mut row, pool_view, current_epoch);
         }
 
-        // Update system state
+        if is_preactive {
+            row.principal = row.principal.saturating_add(amount);
+            row.index_at_last_collect = current_index;
+        } else {
+            row.pending_principal = row.pending_principal.saturating_add(amount);
+            row.pending_added_at_epoch = current_epoch;
+        }
+
+        // Bump the pool aggregate (preactive → active, active →
+        // pending) and refresh the staking_pool_mappings index.
+        state.add_stake_to_validator(validator, amount)?;
+
+        // Debit the principal from the staker's SOMA balance.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
+            types::effects::object_change::AccumulatorOperation::Split,
+            amount,
+        );
+
+        // Persist the post-mutation row.
+        store.emit_delegation_event(pool_id, signer, Some(row));
+
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "Failed to serialize updated system state: {}",
@@ -206,33 +146,32 @@ impl StakingExecutor {
         Ok(())
     }
 
-    /// Execute WithdrawStake transaction
+    /// Execute WithdrawStake under the auto-compound F1 model.
+    ///
+    /// Flow:
+    /// 1. Read the prefetched `(pool_id, signer)` row. Missing or
+    ///    fully-empty row → error.
+    /// 2. `auto_settle` against the pool to compound prior accrual
+    ///    into `principal` (so the user can withdraw from a fully
+    ///    up-to-date balance).
+    /// 3. Resolve `amount` (None = full balance, both buckets).
+    ///    Reject withdrawals exceeding `principal + pending_principal`.
+    /// 4. Drain pending first (a same-epoch deposit reversal — that
+    ///    stake never earned anything), then active. The active
+    ///    decrement at the next boundary's smaller fold divisor
+    ///    redistributes the withdrawer's current-epoch share to
+    ///    remaining stakers (matches Sui's pool-token semantics).
+    /// 5. Credit `amount` SOMA to the staker's balance accumulator.
+    /// 6. Emit the post-mutation row (or a drain event if both
+    ///    buckets are now zero).
     fn execute_withdraw_stake(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        staked_soma_ref: ObjectRef,
-        tx_digest: TransactionDigest,
+        pool_id: ObjectID,
+        amount: Option<u64>,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        // Get StakedSoma object
-        let staked_soma_object = store
-            .read_object(&staked_soma_ref.0)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: staked_soma_ref.0 })?
-            .clone();
-
-        // Check ownership
-        check_ownership(&staked_soma_object, signer)?;
-
-        // Extract StakedSoma data
-        let staked_soma = Object::as_staked_soma(&staked_soma_object).ok_or_else(|| {
-            ExecutionFailureStatus::InvalidObjectType {
-                object_id: staked_soma_object.id(),
-                expected_type: ObjectType::StakedSoma,
-                actual_type: staked_soma_object.type_().clone(),
-            }
-        })?;
-
-        // Get system state object
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
             .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
@@ -240,7 +179,6 @@ impl StakingExecutor {
             })?
             .clone();
 
-        // Deserialize system state
         let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
             .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -249,22 +187,97 @@ impl StakingExecutor {
                 )))
             })?;
 
-        // Process withdrawal
-        let withdrawn_amount = state.request_withdraw_stake(staked_soma)?;
+        let current_epoch = state.epoch();
 
-        // Delete StakedSoma object
-        store.delete_input_object(&staked_soma_ref.0);
+        let mut row = store.prefetched_delegations.get(&pool_id).copied().ok_or_else(|| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "No active stake by {} in pool {}",
+                signer, pool_id
+            )))
+        })?;
+        if row.is_empty() {
+            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "No active stake by {} in pool {}",
+                signer, pool_id
+            )))
+            .into());
+        }
 
-        // Create a Coin object with the withdrawn amount
-        let new_coin = Object::new_coin(
-            ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            withdrawn_amount,
-            Owner::AddressOwner(signer),
-            tx_digest,
+        // Locate the validator owning this pool (any of the three
+        // collections). We need a pool view for auto_settle and the
+        // current_index snapshot for the post-settle row.
+        let validator_addr =
+            state.validators().staking_pool_mappings.get(&pool_id).copied().ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "StakingPool not found: {}",
+                    pool_id
+                )))
+            })?;
+        let current_index = {
+            let pool_view = state
+                .validators()
+                .find_validator(validator_addr)
+                .or_else(|| {
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator_addr)
+                })
+                .map(|v| &v.staking_pool)
+                .or_else(|| {
+                    state.validators().inactive_validators.get(&pool_id).map(|v| &v.staking_pool)
+                })
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            auto_settle(&mut row, pool_view, current_epoch);
+            pool_view.cumulative_index
+        };
+
+        let total_stake = row.total();
+        let withdraw_amount = amount.unwrap_or(total_stake);
+        if withdraw_amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Withdraw amount cannot be 0".to_string(),
+            }
+            .into());
+        }
+        if withdraw_amount > total_stake {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Withdraw amount {} exceeds delegation balance {} (active {} + pending {})",
+                    withdraw_amount, total_stake, row.principal, row.pending_principal,
+                ),
+            }
+            .into());
+        }
+
+        // Drain pending first, then active.
+        let from_pending = std::cmp::min(withdraw_amount, row.pending_principal);
+        let from_active = withdraw_amount - from_pending;
+        row.pending_principal = row.pending_principal.saturating_sub(from_pending);
+        row.principal = row.principal.saturating_sub(from_active);
+        if row.pending_principal == 0 {
+            row.pending_added_at_epoch = 0;
+        }
+        row.index_at_last_collect = current_index;
+
+        // Pool aggregate: pass the same active/pending split we
+        // applied to the row, so pool aggregates stay in sync with
+        // the staker's row when other stakers also have pending
+        // stake on this pool.
+        state.remove_stake_from_validator(pool_id, from_active, from_pending)?;
+
+        // Credit the principal to the staker's SOMA balance.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
+            types::effects::object_change::AccumulatorOperation::Merge,
+            withdraw_amount,
         );
-        store.create_object(new_coin);
 
-        // Update system state
+        // Persist the post-mutation row, or signal a full drain.
+        let new_state = if row.is_empty() { None } else { Some(row) };
+        store.emit_delegation_event(pool_id, signer, new_state);
+
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "Failed to serialize updated system state: {}",
@@ -281,66 +294,28 @@ impl StakingExecutor {
 }
 
 impl TransactionExecutor for StakingExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
+        match kind {
+            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => 2,
+            _ => 1,
+        }
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::AddStake { address, coin_ref, amount } => self
-                .execute_add_stake(store, signer, address, coin_ref, amount, tx_digest, value_fee),
-            TransactionKind::WithdrawStake { staked_soma } => {
-                self.execute_withdraw_stake(store, signer, staked_soma, tx_digest)
+            TransactionKind::AddStake { validator, amount } => {
+                self.execute_add_stake(store, signer, validator, amount, tx_digest)
+            }
+            TransactionKind::WithdrawStake { pool_id, amount } => {
+                self.execute_withdraw_stake(store, signer, pool_id, amount, tx_digest)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }
-}
-
-impl FeeCalculator for StakingExecutor {
-    fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
-        // Staking gets half the normal value fee to incentivize participation
-        let value_fee_bps = store.fee_parameters.value_fee_bps / 2;
-
-        match kind {
-            TransactionKind::AddStake { coin_ref, amount, .. } => {
-                let stake_amount = if let Some(specific_amount) = amount {
-                    *specific_amount
-                } else {
-                    store.read_object(&coin_ref.0).and_then(|obj| obj.as_coin()).unwrap_or(0)
-                };
-
-                if stake_amount == 0 {
-                    return 0;
-                }
-
-                bps_mul(stake_amount, value_fee_bps)
-            }
-
-            TransactionKind::WithdrawStake { staked_soma } => {
-                if let Some(staked_obj) = store.read_object(&staked_soma.0) {
-                    if let Some(staked_soma_data) = Object::as_staked_soma(&staked_obj) {
-                        let principal = staked_soma_data.principal;
-                        return bps_mul(principal, value_fee_bps);
-                    }
-                }
-                // Fallback to base fee if we can't read the object
-                store.fee_parameters.base_fee
-            }
-
-            _ => 0,
-        }
-    }
-}
-
-/// Verifies an object is a coin and returns its balance
-fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-        object_id: object.id(),
-        expected_type: ObjectType::Coin,
-        actual_type: object.type_().clone(),
-    })
 }

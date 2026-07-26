@@ -10,7 +10,6 @@ use anyhow::Context;
 use anyhow::bail;
 use anyhow::ensure;
 use indexer_store_traits::Connection as _;
-use indexer_store_traits::pipeline_task;
 use ingestion::ClientArgs;
 use ingestion::IngestionConfig;
 use ingestion::IngestionService;
@@ -336,12 +335,26 @@ impl<S: store::Store> Indexer<S> {
         let mut conn =
             self.store.connect().await.context("Failed to establish connection to store")?;
 
-        let pt = pipeline_task(P::NAME, self.task.as_ref().map(|t| t.task.as_str()), S::DELIMITER);
+        // Build the pipeline_task key. Upstream uses `pipeline_task::<S: ConcurrentStore>` which
+        // pulls `S::DELIMITER`, but Indexer<S: Store> doesn't have that bound. We use the same
+        // default delimiter "@" that ConcurrentStore declares.
+        let pt = match self.task.as_ref().map(|t| t.task.as_str()) {
+            Some(task) => format!("{}@{}", P::NAME, task),
+            None => P::NAME.to_string(),
+        };
 
-        let checkpoint_hi_inclusive = conn
-            .init_watermark(&pt, self.default_next_checkpoint)
+        // The store's hint is `checkpoint_hi_inclusive` (last processed); our
+        // `default_next_checkpoint` is the next-to-process. Convert by subtracting 1:
+        // 0 → None (fresh — no checkpoint processed yet), N → Some(N-1).
+        // Without this, passing Some(0) makes the store insert a watermark claiming
+        // cp 0 is done, so a fresh indexer skips genesis.
+        let hint = self.default_next_checkpoint.checked_sub(1);
+        let init = conn
+            .init_watermark(&pt, hint)
             .await
             .with_context(|| format!("Failed to init watermark for {pt}"))?;
+
+        let checkpoint_hi_inclusive = init.and_then(|w| w.checkpoint_hi_inclusive);
 
         let next_checkpoint =
             checkpoint_hi_inclusive.map_or(self.default_next_checkpoint, |c| c + 1);
@@ -352,7 +365,7 @@ impl<S: store::Store> Indexer<S> {
     }
 }
 
-impl<T: store::TransactionalStore> Indexer<T> {
+impl<T: store::SequentialStore> Indexer<T> {
     /// Adds a new pipeline to this indexer and starts it up. Although their tasks have started,
     /// they will be idle until the ingestion service starts, and serves it checkpoint data.
     ///

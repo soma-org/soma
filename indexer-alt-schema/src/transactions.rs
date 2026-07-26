@@ -18,7 +18,6 @@ use crate::schema::soma_tx_details;
 use crate::schema::tx_affected_addresses;
 use crate::schema::tx_affected_objects;
 use crate::schema::tx_balance_changes;
-use crate::schema::tx_calls;
 use crate::schema::tx_digests;
 use crate::schema::tx_kinds;
 
@@ -74,16 +73,6 @@ pub struct StoredTxAffectedObject {
 pub struct StoredTxBalanceChange {
     pub tx_sequence_number: i64,
     pub balance_changes: Vec<u8>,
-}
-
-#[derive(Insertable, Debug, Clone, FieldCount, Queryable)]
-#[diesel(table_name = tx_calls)]
-pub struct StoredTxCalls {
-    pub package: Vec<u8>,
-    pub module: String,
-    pub function: String,
-    pub tx_sequence_number: i64,
-    pub sender: Vec<u8>,
 }
 
 #[derive(Insertable, Debug, Clone, FieldCount, Queryable)]

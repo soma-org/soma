@@ -16,11 +16,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for BalanceChange {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::ADDRESS_FIELD,
             Self::AMOUNT_FIELD,
+            Self::COIN_TYPE_FIELD,
         ];
     }
     impl BalanceChange {
@@ -49,6 +56,10 @@ mod _field_impls {
         }
         pub fn amount(mut self) -> String {
             self.path.push(BalanceChange::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(BalanceChange::COIN_TYPE_FIELD.name);
             self.finish()
         }
     }
@@ -721,6 +732,18 @@ mod _field_impls {
             number: 11i32,
             message_fields: None,
         };
+        pub const ACCUMULATOR_OPERATION_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_operation",
+            json_name: "accumulatorOperation",
+            number: 12i32,
+            message_fields: None,
+        };
+        pub const ACCUMULATOR_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_amount",
+            json_name: "accumulatorAmount",
+            number: 13i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for ChangedObject {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -735,6 +758,8 @@ mod _field_impls {
             Self::OUTPUT_OWNER_FIELD,
             Self::ID_OPERATION_FIELD,
             Self::OBJECT_TYPE_FIELD,
+            Self::ACCUMULATOR_OPERATION_FIELD,
+            Self::ACCUMULATOR_AMOUNT_FIELD,
         ];
     }
     impl ChangedObject {
@@ -799,6 +824,14 @@ mod _field_impls {
         }
         pub fn object_type(mut self) -> String {
             self.path.push(ChangedObject::OBJECT_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_operation(mut self) -> String {
+            self.path.push(ChangedObject::ACCUMULATOR_OPERATION_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_amount(mut self) -> String {
+            self.path.push(ChangedObject::ACCUMULATOR_AMOUNT_FIELD.name);
             self.finish()
         }
     }
@@ -2228,12 +2261,19 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
+        pub const ACCUMULATOR_KIND_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_kind",
+            json_name: "accumulatorKind",
+            number: 4i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Owner {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::KIND_FIELD,
             Self::ADDRESS_FIELD,
             Self::VERSION_FIELD,
+            Self::ACCUMULATOR_KIND_FIELD,
         ];
     }
     impl Owner {
@@ -2266,6 +2306,10 @@ mod _field_impls {
         }
         pub fn version(mut self) -> String {
             self.path.push(Owner::VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_kind(mut self) -> String {
+            self.path.push(Owner::ACCUMULATOR_KIND_FIELD.name);
             self.finish()
         }
     }
@@ -2952,9 +2996,18 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for GetBalanceRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::OWNER_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OWNER_FIELD,
+            Self::COIN_TYPE_FIELD,
+        ];
     }
     impl GetBalanceRequest {
         pub fn path_builder() -> GetBalanceRequestFieldPathBuilder {
@@ -2978,6 +3031,10 @@ mod _field_impls {
         }
         pub fn owner(mut self) -> String {
             self.path.push(GetBalanceRequest::OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(GetBalanceRequest::COIN_TYPE_FIELD.name);
             self.finish()
         }
     }
@@ -3148,6 +3205,151 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl ListDelegationsRequest {
+        pub const STAKER_FIELD: &'static MessageField = &MessageField {
+            name: "staker",
+            json_name: "staker",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListDelegationsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::STAKER_FIELD];
+    }
+    impl ListDelegationsRequest {
+        pub fn path_builder() -> ListDelegationsRequestFieldPathBuilder {
+            ListDelegationsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct ListDelegationsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListDelegationsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn staker(mut self) -> String {
+            self.path.push(ListDelegationsRequest::STAKER_FIELD.name);
+            self.finish()
+        }
+    }
+    impl DelegationEntry {
+        pub const POOL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "pool_id",
+            json_name: "poolId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PRINCIPAL_FIELD: &'static MessageField = &MessageField {
+            name: "principal",
+            json_name: "principal",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LAST_COLLECTED_PERIOD_FIELD: &'static MessageField = &MessageField {
+            name: "last_collected_period",
+            json_name: "lastCollectedPeriod",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for DelegationEntry {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::POOL_ID_FIELD,
+            Self::PRINCIPAL_FIELD,
+            Self::LAST_COLLECTED_PERIOD_FIELD,
+        ];
+    }
+    impl DelegationEntry {
+        pub fn path_builder() -> DelegationEntryFieldPathBuilder {
+            DelegationEntryFieldPathBuilder::new()
+        }
+    }
+    pub struct DelegationEntryFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl DelegationEntryFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn pool_id(mut self) -> String {
+            self.path.push(DelegationEntry::POOL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn principal(mut self) -> String {
+            self.path.push(DelegationEntry::PRINCIPAL_FIELD.name);
+            self.finish()
+        }
+        pub fn last_collected_period(mut self) -> String {
+            self.path.push(DelegationEntry::LAST_COLLECTED_PERIOD_FIELD.name);
+            self.finish()
+        }
+    }
+    impl ListDelegationsResponse {
+        pub const DELEGATIONS_FIELD: &'static MessageField = &MessageField {
+            name: "delegations",
+            json_name: "delegations",
+            number: 1i32,
+            message_fields: Some(DelegationEntry::FIELDS),
+        };
+        pub const TOTAL_PRINCIPAL_FIELD: &'static MessageField = &MessageField {
+            name: "total_principal",
+            json_name: "totalPrincipal",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListDelegationsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::DELEGATIONS_FIELD,
+            Self::TOTAL_PRINCIPAL_FIELD,
+        ];
+    }
+    impl ListDelegationsResponse {
+        pub fn path_builder() -> ListDelegationsResponseFieldPathBuilder {
+            ListDelegationsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct ListDelegationsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListDelegationsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn delegations(mut self) -> DelegationEntryFieldPathBuilder {
+            self.path.push(ListDelegationsResponse::DELEGATIONS_FIELD.name);
+            DelegationEntryFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn total_principal(mut self) -> String {
+            self.path.push(ListDelegationsResponse::TOTAL_PRINCIPAL_FIELD.name);
+            self.finish()
+        }
+    }
     impl GetTargetRequest {
         pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
             name: "target_id",
@@ -3155,18 +3357,9 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
-            name: "read_mask",
-            json_name: "readMask",
-            number: 2i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for GetTargetRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TARGET_ID_FIELD,
-            Self::READ_MASK_FIELD,
-        ];
+        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_ID_FIELD];
     }
     impl GetTargetRequest {
         pub fn path_builder() -> GetTargetRequestFieldPathBuilder {
@@ -3192,17 +3385,13 @@ mod _field_impls {
             self.path.push(GetTargetRequest::TARGET_ID_FIELD.name);
             self.finish()
         }
-        pub fn read_mask(mut self) -> String {
-            self.path.push(GetTargetRequest::READ_MASK_FIELD.name);
-            self.finish()
-        }
     }
     impl GetTargetResponse {
         pub const TARGET_FIELD: &'static MessageField = &MessageField {
             name: "target",
             json_name: "target",
             number: 1i32,
-            message_fields: Some(Target::FIELDS),
+            message_fields: Some(Object::FIELDS),
         };
     }
     impl MessageFields for GetTargetResponse {
@@ -3228,21 +3417,21 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn target(mut self) -> TargetFieldPathBuilder {
+        pub fn target(mut self) -> ObjectFieldPathBuilder {
             self.path.push(GetTargetResponse::TARGET_FIELD.name);
-            TargetFieldPathBuilder::new_with_base(self.path)
+            ObjectFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ListTargetsRequest {
-        pub const STATUS_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "status_filter",
-            json_name: "statusFilter",
+        pub const STATUS_FIELD: &'static MessageField = &MessageField {
+            name: "status",
+            json_name: "status",
             number: 1i32,
             message_fields: None,
         };
-        pub const EPOCH_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "epoch_filter",
-            json_name: "epochFilter",
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
             number: 2i32,
             message_fields: None,
         };
@@ -3258,27 +3447,13 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
-        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
-            name: "read_mask",
-            json_name: "readMask",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const SUBMITTER_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "submitter_filter",
-            json_name: "submitterFilter",
-            number: 6i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for ListTargetsRequest {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::STATUS_FILTER_FIELD,
-            Self::EPOCH_FILTER_FIELD,
+            Self::STATUS_FIELD,
+            Self::EPOCH_FIELD,
             Self::PAGE_SIZE_FIELD,
             Self::PAGE_TOKEN_FIELD,
-            Self::READ_MASK_FIELD,
-            Self::SUBMITTER_FILTER_FIELD,
         ];
     }
     impl ListTargetsRequest {
@@ -3301,12 +3476,12 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn status_filter(mut self) -> String {
-            self.path.push(ListTargetsRequest::STATUS_FILTER_FIELD.name);
+        pub fn status(mut self) -> String {
+            self.path.push(ListTargetsRequest::STATUS_FIELD.name);
             self.finish()
         }
-        pub fn epoch_filter(mut self) -> String {
-            self.path.push(ListTargetsRequest::EPOCH_FILTER_FIELD.name);
+        pub fn epoch(mut self) -> String {
+            self.path.push(ListTargetsRequest::EPOCH_FIELD.name);
             self.finish()
         }
         pub fn page_size(mut self) -> String {
@@ -3317,21 +3492,13 @@ mod _field_impls {
             self.path.push(ListTargetsRequest::PAGE_TOKEN_FIELD.name);
             self.finish()
         }
-        pub fn read_mask(mut self) -> String {
-            self.path.push(ListTargetsRequest::READ_MASK_FIELD.name);
-            self.finish()
-        }
-        pub fn submitter_filter(mut self) -> String {
-            self.path.push(ListTargetsRequest::SUBMITTER_FILTER_FIELD.name);
-            self.finish()
-        }
     }
     impl ListTargetsResponse {
         pub const TARGETS_FIELD: &'static MessageField = &MessageField {
             name: "targets",
             json_name: "targets",
             number: 1i32,
-            message_fields: Some(Target::FIELDS),
+            message_fields: Some(Object::FIELDS),
         };
         pub const NEXT_PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
             name: "next_page_token",
@@ -3366,9 +3533,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn targets(mut self) -> TargetFieldPathBuilder {
+        pub fn targets(mut self) -> ObjectFieldPathBuilder {
             self.path.push(ListTargetsResponse::TARGETS_FIELD.name);
-            TargetFieldPathBuilder::new_with_base(self.path)
+            ObjectFieldPathBuilder::new_with_base(self.path)
         }
         pub fn next_page_token(mut self) -> String {
             self.path.push(ListTargetsResponse::NEXT_PAGE_TOKEN_FIELD.name);
@@ -3382,18 +3549,9 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
-            name: "read_mask",
-            json_name: "readMask",
-            number: 2i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for GetChallengeRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::CHALLENGE_ID_FIELD,
-            Self::READ_MASK_FIELD,
-        ];
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHALLENGE_ID_FIELD];
     }
     impl GetChallengeRequest {
         pub fn path_builder() -> GetChallengeRequestFieldPathBuilder {
@@ -3419,17 +3577,13 @@ mod _field_impls {
             self.path.push(GetChallengeRequest::CHALLENGE_ID_FIELD.name);
             self.finish()
         }
-        pub fn read_mask(mut self) -> String {
-            self.path.push(GetChallengeRequest::READ_MASK_FIELD.name);
-            self.finish()
-        }
     }
     impl GetChallengeResponse {
         pub const CHALLENGE_FIELD: &'static MessageField = &MessageField {
             name: "challenge",
             json_name: "challenge",
             number: 1i32,
-            message_fields: Some(Challenge::FIELDS),
+            message_fields: Some(Object::FIELDS),
         };
     }
     impl MessageFields for GetChallengeResponse {
@@ -3455,9 +3609,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn challenge(mut self) -> ChallengeFieldPathBuilder {
+        pub fn challenge(mut self) -> ObjectFieldPathBuilder {
             self.path.push(GetChallengeResponse::CHALLENGE_FIELD.name);
-            ChallengeFieldPathBuilder::new_with_base(self.path)
+            ObjectFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ListChallengesRequest {
@@ -3467,45 +3621,31 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const STATUS_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "status_filter",
-            json_name: "statusFilter",
+        pub const STATUS_FIELD: &'static MessageField = &MessageField {
+            name: "status",
+            json_name: "status",
             number: 2i32,
-            message_fields: None,
-        };
-        pub const EPOCH_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "epoch_filter",
-            json_name: "epochFilter",
-            number: 3i32,
             message_fields: None,
         };
         pub const PAGE_SIZE_FIELD: &'static MessageField = &MessageField {
             name: "page_size",
             json_name: "pageSize",
-            number: 4i32,
+            number: 3i32,
             message_fields: None,
         };
         pub const PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
             name: "page_token",
             json_name: "pageToken",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
-            name: "read_mask",
-            json_name: "readMask",
-            number: 6i32,
+            number: 4i32,
             message_fields: None,
         };
     }
     impl MessageFields for ListChallengesRequest {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::TARGET_ID_FIELD,
-            Self::STATUS_FILTER_FIELD,
-            Self::EPOCH_FILTER_FIELD,
+            Self::STATUS_FIELD,
             Self::PAGE_SIZE_FIELD,
             Self::PAGE_TOKEN_FIELD,
-            Self::READ_MASK_FIELD,
         ];
     }
     impl ListChallengesRequest {
@@ -3532,12 +3672,8 @@ mod _field_impls {
             self.path.push(ListChallengesRequest::TARGET_ID_FIELD.name);
             self.finish()
         }
-        pub fn status_filter(mut self) -> String {
-            self.path.push(ListChallengesRequest::STATUS_FILTER_FIELD.name);
-            self.finish()
-        }
-        pub fn epoch_filter(mut self) -> String {
-            self.path.push(ListChallengesRequest::EPOCH_FILTER_FIELD.name);
+        pub fn status(mut self) -> String {
+            self.path.push(ListChallengesRequest::STATUS_FIELD.name);
             self.finish()
         }
         pub fn page_size(mut self) -> String {
@@ -3548,17 +3684,13 @@ mod _field_impls {
             self.path.push(ListChallengesRequest::PAGE_TOKEN_FIELD.name);
             self.finish()
         }
-        pub fn read_mask(mut self) -> String {
-            self.path.push(ListChallengesRequest::READ_MASK_FIELD.name);
-            self.finish()
-        }
     }
     impl ListChallengesResponse {
         pub const CHALLENGES_FIELD: &'static MessageField = &MessageField {
             name: "challenges",
             json_name: "challenges",
             number: 1i32,
-            message_fields: Some(Challenge::FIELDS),
+            message_fields: Some(Object::FIELDS),
         };
         pub const NEXT_PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
             name: "next_page_token",
@@ -3593,9 +3725,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn challenges(mut self) -> ChallengeFieldPathBuilder {
+        pub fn challenges(mut self) -> ObjectFieldPathBuilder {
             self.path.push(ListChallengesResponse::CHALLENGES_FIELD.name);
-            ChallengeFieldPathBuilder::new_with_base(self.path)
+            ObjectFieldPathBuilder::new_with_base(self.path)
         }
         pub fn next_page_token(mut self) -> String {
             self.path.push(ListChallengesResponse::NEXT_PAGE_TOKEN_FIELD.name);
@@ -3766,6 +3898,12 @@ mod _field_impls {
             number: 16i32,
             message_fields: None,
         };
+        pub const BRIDGE_STATE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_state",
+            json_name: "bridgeState",
+            number: 17i32,
+            message_fields: Some(BridgeState::FIELDS),
+        };
     }
     impl MessageFields for SystemState {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3782,6 +3920,7 @@ mod _field_impls {
             Self::SAFE_MODE_FIELD,
             Self::SAFE_MODE_ACCUMULATED_FEES_FIELD,
             Self::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD,
+            Self::BRIDGE_STATE_FIELD,
         ];
     }
     impl SystemState {
@@ -3856,6 +3995,10 @@ mod _field_impls {
             self.path.push(SystemState::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD.name);
             self.finish()
         }
+        pub fn bridge_state(mut self) -> BridgeStateFieldPathBuilder {
+            self.path.push(SystemState::BRIDGE_STATE_FIELD.name);
+            BridgeStateFieldPathBuilder::new_with_base(self.path)
+        }
     }
     impl ReporterSet {
         pub const REPORTERS_FIELD: &'static MessageField = &MessageField {
@@ -3900,206 +4043,24 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const VALIDATOR_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "validator_reward_allocation_bps",
-            json_name: "validatorRewardAllocationBps",
+        pub const UNIT_FEE_FIELD: &'static MessageField = &MessageField {
+            name: "unit_fee",
+            json_name: "unitFee",
             number: 2i32,
             message_fields: None,
         };
-        pub const MODEL_MIN_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "model_min_stake",
-            json_name: "modelMinStake",
+        pub const CHANNEL_GRACE_PERIOD_MS_FIELD: &'static MessageField = &MessageField {
+            name: "channel_grace_period_ms",
+            json_name: "channelGracePeriodMs",
             number: 3i32,
-            message_fields: None,
-        };
-        pub const MODEL_ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
-            name: "model_architecture_version",
-            json_name: "modelArchitectureVersion",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const MODEL_REVEAL_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "model_reveal_slash_rate_bps",
-            json_name: "modelRevealSlashRateBps",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const MODEL_TALLY_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "model_tally_slash_rate_bps",
-            json_name: "modelTallySlashRateBps",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const TARGET_EPOCH_FEE_COLLECTION_FIELD: &'static MessageField = &MessageField {
-            name: "target_epoch_fee_collection",
-            json_name: "targetEpochFeeCollection",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "base_fee",
-            json_name: "baseFee",
-            number: 8i32,
-            message_fields: None,
-        };
-        pub const WRITE_OBJECT_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "write_object_fee",
-            json_name: "writeObjectFee",
-            number: 9i32,
-            message_fields: None,
-        };
-        pub const VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "value_fee_bps",
-            json_name: "valueFeeBps",
-            number: 10i32,
-            message_fields: None,
-        };
-        pub const MIN_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "min_value_fee_bps",
-            json_name: "minValueFeeBps",
-            number: 11i32,
-            message_fields: None,
-        };
-        pub const MAX_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "max_value_fee_bps",
-            json_name: "maxValueFeeBps",
-            number: 12i32,
-            message_fields: None,
-        };
-        pub const FEE_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "fee_adjustment_rate_bps",
-            json_name: "feeAdjustmentRateBps",
-            number: 13i32,
-            message_fields: None,
-        };
-        pub const TARGET_MODELS_PER_TARGET_FIELD: &'static MessageField = &MessageField {
-            name: "target_models_per_target",
-            json_name: "targetModelsPerTarget",
-            number: 14i32,
-            message_fields: None,
-        };
-        pub const TARGET_EMBEDDING_DIM_FIELD: &'static MessageField = &MessageField {
-            name: "target_embedding_dim",
-            json_name: "targetEmbeddingDim",
-            number: 15i32,
-            message_fields: None,
-        };
-        pub const TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_initial_distance_threshold",
-            json_name: "targetInitialDistanceThreshold",
-            number: 16i32,
-            message_fields: None,
-        };
-        pub const TARGET_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_reward_allocation_bps",
-            json_name: "targetRewardAllocationBps",
-            number: 17i32,
-            message_fields: None,
-        };
-        pub const TARGET_HITS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "target_hits_per_epoch",
-            json_name: "targetHitsPerEpoch",
-            number: 18i32,
-            message_fields: None,
-        };
-        pub const TARGET_HITS_EMA_DECAY_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_hits_ema_decay_bps",
-            json_name: "targetHitsEmaDecayBps",
-            number: 19i32,
-            message_fields: None,
-        };
-        pub const TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_difficulty_adjustment_rate_bps",
-            json_name: "targetDifficultyAdjustmentRateBps",
-            number: 20i32,
-            message_fields: None,
-        };
-        pub const TARGET_MAX_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_max_distance_threshold",
-            json_name: "targetMaxDistanceThreshold",
-            number: 21i32,
-            message_fields: None,
-        };
-        pub const TARGET_MIN_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_min_distance_threshold",
-            json_name: "targetMinDistanceThreshold",
-            number: 22i32,
-            message_fields: None,
-        };
-        pub const TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "target_initial_targets_per_epoch",
-            json_name: "targetInitialTargetsPerEpoch",
-            number: 23i32,
-            message_fields: None,
-        };
-        pub const TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_submitter_reward_share_bps",
-            json_name: "targetSubmitterRewardShareBps",
-            number: 24i32,
-            message_fields: None,
-        };
-        pub const TARGET_MODEL_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_model_reward_share_bps",
-            json_name: "targetModelRewardShareBps",
-            number: 25i32,
-            message_fields: None,
-        };
-        pub const TARGET_CLAIMER_INCENTIVE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_claimer_incentive_bps",
-            json_name: "targetClaimerIncentiveBps",
-            number: 26i32,
-            message_fields: None,
-        };
-        pub const SUBMISSION_BOND_PER_BYTE_FIELD: &'static MessageField = &MessageField {
-            name: "submission_bond_per_byte",
-            json_name: "submissionBondPerByte",
-            number: 27i32,
-            message_fields: None,
-        };
-        pub const CHALLENGER_BOND_PER_BYTE_FIELD: &'static MessageField = &MessageField {
-            name: "challenger_bond_per_byte",
-            json_name: "challengerBondPerByte",
-            number: 28i32,
-            message_fields: None,
-        };
-        pub const MAX_SUBMISSION_DATA_SIZE_FIELD: &'static MessageField = &MessageField {
-            name: "max_submission_data_size",
-            json_name: "maxSubmissionDataSize",
-            number: 30i32,
             message_fields: None,
         };
     }
     impl MessageFields for SystemParameters {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_DURATION_MS_FIELD,
-            Self::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD,
-            Self::MODEL_MIN_STAKE_FIELD,
-            Self::MODEL_ARCHITECTURE_VERSION_FIELD,
-            Self::MODEL_REVEAL_SLASH_RATE_BPS_FIELD,
-            Self::MODEL_TALLY_SLASH_RATE_BPS_FIELD,
-            Self::TARGET_EPOCH_FEE_COLLECTION_FIELD,
-            Self::BASE_FEE_FIELD,
-            Self::WRITE_OBJECT_FEE_FIELD,
-            Self::VALUE_FEE_BPS_FIELD,
-            Self::MIN_VALUE_FEE_BPS_FIELD,
-            Self::MAX_VALUE_FEE_BPS_FIELD,
-            Self::FEE_ADJUSTMENT_RATE_BPS_FIELD,
-            Self::TARGET_MODELS_PER_TARGET_FIELD,
-            Self::TARGET_EMBEDDING_DIM_FIELD,
-            Self::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
-            Self::TARGET_HITS_PER_EPOCH_FIELD,
-            Self::TARGET_HITS_EMA_DECAY_BPS_FIELD,
-            Self::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD,
-            Self::TARGET_MAX_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_MIN_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD,
-            Self::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD,
-            Self::TARGET_MODEL_REWARD_SHARE_BPS_FIELD,
-            Self::TARGET_CLAIMER_INCENTIVE_BPS_FIELD,
-            Self::SUBMISSION_BOND_PER_BYTE_FIELD,
-            Self::CHALLENGER_BOND_PER_BYTE_FIELD,
-            Self::MAX_SUBMISSION_DATA_SIZE_FIELD,
+            Self::UNIT_FEE_FIELD,
+            Self::CHANNEL_GRACE_PERIOD_MS_FIELD,
         ];
     }
     impl SystemParameters {
@@ -4126,122 +4087,12 @@ mod _field_impls {
             self.path.push(SystemParameters::EPOCH_DURATION_MS_FIELD.name);
             self.finish()
         }
-        pub fn validator_reward_allocation_bps(mut self) -> String {
-            self.path.push(SystemParameters::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD.name);
+        pub fn unit_fee(mut self) -> String {
+            self.path.push(SystemParameters::UNIT_FEE_FIELD.name);
             self.finish()
         }
-        pub fn model_min_stake(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_MIN_STAKE_FIELD.name);
-            self.finish()
-        }
-        pub fn model_architecture_version(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_ARCHITECTURE_VERSION_FIELD.name);
-            self.finish()
-        }
-        pub fn model_reveal_slash_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_REVEAL_SLASH_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn model_tally_slash_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_TALLY_SLASH_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_epoch_fee_collection(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_EPOCH_FEE_COLLECTION_FIELD.name);
-            self.finish()
-        }
-        pub fn base_fee(mut self) -> String {
-            self.path.push(SystemParameters::BASE_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn write_object_fee(mut self) -> String {
-            self.path.push(SystemParameters::WRITE_OBJECT_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn min_value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::MIN_VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn max_value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::MAX_VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn fee_adjustment_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::FEE_ADJUSTMENT_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_models_per_target(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MODELS_PER_TARGET_FIELD.name);
-            self.finish()
-        }
-        pub fn target_embedding_dim(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_EMBEDDING_DIM_FIELD.name);
-            self.finish()
-        }
-        pub fn target_initial_distance_threshold(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_reward_allocation_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_hits_per_epoch(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HITS_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn target_hits_ema_decay_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HITS_EMA_DECAY_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_difficulty_adjustment_rate_bps(mut self) -> String {
-            self.path
-                .push(
-                    SystemParameters::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD.name,
-                );
-            self.finish()
-        }
-        pub fn target_max_distance_threshold(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MAX_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_min_distance_threshold(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MIN_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_initial_targets_per_epoch(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn target_submitter_reward_share_bps(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_model_reward_share_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MODEL_REWARD_SHARE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_claimer_incentive_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_CLAIMER_INCENTIVE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn submission_bond_per_byte(mut self) -> String {
-            self.path.push(SystemParameters::SUBMISSION_BOND_PER_BYTE_FIELD.name);
-            self.finish()
-        }
-        pub fn challenger_bond_per_byte(mut self) -> String {
-            self.path.push(SystemParameters::CHALLENGER_BOND_PER_BYTE_FIELD.name);
-            self.finish()
-        }
-        pub fn max_submission_data_size(mut self) -> String {
-            self.path.push(SystemParameters::MAX_SUBMISSION_DATA_SIZE_FIELD.name);
+        pub fn channel_grace_period_ms(mut self) -> String {
+            self.path.push(SystemParameters::CHANNEL_GRACE_PERIOD_MS_FIELD.name);
             self.finish()
         }
     }
@@ -4441,12 +4292,6 @@ mod _field_impls {
             number: 7i32,
             message_fields: None,
         };
-        pub const PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "proxy_address",
-            json_name: "proxyAddress",
-            number: 19i32,
-            message_fields: None,
-        };
         pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
             name: "voting_power",
             json_name: "votingPower",
@@ -4513,12 +4358,6 @@ mod _field_impls {
             number: 18i32,
             message_fields: None,
         };
-        pub const NEXT_EPOCH_PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_proxy_address",
-            json_name: "nextEpochProxyAddress",
-            number: 20i32,
-            message_fields: None,
-        };
         pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
             name: "proof_of_possession",
             json_name: "proofOfPossession",
@@ -4541,7 +4380,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::PROXY_ADDRESS_FIELD,
             Self::VOTING_POWER_FIELD,
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_STAKE_FIELD,
@@ -4553,7 +4391,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_NET_ADDRESS_FIELD,
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROXY_ADDRESS_FIELD,
             Self::PROOF_OF_POSSESSION_FIELD,
             Self::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD,
         ];
@@ -4606,10 +4443,6 @@ mod _field_impls {
             self.path.push(Validator::PRIMARY_ADDRESS_FIELD.name);
             self.finish()
         }
-        pub fn proxy_address(mut self) -> String {
-            self.path.push(Validator::PROXY_ADDRESS_FIELD.name);
-            self.finish()
-        }
         pub fn voting_power(mut self) -> String {
             self.path.push(Validator::VOTING_POWER_FIELD.name);
             self.finish()
@@ -4652,10 +4485,6 @@ mod _field_impls {
         }
         pub fn next_epoch_primary_address(mut self) -> String {
             self.path.push(Validator::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_proxy_address(mut self) -> String {
-            self.path.push(Validator::NEXT_EPOCH_PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn proof_of_possession(mut self) -> String {
@@ -5631,6 +5460,345 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl BridgeState {
+        pub const PAUSED_FIELD: &'static MessageField = &MessageField {
+            name: "paused",
+            json_name: "paused",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const NEXT_WITHDRAWAL_NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "next_withdrawal_nonce",
+            json_name: "nextWithdrawalNonce",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const BRIDGE_COMMITTEE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_committee",
+            json_name: "bridgeCommittee",
+            number: 3i32,
+            message_fields: Some(BridgeCommittee::FIELDS),
+        };
+        pub const PROCESSED_DEPOSIT_NONCES_FIELD: &'static MessageField = &MessageField {
+            name: "processed_deposit_nonces",
+            json_name: "processedDepositNonces",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const SYSTEM_MESSAGE_SEQ_NUMS_FIELD: &'static MessageField = &MessageField {
+            name: "system_message_seq_nums",
+            json_name: "systemMessageSeqNums",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const BRIDGE_REGISTRATIONS_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_registrations",
+            json_name: "bridgeRegistrations",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const TOTAL_USDC_SUPPLY_FIELD: &'static MessageField = &MessageField {
+            name: "total_usdc_supply",
+            json_name: "totalUsdcSupply",
+            number: 7i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeState {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PAUSED_FIELD,
+            Self::NEXT_WITHDRAWAL_NONCE_FIELD,
+            Self::BRIDGE_COMMITTEE_FIELD,
+            Self::PROCESSED_DEPOSIT_NONCES_FIELD,
+            Self::SYSTEM_MESSAGE_SEQ_NUMS_FIELD,
+            Self::BRIDGE_REGISTRATIONS_FIELD,
+            Self::TOTAL_USDC_SUPPLY_FIELD,
+        ];
+    }
+    impl BridgeState {
+        pub fn path_builder() -> BridgeStateFieldPathBuilder {
+            BridgeStateFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeStateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeStateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn paused(mut self) -> String {
+            self.path.push(BridgeState::PAUSED_FIELD.name);
+            self.finish()
+        }
+        pub fn next_withdrawal_nonce(mut self) -> String {
+            self.path.push(BridgeState::NEXT_WITHDRAWAL_NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn bridge_committee(mut self) -> BridgeCommitteeFieldPathBuilder {
+            self.path.push(BridgeState::BRIDGE_COMMITTEE_FIELD.name);
+            BridgeCommitteeFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn processed_deposit_nonces(mut self) -> String {
+            self.path.push(BridgeState::PROCESSED_DEPOSIT_NONCES_FIELD.name);
+            self.finish()
+        }
+        pub fn system_message_seq_nums(mut self) -> String {
+            self.path.push(BridgeState::SYSTEM_MESSAGE_SEQ_NUMS_FIELD.name);
+            self.finish()
+        }
+        pub fn bridge_registrations(mut self) -> String {
+            self.path.push(BridgeState::BRIDGE_REGISTRATIONS_FIELD.name);
+            self.finish()
+        }
+        pub fn total_usdc_supply(mut self) -> String {
+            self.path.push(BridgeState::TOTAL_USDC_SUPPLY_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeCommittee {
+        pub const MEMBERS_FIELD: &'static MessageField = &MessageField {
+            name: "members",
+            json_name: "members",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_DEPOSIT_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_deposit",
+            json_name: "thresholdDeposit",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_WITHDRAW_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_withdraw",
+            json_name: "thresholdWithdraw",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_PAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_pause",
+            json_name: "thresholdPause",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_UNPAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_unpause",
+            json_name: "thresholdUnpause",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_blocklist",
+            json_name: "thresholdBlocklist",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_LIMIT_UPDATE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_limit_update",
+            json_name: "thresholdLimitUpdate",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const THRESHOLD_EVM_UPGRADE_FIELD: &'static MessageField = &MessageField {
+            name: "threshold_evm_upgrade",
+            json_name: "thresholdEvmUpgrade",
+            number: 8i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeCommittee {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MEMBERS_FIELD,
+            Self::THRESHOLD_DEPOSIT_FIELD,
+            Self::THRESHOLD_WITHDRAW_FIELD,
+            Self::THRESHOLD_PAUSE_FIELD,
+            Self::THRESHOLD_UNPAUSE_FIELD,
+            Self::THRESHOLD_BLOCKLIST_FIELD,
+            Self::THRESHOLD_LIMIT_UPDATE_FIELD,
+            Self::THRESHOLD_EVM_UPGRADE_FIELD,
+        ];
+    }
+    impl BridgeCommittee {
+        pub fn path_builder() -> BridgeCommitteeFieldPathBuilder {
+            BridgeCommitteeFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeCommitteeFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeCommitteeFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn members(mut self) -> String {
+            self.path.push(BridgeCommittee::MEMBERS_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_deposit(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_DEPOSIT_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_withdraw(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_WITHDRAW_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_pause(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_PAUSE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_unpause(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_UNPAUSE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_blocklist(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_BLOCKLIST_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_limit_update(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_LIMIT_UPDATE_FIELD.name);
+            self.finish()
+        }
+        pub fn threshold_evm_upgrade(mut self) -> String {
+            self.path.push(BridgeCommittee::THRESHOLD_EVM_UPGRADE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeMember {
+        pub const SOMA_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "soma_address",
+            json_name: "somaAddress",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
+            name: "voting_power",
+            json_name: "votingPower",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const IS_BLOCKLISTED_FIELD: &'static MessageField = &MessageField {
+            name: "is_blocklisted",
+            json_name: "isBlocklisted",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeMember {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SOMA_ADDRESS_FIELD,
+            Self::VOTING_POWER_FIELD,
+            Self::HTTP_URL_FIELD,
+            Self::IS_BLOCKLISTED_FIELD,
+        ];
+    }
+    impl BridgeMember {
+        pub fn path_builder() -> BridgeMemberFieldPathBuilder {
+            BridgeMemberFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeMemberFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeMemberFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn soma_address(mut self) -> String {
+            self.path.push(BridgeMember::SOMA_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn voting_power(mut self) -> String {
+            self.path.push(BridgeMember::VOTING_POWER_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeMember::HTTP_URL_FIELD.name);
+            self.finish()
+        }
+        pub fn is_blocklisted(mut self) -> String {
+            self.path.push(BridgeMember::IS_BLOCKLISTED_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeRegistration {
+        pub const BRIDGE_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_pubkey",
+            json_name: "bridgePubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeRegistration {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::BRIDGE_PUBKEY_FIELD,
+            Self::HTTP_URL_FIELD,
+        ];
+    }
+    impl BridgeRegistration {
+        pub fn path_builder() -> BridgeRegistrationFieldPathBuilder {
+            BridgeRegistrationFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeRegistrationFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeRegistrationFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn bridge_pubkey(mut self) -> String {
+            self.path.push(BridgeRegistration::BRIDGE_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeRegistration::HTTP_URL_FIELD.name);
+            self.finish()
+        }
+    }
     impl Transaction {
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
@@ -5656,6 +5824,12 @@ mod _field_impls {
             number: 4i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
+        pub const EXPIRATION_FIELD: &'static MessageField = &MessageField {
+            name: "expiration",
+            json_name: "expiration",
+            number: 5i32,
+            message_fields: Some(TransactionExpiration::FIELDS),
+        };
     }
     impl MessageFields for Transaction {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5663,6 +5837,7 @@ mod _field_impls {
             Self::KIND_FIELD,
             Self::SENDER_FIELD,
             Self::GAS_PAYMENT_FIELD,
+            Self::EXPIRATION_FIELD,
         ];
     }
     impl Transaction {
@@ -5700,6 +5875,130 @@ mod _field_impls {
         pub fn gas_payment(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(Transaction::GAS_PAYMENT_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn expiration(mut self) -> TransactionExpirationFieldPathBuilder {
+            self.path.push(Transaction::EXPIRATION_FIELD.name);
+            TransactionExpirationFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl TransactionExpiration {
+        pub const NONE_FIELD: &'static MessageField = &MessageField {
+            name: "none",
+            json_name: "none",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const VALID_DURING_FIELD: &'static MessageField = &MessageField {
+            name: "valid_during",
+            json_name: "validDuring",
+            number: 2i32,
+            message_fields: Some(ValidDuring::FIELDS),
+        };
+    }
+    impl MessageFields for TransactionExpiration {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONE_FIELD,
+            Self::VALID_DURING_FIELD,
+        ];
+    }
+    impl TransactionExpiration {
+        pub fn path_builder() -> TransactionExpirationFieldPathBuilder {
+            TransactionExpirationFieldPathBuilder::new()
+        }
+    }
+    pub struct TransactionExpirationFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TransactionExpirationFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn none(mut self) -> String {
+            self.path.push(TransactionExpiration::NONE_FIELD.name);
+            self.finish()
+        }
+        pub fn valid_during(mut self) -> ValidDuringFieldPathBuilder {
+            self.path.push(TransactionExpiration::VALID_DURING_FIELD.name);
+            ValidDuringFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ValidDuring {
+        pub const MIN_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "min_epoch",
+            json_name: "minEpoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MAX_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "max_epoch",
+            json_name: "maxEpoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "chain",
+            json_name: "chain",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ValidDuring {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MIN_EPOCH_FIELD,
+            Self::MAX_EPOCH_FIELD,
+            Self::CHAIN_FIELD,
+            Self::NONCE_FIELD,
+        ];
+    }
+    impl ValidDuring {
+        pub fn path_builder() -> ValidDuringFieldPathBuilder {
+            ValidDuringFieldPathBuilder::new()
+        }
+    }
+    pub struct ValidDuringFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ValidDuringFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn min_epoch(mut self) -> String {
+            self.path.push(ValidDuring::MIN_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn max_epoch(mut self) -> String {
+            self.path.push(ValidDuring::MAX_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn chain(mut self) -> String {
+            self.path.push(ValidDuring::CHAIN_FIELD.name);
+            self.finish()
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(ValidDuring::NONCE_FIELD.name);
+            self.finish()
         }
     }
     impl TransactionKind {
@@ -5883,6 +6182,126 @@ mod _field_impls {
             number: 32i32,
             message_fields: Some(ClaimChallengeBond::FIELDS),
         };
+        pub const BRIDGE_DEPOSIT_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_deposit",
+            json_name: "bridgeDeposit",
+            number: 40i32,
+            message_fields: Some(BridgeDeposit::FIELDS),
+        };
+        pub const BRIDGE_WITHDRAW_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_withdraw",
+            json_name: "bridgeWithdraw",
+            number: 41i32,
+            message_fields: Some(BridgeWithdraw::FIELDS),
+        };
+        pub const BRIDGE_EMERGENCY_PAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_emergency_pause",
+            json_name: "bridgeEmergencyPause",
+            number: 42i32,
+            message_fields: Some(BridgeEmergencyPause::FIELDS),
+        };
+        pub const BRIDGE_EMERGENCY_UNPAUSE_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_emergency_unpause",
+            json_name: "bridgeEmergencyUnpause",
+            number: 43i32,
+            message_fields: Some(BridgeEmergencyUnpause::FIELDS),
+        };
+        pub const BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_attach_withdrawal_signatures",
+            json_name: "bridgeAttachWithdrawalSignatures",
+            number: 44i32,
+            message_fields: Some(BridgeAttachWithdrawalSignatures::FIELDS),
+        };
+        pub const BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_update_committee_blocklist",
+            json_name: "bridgeUpdateCommitteeBlocklist",
+            number: 45i32,
+            message_fields: Some(BridgeUpdateCommitteeBlocklist::FIELDS),
+        };
+        pub const BRIDGE_REGISTER_BRIDGE_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_register_bridge_key",
+            json_name: "bridgeRegisterBridgeKey",
+            number: 46i32,
+            message_fields: Some(BridgeRegisterBridgeKey::FIELDS),
+        };
+        pub const OPEN_CHANNEL_FIELD: &'static MessageField = &MessageField {
+            name: "open_channel",
+            json_name: "openChannel",
+            number: 50i32,
+            message_fields: Some(OpenChannel::FIELDS),
+        };
+        pub const SETTLE_FIELD: &'static MessageField = &MessageField {
+            name: "settle",
+            json_name: "settle",
+            number: 51i32,
+            message_fields: Some(Settle::FIELDS),
+        };
+        pub const REQUEST_CLOSE_FIELD: &'static MessageField = &MessageField {
+            name: "request_close",
+            json_name: "requestClose",
+            number: 52i32,
+            message_fields: Some(RequestClose::FIELDS),
+        };
+        pub const WITHDRAW_AFTER_TIMEOUT_FIELD: &'static MessageField = &MessageField {
+            name: "withdraw_after_timeout",
+            json_name: "withdrawAfterTimeout",
+            number: 53i32,
+            message_fields: Some(WithdrawAfterTimeout::FIELDS),
+        };
+        pub const TOP_UP_FIELD: &'static MessageField = &MessageField {
+            name: "top_up",
+            json_name: "topUp",
+            number: 54i32,
+            message_fields: Some(TopUp::FIELDS),
+        };
+        pub const RATE_CHANNEL_FIELD: &'static MessageField = &MessageField {
+            name: "rate_channel",
+            json_name: "rateChannel",
+            number: 57i32,
+            message_fields: Some(RateChannel::FIELDS),
+        };
+        pub const REGISTER_PROVIDER_FIELD: &'static MessageField = &MessageField {
+            name: "register_provider",
+            json_name: "registerProvider",
+            number: 55i32,
+            message_fields: Some(RegisterProvider::FIELDS),
+        };
+        pub const UPDATE_PROVIDER_FIELD: &'static MessageField = &MessageField {
+            name: "update_provider",
+            json_name: "updateProvider",
+            number: 56i32,
+            message_fields: Some(UpdateProvider::FIELDS),
+        };
+        pub const REGISTER_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "register_offering",
+            json_name: "registerOffering",
+            number: 58i32,
+            message_fields: Some(RegisterOffering::FIELDS),
+        };
+        pub const UPDATE_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "update_offering",
+            json_name: "updateOffering",
+            number: 59i32,
+            message_fields: Some(UpdateOffering::FIELDS),
+        };
+        pub const DEACTIVATE_OFFERING_FIELD: &'static MessageField = &MessageField {
+            name: "deactivate_offering",
+            json_name: "deactivateOffering",
+            number: 62i32,
+            message_fields: Some(DeactivateOffering::FIELDS),
+        };
+        pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
+            name: "settlement",
+            json_name: "settlement",
+            number: 60i32,
+            message_fields: Some(Settlement::FIELDS),
+        };
+        pub const BALANCE_TRANSFER_FIELD: &'static MessageField = &MessageField {
+            name: "balance_transfer",
+            json_name: "balanceTransfer",
+            number: 61i32,
+            message_fields: Some(BalanceTransfer::FIELDS),
+        };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5916,6 +6335,26 @@ mod _field_impls {
             Self::REPORT_CHALLENGE_FIELD,
             Self::UNDO_REPORT_CHALLENGE_FIELD,
             Self::CLAIM_CHALLENGE_BOND_FIELD,
+            Self::BRIDGE_DEPOSIT_FIELD,
+            Self::BRIDGE_WITHDRAW_FIELD,
+            Self::BRIDGE_EMERGENCY_PAUSE_FIELD,
+            Self::BRIDGE_EMERGENCY_UNPAUSE_FIELD,
+            Self::BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD,
+            Self::BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD,
+            Self::BRIDGE_REGISTER_BRIDGE_KEY_FIELD,
+            Self::OPEN_CHANNEL_FIELD,
+            Self::SETTLE_FIELD,
+            Self::REQUEST_CLOSE_FIELD,
+            Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
+            Self::TOP_UP_FIELD,
+            Self::RATE_CHANNEL_FIELD,
+            Self::REGISTER_PROVIDER_FIELD,
+            Self::UPDATE_PROVIDER_FIELD,
+            Self::REGISTER_OFFERING_FIELD,
+            Self::UPDATE_OFFERING_FIELD,
+            Self::DEACTIVATE_OFFERING_FIELD,
+            Self::SETTLEMENT_FIELD,
+            Self::BALANCE_TRANSFER_FIELD,
         ];
     }
     impl TransactionKind {
@@ -6064,6 +6503,696 @@ mod _field_impls {
             self.path.push(TransactionKind::CLAIM_CHALLENGE_BOND_FIELD.name);
             ClaimChallengeBondFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn bridge_deposit(mut self) -> BridgeDepositFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_DEPOSIT_FIELD.name);
+            BridgeDepositFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_withdraw(mut self) -> BridgeWithdrawFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_WITHDRAW_FIELD.name);
+            BridgeWithdrawFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_emergency_pause(mut self) -> BridgeEmergencyPauseFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_EMERGENCY_PAUSE_FIELD.name);
+            BridgeEmergencyPauseFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_emergency_unpause(
+            mut self,
+        ) -> BridgeEmergencyUnpauseFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_EMERGENCY_UNPAUSE_FIELD.name);
+            BridgeEmergencyUnpauseFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_attach_withdrawal_signatures(
+            mut self,
+        ) -> BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+            self.path
+                .push(TransactionKind::BRIDGE_ATTACH_WITHDRAWAL_SIGNATURES_FIELD.name);
+            BridgeAttachWithdrawalSignaturesFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_update_committee_blocklist(
+            mut self,
+        ) -> BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+            self.path
+                .push(TransactionKind::BRIDGE_UPDATE_COMMITTEE_BLOCKLIST_FIELD.name);
+            BridgeUpdateCommitteeBlocklistFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bridge_register_bridge_key(
+            mut self,
+        ) -> BridgeRegisterBridgeKeyFieldPathBuilder {
+            self.path.push(TransactionKind::BRIDGE_REGISTER_BRIDGE_KEY_FIELD.name);
+            BridgeRegisterBridgeKeyFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn open_channel(mut self) -> OpenChannelFieldPathBuilder {
+            self.path.push(TransactionKind::OPEN_CHANNEL_FIELD.name);
+            OpenChannelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn settle(mut self) -> SettleFieldPathBuilder {
+            self.path.push(TransactionKind::SETTLE_FIELD.name);
+            SettleFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn request_close(mut self) -> RequestCloseFieldPathBuilder {
+            self.path.push(TransactionKind::REQUEST_CLOSE_FIELD.name);
+            RequestCloseFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn withdraw_after_timeout(mut self) -> WithdrawAfterTimeoutFieldPathBuilder {
+            self.path.push(TransactionKind::WITHDRAW_AFTER_TIMEOUT_FIELD.name);
+            WithdrawAfterTimeoutFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn top_up(mut self) -> TopUpFieldPathBuilder {
+            self.path.push(TransactionKind::TOP_UP_FIELD.name);
+            TopUpFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn rate_channel(mut self) -> RateChannelFieldPathBuilder {
+            self.path.push(TransactionKind::RATE_CHANNEL_FIELD.name);
+            RateChannelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn register_provider(mut self) -> RegisterProviderFieldPathBuilder {
+            self.path.push(TransactionKind::REGISTER_PROVIDER_FIELD.name);
+            RegisterProviderFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn update_provider(mut self) -> UpdateProviderFieldPathBuilder {
+            self.path.push(TransactionKind::UPDATE_PROVIDER_FIELD.name);
+            UpdateProviderFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn register_offering(mut self) -> RegisterOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::REGISTER_OFFERING_FIELD.name);
+            RegisterOfferingFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn update_offering(mut self) -> UpdateOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::UPDATE_OFFERING_FIELD.name);
+            UpdateOfferingFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn deactivate_offering(mut self) -> DeactivateOfferingFieldPathBuilder {
+            self.path.push(TransactionKind::DEACTIVATE_OFFERING_FIELD.name);
+            DeactivateOfferingFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn settlement(mut self) -> SettlementFieldPathBuilder {
+            self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
+            SettlementFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn balance_transfer(mut self) -> BalanceTransferFieldPathBuilder {
+            self.path.push(TransactionKind::BALANCE_TRANSFER_FIELD.name);
+            BalanceTransferFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BalanceTransfer {
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const TRANSFERS_FIELD: &'static MessageField = &MessageField {
+            name: "transfers",
+            json_name: "transfers",
+            number: 2i32,
+            message_fields: Some(BalanceTransferEntry::FIELDS),
+        };
+    }
+    impl MessageFields for BalanceTransfer {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::COIN_TYPE_FIELD,
+            Self::TRANSFERS_FIELD,
+        ];
+    }
+    impl BalanceTransfer {
+        pub fn path_builder() -> BalanceTransferFieldPathBuilder {
+            BalanceTransferFieldPathBuilder::new()
+        }
+    }
+    pub struct BalanceTransferFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BalanceTransferFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(BalanceTransfer::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn transfers(mut self) -> BalanceTransferEntryFieldPathBuilder {
+            self.path.push(BalanceTransfer::TRANSFERS_FIELD.name);
+            BalanceTransferEntryFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BalanceTransferEntry {
+        pub const RECIPIENT_FIELD: &'static MessageField = &MessageField {
+            name: "recipient",
+            json_name: "recipient",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BalanceTransferEntry {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::RECIPIENT_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
+    }
+    impl BalanceTransferEntry {
+        pub fn path_builder() -> BalanceTransferEntryFieldPathBuilder {
+            BalanceTransferEntryFieldPathBuilder::new()
+        }
+    }
+    pub struct BalanceTransferEntryFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BalanceTransferEntryFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn recipient(mut self) -> String {
+            self.path.push(BalanceTransferEntry::RECIPIENT_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(BalanceTransferEntry::AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl PubkeySig {
+        pub const SIGNER_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "signer_pubkey",
+            json_name: "signerPubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const SIGNATURE_FIELD: &'static MessageField = &MessageField {
+            name: "signature",
+            json_name: "signature",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for PubkeySig {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SIGNER_PUBKEY_FIELD,
+            Self::SIGNATURE_FIELD,
+        ];
+    }
+    impl PubkeySig {
+        pub fn path_builder() -> PubkeySigFieldPathBuilder {
+            PubkeySigFieldPathBuilder::new()
+        }
+    }
+    pub struct PubkeySigFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl PubkeySigFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn signer_pubkey(mut self) -> String {
+            self.path.push(PubkeySig::SIGNER_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn signature(mut self) -> String {
+            self.path.push(PubkeySig::SIGNATURE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeDeposit {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ETH_TX_HASH_FIELD: &'static MessageField = &MessageField {
+            name: "eth_tx_hash",
+            json_name: "ethTxHash",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const RECIPIENT_FIELD: &'static MessageField = &MessageField {
+            name: "recipient",
+            json_name: "recipient",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const TIMESTAMP_MS_FIELD: &'static MessageField = &MessageField {
+            name: "timestamp_ms",
+            json_name: "timestampMs",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 8i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+        pub const SENDER_ETH_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "sender_eth_address",
+            json_name: "senderEthAddress",
+            number: 9i32,
+            message_fields: None,
+        };
+        pub const TARGET_CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "target_chain",
+            json_name: "targetChain",
+            number: 10i32,
+            message_fields: None,
+        };
+        pub const TOKEN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "token_type",
+            json_name: "tokenType",
+            number: 11i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeDeposit {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::ETH_TX_HASH_FIELD,
+            Self::RECIPIENT_FIELD,
+            Self::AMOUNT_FIELD,
+            Self::TIMESTAMP_MS_FIELD,
+            Self::SIGNATURES_FIELD,
+            Self::SENDER_ETH_ADDRESS_FIELD,
+            Self::TARGET_CHAIN_FIELD,
+            Self::TOKEN_TYPE_FIELD,
+        ];
+    }
+    impl BridgeDeposit {
+        pub fn path_builder() -> BridgeDepositFieldPathBuilder {
+            BridgeDepositFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeDepositFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeDepositFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeDeposit::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn eth_tx_hash(mut self) -> String {
+            self.path.push(BridgeDeposit::ETH_TX_HASH_FIELD.name);
+            self.finish()
+        }
+        pub fn recipient(mut self) -> String {
+            self.path.push(BridgeDeposit::RECIPIENT_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(BridgeDeposit::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn timestamp_ms(mut self) -> String {
+            self.path.push(BridgeDeposit::TIMESTAMP_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeDeposit::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn sender_eth_address(mut self) -> String {
+            self.path.push(BridgeDeposit::SENDER_ETH_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_chain(mut self) -> String {
+            self.path.push(BridgeDeposit::TARGET_CHAIN_FIELD.name);
+            self.finish()
+        }
+        pub fn token_type(mut self) -> String {
+            self.path.push(BridgeDeposit::TOKEN_TYPE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeWithdraw {
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const RECIPIENT_ETH_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "recipient_eth_address",
+            json_name: "recipientEthAddress",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const TARGET_CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "target_chain",
+            json_name: "targetChain",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeWithdraw {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::AMOUNT_FIELD,
+            Self::RECIPIENT_ETH_ADDRESS_FIELD,
+            Self::TARGET_CHAIN_FIELD,
+        ];
+    }
+    impl BridgeWithdraw {
+        pub fn path_builder() -> BridgeWithdrawFieldPathBuilder {
+            BridgeWithdrawFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeWithdrawFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeWithdrawFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(BridgeWithdraw::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn recipient_eth_address(mut self) -> String {
+            self.path.push(BridgeWithdraw::RECIPIENT_ETH_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_chain(mut self) -> String {
+            self.path.push(BridgeWithdraw::TARGET_CHAIN_FIELD.name);
+            self.finish()
+        }
+    }
+    impl BridgeEmergencyPause {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeEmergencyPause {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeEmergencyPause {
+        pub fn path_builder() -> BridgeEmergencyPauseFieldPathBuilder {
+            BridgeEmergencyPauseFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeEmergencyPauseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeEmergencyPauseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeEmergencyPause::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeEmergencyPause::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeEmergencyUnpause {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeEmergencyUnpause {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeEmergencyUnpause {
+        pub fn path_builder() -> BridgeEmergencyUnpauseFieldPathBuilder {
+            BridgeEmergencyUnpauseFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeEmergencyUnpauseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeEmergencyUnpauseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeEmergencyUnpause::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeEmergencyUnpause::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 4i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeAttachWithdrawalSignatures {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeAttachWithdrawalSignatures {
+        pub fn path_builder() -> BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+            BridgeAttachWithdrawalSignaturesFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeAttachWithdrawalSignaturesFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeAttachWithdrawalSignatures::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeAttachWithdrawalSignatures::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const IS_BLOCKLIST_FIELD: &'static MessageField = &MessageField {
+            name: "is_blocklist",
+            json_name: "isBlocklist",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const ETH_ADDRESSES_FIELD: &'static MessageField = &MessageField {
+            name: "eth_addresses",
+            json_name: "ethAddresses",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 6i32,
+            message_fields: Some(PubkeySig::FIELDS),
+        };
+    }
+    impl MessageFields for BridgeUpdateCommitteeBlocklist {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONCE_FIELD,
+            Self::IS_BLOCKLIST_FIELD,
+            Self::ETH_ADDRESSES_FIELD,
+            Self::SIGNATURES_FIELD,
+        ];
+    }
+    impl BridgeUpdateCommitteeBlocklist {
+        pub fn path_builder() -> BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+            BridgeUpdateCommitteeBlocklistFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeUpdateCommitteeBlocklistFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::NONCE_FIELD.name);
+            self.finish()
+        }
+        pub fn is_blocklist(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::IS_BLOCKLIST_FIELD.name);
+            self.finish()
+        }
+        pub fn eth_addresses(mut self) -> String {
+            self.path.push(BridgeUpdateCommitteeBlocklist::ETH_ADDRESSES_FIELD.name);
+            self.finish()
+        }
+        pub fn signatures(mut self) -> PubkeySigFieldPathBuilder {
+            self.path.push(BridgeUpdateCommitteeBlocklist::SIGNATURES_FIELD.name);
+            PubkeySigFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BridgeRegisterBridgeKey {
+        pub const BRIDGE_PUBKEY_FIELD: &'static MessageField = &MessageField {
+            name: "bridge_pubkey",
+            json_name: "bridgePubkey",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const HTTP_URL_FIELD: &'static MessageField = &MessageField {
+            name: "http_url",
+            json_name: "httpUrl",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BridgeRegisterBridgeKey {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::BRIDGE_PUBKEY_FIELD,
+            Self::HTTP_URL_FIELD,
+        ];
+    }
+    impl BridgeRegisterBridgeKey {
+        pub fn path_builder() -> BridgeRegisterBridgeKeyFieldPathBuilder {
+            BridgeRegisterBridgeKeyFieldPathBuilder::new()
+        }
+    }
+    pub struct BridgeRegisterBridgeKeyFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BridgeRegisterBridgeKeyFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn bridge_pubkey(mut self) -> String {
+            self.path.push(BridgeRegisterBridgeKey::BRIDGE_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn http_url(mut self) -> String {
+            self.path.push(BridgeRegisterBridgeKey::HTTP_URL_FIELD.name);
+            self.finish()
+        }
     }
     impl AddValidator {
         pub const PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
@@ -6102,12 +7231,6 @@ mod _field_impls {
             number: 6i32,
             message_fields: None,
         };
-        pub const PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "proxy_address",
-            json_name: "proxyAddress",
-            number: 7i32,
-            message_fields: None,
-        };
         pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
             name: "proof_of_possession",
             json_name: "proofOfPossession",
@@ -6123,7 +7246,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::PROXY_ADDRESS_FIELD,
             Self::PROOF_OF_POSSESSION_FIELD,
         ];
     }
@@ -6169,10 +7291,6 @@ mod _field_impls {
         }
         pub fn primary_address(mut self) -> String {
             self.path.push(AddValidator::PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn proxy_address(mut self) -> String {
-            self.path.push(AddValidator::PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn proof_of_possession(mut self) -> String {
@@ -6307,12 +7425,6 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
-        pub const NEXT_EPOCH_PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_proxy_address",
-            json_name: "nextEpochProxyAddress",
-            number: 4i32,
-            message_fields: None,
-        };
         pub const NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_protocol_pubkey",
             json_name: "nextEpochProtocolPubkey",
@@ -6343,7 +7455,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_NETWORK_ADDRESS_FIELD,
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROXY_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD,
             Self::NEXT_EPOCH_WORKER_PUBKEY_FIELD,
             Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
@@ -6382,10 +7493,6 @@ mod _field_impls {
         pub fn next_epoch_primary_address(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_proxy_address(mut self) -> String {
-            self.path.push(UpdateValidatorMetadata::NEXT_EPOCH_PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn next_epoch_protocol_pubkey(mut self) -> String {
@@ -6616,29 +7723,22 @@ mod _field_impls {
         }
     }
     impl AddStake {
-        pub const ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "address",
-            json_name: "address",
+        pub const VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "validator",
+            json_name: "validator",
             number: 1i32,
             message_fields: None,
-        };
-        pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
-            name: "coin_ref",
-            json_name: "coinRef",
-            number: 2i32,
-            message_fields: Some(ObjectReference::FIELDS),
         };
         pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "amount",
             json_name: "amount",
-            number: 3i32,
+            number: 2i32,
             message_fields: None,
         };
     }
     impl MessageFields for AddStake {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::ADDRESS_FIELD,
-            Self::COIN_REF_FIELD,
+            Self::VALIDATOR_FIELD,
             Self::AMOUNT_FIELD,
         ];
     }
@@ -6662,13 +7762,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn address(mut self) -> String {
-            self.path.push(AddStake::ADDRESS_FIELD.name);
+        pub fn validator(mut self) -> String {
+            self.path.push(AddStake::VALIDATOR_FIELD.name);
             self.finish()
-        }
-        pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(AddStake::COIN_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
         pub fn amount(mut self) -> String {
             self.path.push(AddStake::AMOUNT_FIELD.name);
@@ -6676,15 +7772,24 @@ mod _field_impls {
         }
     }
     impl WithdrawStake {
-        pub const STAKED_SOMA_FIELD: &'static MessageField = &MessageField {
-            name: "staked_soma",
-            json_name: "stakedSoma",
+        pub const POOL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "pool_id",
+            json_name: "poolId",
             number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 2i32,
+            message_fields: None,
         };
     }
     impl MessageFields for WithdrawStake {
-        const FIELDS: &'static [&'static MessageField] = &[Self::STAKED_SOMA_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::POOL_ID_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
     }
     impl WithdrawStake {
         pub fn path_builder() -> WithdrawStakeFieldPathBuilder {
@@ -6706,9 +7811,13 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn staked_soma(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(WithdrawStake::STAKED_SOMA_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        pub fn pool_id(mut self) -> String {
+            self.path.push(WithdrawStake::POOL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(WithdrawStake::AMOUNT_FIELD.name);
+            self.finish()
         }
     }
     impl Metadata {
@@ -7727,6 +8836,148 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl Settlement {
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ROUND_FIELD: &'static MessageField = &MessageField {
+            name: "round",
+            json_name: "round",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const SUB_DAG_INDEX_FIELD: &'static MessageField = &MessageField {
+            name: "sub_dag_index",
+            json_name: "subDagIndex",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const CHANGES_FIELD: &'static MessageField = &MessageField {
+            name: "changes",
+            json_name: "changes",
+            number: 4i32,
+            message_fields: Some(SettlementChange::FIELDS),
+        };
+    }
+    impl MessageFields for Settlement {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::EPOCH_FIELD,
+            Self::ROUND_FIELD,
+            Self::SUB_DAG_INDEX_FIELD,
+            Self::CHANGES_FIELD,
+        ];
+    }
+    impl Settlement {
+        pub fn path_builder() -> SettlementFieldPathBuilder {
+            SettlementFieldPathBuilder::new()
+        }
+    }
+    pub struct SettlementFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettlementFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(Settlement::EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn round(mut self) -> String {
+            self.path.push(Settlement::ROUND_FIELD.name);
+            self.finish()
+        }
+        pub fn sub_dag_index(mut self) -> String {
+            self.path.push(Settlement::SUB_DAG_INDEX_FIELD.name);
+            self.finish()
+        }
+        pub fn changes(mut self) -> SettlementChangeFieldPathBuilder {
+            self.path.push(Settlement::CHANGES_FIELD.name);
+            SettlementChangeFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl SettlementChange {
+        pub const OWNER_FIELD: &'static MessageField = &MessageField {
+            name: "owner",
+            json_name: "owner",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const IS_CREDIT_FIELD: &'static MessageField = &MessageField {
+            name: "is_credit",
+            json_name: "isCredit",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for SettlementChange {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OWNER_FIELD,
+            Self::COIN_TYPE_FIELD,
+            Self::AMOUNT_FIELD,
+            Self::IS_CREDIT_FIELD,
+        ];
+    }
+    impl SettlementChange {
+        pub fn path_builder() -> SettlementChangeFieldPathBuilder {
+            SettlementChangeFieldPathBuilder::new()
+        }
+    }
+    pub struct SettlementChangeFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettlementChangeFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn owner(mut self) -> String {
+            self.path.push(SettlementChange::OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(SettlementChange::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(SettlementChange::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn is_credit(mut self) -> String {
+            self.path.push(SettlementChange::IS_CREDIT_FIELD.name);
+            self.finish()
+        }
+    }
     impl SubmitData {
         pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
             name: "target_id",
@@ -8082,6 +9333,807 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl OpenChannel {
+        pub const PAYEE_FIELD: &'static MessageField = &MessageField {
+            name: "payee",
+            json_name: "payee",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const AUTHORIZED_SIGNER_FIELD: &'static MessageField = &MessageField {
+            name: "authorized_signer",
+            json_name: "authorizedSigner",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "token",
+            json_name: "token",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DEPOSIT_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "deposit_amount",
+            json_name: "depositAmount",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 6i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for OpenChannel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PAYEE_FIELD,
+            Self::AUTHORIZED_SIGNER_FIELD,
+            Self::TOKEN_FIELD,
+            Self::DEPOSIT_AMOUNT_FIELD,
+            Self::MODEL_ID_FIELD,
+        ];
+    }
+    impl OpenChannel {
+        pub fn path_builder() -> OpenChannelFieldPathBuilder {
+            OpenChannelFieldPathBuilder::new()
+        }
+    }
+    pub struct OpenChannelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl OpenChannelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn payee(mut self) -> String {
+            self.path.push(OpenChannel::PAYEE_FIELD.name);
+            self.finish()
+        }
+        pub fn authorized_signer(mut self) -> String {
+            self.path.push(OpenChannel::AUTHORIZED_SIGNER_FIELD.name);
+            self.finish()
+        }
+        pub fn token(mut self) -> String {
+            self.path.push(OpenChannel::TOKEN_FIELD.name);
+            self.finish()
+        }
+        pub fn deposit_amount(mut self) -> String {
+            self.path.push(OpenChannel::DEPOSIT_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(OpenChannel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl Settle {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_amount",
+            json_name: "cumulativeAmount",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const VOUCHER_SIGNATURE_FIELD: &'static MessageField = &MessageField {
+            name: "voucher_signature",
+            json_name: "voucherSignature",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_PROMPT_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_prompt_tokens",
+            json_name: "cumulativePromptTokens",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_COMPLETION_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_completion_tokens",
+            json_name: "cumulativeCompletionTokens",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_CACHE_READ_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_cache_read_tokens",
+            json_name: "cumulativeCacheReadTokens",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_CACHE_WRITE_TOKENS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_cache_write_tokens",
+            json_name: "cumulativeCacheWriteTokens",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_REQUESTS_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_requests",
+            json_name: "cumulativeRequests",
+            number: 8i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for Settle {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::CUMULATIVE_AMOUNT_FIELD,
+            Self::VOUCHER_SIGNATURE_FIELD,
+            Self::CUMULATIVE_PROMPT_TOKENS_FIELD,
+            Self::CUMULATIVE_COMPLETION_TOKENS_FIELD,
+            Self::CUMULATIVE_CACHE_READ_TOKENS_FIELD,
+            Self::CUMULATIVE_CACHE_WRITE_TOKENS_FIELD,
+            Self::CUMULATIVE_REQUESTS_FIELD,
+        ];
+    }
+    impl Settle {
+        pub fn path_builder() -> SettleFieldPathBuilder {
+            SettleFieldPathBuilder::new()
+        }
+    }
+    pub struct SettleFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettleFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(Settle::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_amount(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn voucher_signature(mut self) -> String {
+            self.path.push(Settle::VOUCHER_SIGNATURE_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_prompt_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_PROMPT_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_completion_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_COMPLETION_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_cache_read_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_CACHE_READ_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_cache_write_tokens(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_CACHE_WRITE_TOKENS_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_requests(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_REQUESTS_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RequestClose {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RequestClose {
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHANNEL_ID_FIELD];
+    }
+    impl RequestClose {
+        pub fn path_builder() -> RequestCloseFieldPathBuilder {
+            RequestCloseFieldPathBuilder::new()
+        }
+    }
+    pub struct RequestCloseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RequestCloseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(RequestClose::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl WithdrawAfterTimeout {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PAYEE_FIELD: &'static MessageField = &MessageField {
+            name: "payee",
+            json_name: "payee",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for WithdrawAfterTimeout {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::PAYEE_FIELD,
+        ];
+    }
+    impl WithdrawAfterTimeout {
+        pub fn path_builder() -> WithdrawAfterTimeoutFieldPathBuilder {
+            WithdrawAfterTimeoutFieldPathBuilder::new()
+        }
+    }
+    pub struct WithdrawAfterTimeoutFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl WithdrawAfterTimeoutFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(WithdrawAfterTimeout::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn payee(mut self) -> String {
+            self.path.push(WithdrawAfterTimeout::PAYEE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl TopUp {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for TopUp {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::COIN_TYPE_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
+    }
+    impl TopUp {
+        pub fn path_builder() -> TopUpFieldPathBuilder {
+            TopUpFieldPathBuilder::new()
+        }
+    }
+    pub struct TopUpFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TopUpFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(TopUp::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(TopUp::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(TopUp::AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RateChannel {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const NEGATIVE_FIELD: &'static MessageField = &MessageField {
+            name: "negative",
+            json_name: "negative",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const REASON_CODE_FIELD: &'static MessageField = &MessageField {
+            name: "reason_code",
+            json_name: "reasonCode",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RateChannel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::NEGATIVE_FIELD,
+            Self::REASON_CODE_FIELD,
+        ];
+    }
+    impl RateChannel {
+        pub fn path_builder() -> RateChannelFieldPathBuilder {
+            RateChannelFieldPathBuilder::new()
+        }
+    }
+    pub struct RateChannelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RateChannelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(RateChannel::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn negative(mut self) -> String {
+            self.path.push(RateChannel::NEGATIVE_FIELD.name);
+            self.finish()
+        }
+        pub fn reason_code(mut self) -> String {
+            self.path.push(RateChannel::REASON_CODE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RegisterOffering {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PROMPT_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "prompt_micros_per_1k",
+            json_name: "promptMicrosPer1k",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const COMPLETION_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "completion_micros_per_1k",
+            json_name: "completionMicrosPer1k",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const CACHE_READ_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_read_micros_per_1k",
+            json_name: "cacheReadMicrosPer1k",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CACHE_WRITE_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_write_micros_per_1k",
+            json_name: "cacheWriteMicrosPer1k",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const REQUEST_MICROS_FIELD: &'static MessageField = &MessageField {
+            name: "request_micros",
+            json_name: "requestMicros",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const TTFT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttft_bound_ms",
+            json_name: "ttftBoundMs",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const TTOT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttot_bound_ms",
+            json_name: "ttotBoundMs",
+            number: 8i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RegisterOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::PROMPT_MICROS_PER_1K_FIELD,
+            Self::COMPLETION_MICROS_PER_1K_FIELD,
+            Self::CACHE_READ_MICROS_PER_1K_FIELD,
+            Self::CACHE_WRITE_MICROS_PER_1K_FIELD,
+            Self::REQUEST_MICROS_FIELD,
+            Self::TTFT_BOUND_MS_FIELD,
+            Self::TTOT_BOUND_MS_FIELD,
+        ];
+    }
+    impl RegisterOffering {
+        pub fn path_builder() -> RegisterOfferingFieldPathBuilder {
+            RegisterOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct RegisterOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RegisterOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(RegisterOffering::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn prompt_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::PROMPT_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn completion_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::COMPLETION_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_read_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::CACHE_READ_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_write_micros_per_1k(mut self) -> String {
+            self.path.push(RegisterOffering::CACHE_WRITE_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn request_micros(mut self) -> String {
+            self.path.push(RegisterOffering::REQUEST_MICROS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttft_bound_ms(mut self) -> String {
+            self.path.push(RegisterOffering::TTFT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttot_bound_ms(mut self) -> String {
+            self.path.push(RegisterOffering::TTOT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+    }
+    impl UpdateOffering {
+        pub const OFFERING_ID_FIELD: &'static MessageField = &MessageField {
+            name: "offering_id",
+            json_name: "offeringId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PROMPT_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "prompt_micros_per_1k",
+            json_name: "promptMicrosPer1k",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const COMPLETION_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "completion_micros_per_1k",
+            json_name: "completionMicrosPer1k",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CACHE_READ_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_read_micros_per_1k",
+            json_name: "cacheReadMicrosPer1k",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const CACHE_WRITE_MICROS_PER_1K_FIELD: &'static MessageField = &MessageField {
+            name: "cache_write_micros_per_1k",
+            json_name: "cacheWriteMicrosPer1k",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const REQUEST_MICROS_FIELD: &'static MessageField = &MessageField {
+            name: "request_micros",
+            json_name: "requestMicros",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const TTFT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttft_bound_ms",
+            json_name: "ttftBoundMs",
+            number: 8i32,
+            message_fields: None,
+        };
+        pub const TTOT_BOUND_MS_FIELD: &'static MessageField = &MessageField {
+            name: "ttot_bound_ms",
+            json_name: "ttotBoundMs",
+            number: 9i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for UpdateOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OFFERING_ID_FIELD,
+            Self::MODEL_ID_FIELD,
+            Self::PROMPT_MICROS_PER_1K_FIELD,
+            Self::COMPLETION_MICROS_PER_1K_FIELD,
+            Self::CACHE_READ_MICROS_PER_1K_FIELD,
+            Self::CACHE_WRITE_MICROS_PER_1K_FIELD,
+            Self::REQUEST_MICROS_FIELD,
+            Self::TTFT_BOUND_MS_FIELD,
+            Self::TTOT_BOUND_MS_FIELD,
+        ];
+    }
+    impl UpdateOffering {
+        pub fn path_builder() -> UpdateOfferingFieldPathBuilder {
+            UpdateOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct UpdateOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl UpdateOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn offering_id(mut self) -> String {
+            self.path.push(UpdateOffering::OFFERING_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(UpdateOffering::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn prompt_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::PROMPT_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn completion_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::COMPLETION_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_read_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::CACHE_READ_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn cache_write_micros_per_1k(mut self) -> String {
+            self.path.push(UpdateOffering::CACHE_WRITE_MICROS_PER_1K_FIELD.name);
+            self.finish()
+        }
+        pub fn request_micros(mut self) -> String {
+            self.path.push(UpdateOffering::REQUEST_MICROS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttft_bound_ms(mut self) -> String {
+            self.path.push(UpdateOffering::TTFT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn ttot_bound_ms(mut self) -> String {
+            self.path.push(UpdateOffering::TTOT_BOUND_MS_FIELD.name);
+            self.finish()
+        }
+    }
+    impl DeactivateOffering {
+        pub const OFFERING_ID_FIELD: &'static MessageField = &MessageField {
+            name: "offering_id",
+            json_name: "offeringId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for DeactivateOffering {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OFFERING_ID_FIELD,
+            Self::MODEL_ID_FIELD,
+        ];
+    }
+    impl DeactivateOffering {
+        pub fn path_builder() -> DeactivateOfferingFieldPathBuilder {
+            DeactivateOfferingFieldPathBuilder::new()
+        }
+    }
+    pub struct DeactivateOfferingFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl DeactivateOfferingFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn offering_id(mut self) -> String {
+            self.path.push(DeactivateOffering::OFFERING_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(DeactivateOffering::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RegisterProvider {
+        pub const ENDPOINT_FIELD: &'static MessageField = &MessageField {
+            name: "endpoint",
+            json_name: "endpoint",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const IROH_ENDPOINT_ID_FIELD: &'static MessageField = &MessageField {
+            name: "iroh_endpoint_id",
+            json_name: "irohEndpointId",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RegisterProvider {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::ENDPOINT_FIELD,
+            Self::IROH_ENDPOINT_ID_FIELD,
+        ];
+    }
+    impl RegisterProvider {
+        pub fn path_builder() -> RegisterProviderFieldPathBuilder {
+            RegisterProviderFieldPathBuilder::new()
+        }
+    }
+    pub struct RegisterProviderFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RegisterProviderFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn endpoint(mut self) -> String {
+            self.path.push(RegisterProvider::ENDPOINT_FIELD.name);
+            self.finish()
+        }
+        pub fn iroh_endpoint_id(mut self) -> String {
+            self.path.push(RegisterProvider::IROH_ENDPOINT_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl UpdateProvider {
+        pub const PROVIDER_ID_FIELD: &'static MessageField = &MessageField {
+            name: "provider_id",
+            json_name: "providerId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ENDPOINT_FIELD: &'static MessageField = &MessageField {
+            name: "endpoint",
+            json_name: "endpoint",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const IROH_ENDPOINT_ID_FIELD: &'static MessageField = &MessageField {
+            name: "iroh_endpoint_id",
+            json_name: "irohEndpointId",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for UpdateProvider {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PROVIDER_ID_FIELD,
+            Self::ENDPOINT_FIELD,
+            Self::IROH_ENDPOINT_ID_FIELD,
+        ];
+    }
+    impl UpdateProvider {
+        pub fn path_builder() -> UpdateProviderFieldPathBuilder {
+            UpdateProviderFieldPathBuilder::new()
+        }
+    }
+    pub struct UpdateProviderFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl UpdateProviderFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn provider_id(mut self) -> String {
+            self.path.push(UpdateProvider::PROVIDER_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn endpoint(mut self) -> String {
+            self.path.push(UpdateProvider::ENDPOINT_FIELD.name);
+            self.finish()
+        }
+        pub fn iroh_endpoint_id(mut self) -> String {
+            self.path.push(UpdateProvider::IROH_ENDPOINT_ID_FIELD.name);
+            self.finish()
+        }
+    }
     impl ExecuteTransactionRequest {
         pub const TRANSACTION_FIELD: &'static MessageField = &MessageField {
             name: "transaction",
@@ -8275,38 +10327,15 @@ mod _field_impls {
         }
     }
     impl TransactionFee {
-        pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "base_fee",
-            json_name: "baseFee",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const OPERATION_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "operation_fee",
-            json_name: "operationFee",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const VALUE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "value_fee",
-            json_name: "valueFee",
-            number: 3i32,
-            message_fields: None,
-        };
         pub const TOTAL_FEE_FIELD: &'static MessageField = &MessageField {
             name: "total_fee",
             json_name: "totalFee",
-            number: 4i32,
+            number: 1i32,
             message_fields: None,
         };
     }
     impl MessageFields for TransactionFee {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::BASE_FEE_FIELD,
-            Self::OPERATION_FEE_FIELD,
-            Self::VALUE_FEE_FIELD,
-            Self::TOTAL_FEE_FIELD,
-        ];
+        const FIELDS: &'static [&'static MessageField] = &[Self::TOTAL_FEE_FIELD];
     }
     impl TransactionFee {
         pub fn path_builder() -> TransactionFeeFieldPathBuilder {
@@ -8327,18 +10356,6 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
-        }
-        pub fn base_fee(mut self) -> String {
-            self.path.push(TransactionFee::BASE_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn operation_fee(mut self) -> String {
-            self.path.push(TransactionFee::OPERATION_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn value_fee(mut self) -> String {
-            self.path.push(TransactionFee::VALUE_FEE_FIELD.name);
-            self.finish()
         }
         pub fn total_fee(mut self) -> String {
             self.path.push(TransactionFee::TOTAL_FEE_FIELD.name);

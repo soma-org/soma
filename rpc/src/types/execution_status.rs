@@ -27,6 +27,7 @@ pub enum ExecutionStatus {
 pub enum ExecutionError {
     // General transaction errors
     InsufficientGas,
+    InvalidGasCoinType { object_id: Address },
     InvalidOwnership { object_id: Address },
     ObjectNotFound { object_id: Address },
     InvalidObjectType { object_id: Address },
@@ -68,7 +69,6 @@ pub enum ExecutionError {
     // Submission errors
     ModelNotInTarget { model_id: Address, target_id: Address },
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
-    DistanceExceedsThreshold { score: f32, threshold: f32 },
     InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 
@@ -95,6 +95,40 @@ pub enum ExecutionError {
     InputObjectDeleted,
     CertificateDenied,
     SharedObjectCongestion,
+
+    // Payment-channel errors
+    ChannelCallerNotPayee { expected: Address, actual: Address },
+    ChannelCallerNotPayer { expected: Address, actual: Address },
+    ChannelVoucherNotMonotonic { cumulative: u64, settled: u64 },
+    ChannelOverspend { cumulative: u64, available: u64 },
+    ChannelGraceNotElapsed { now_ms: u64, earliest_ms: u64 },
+    ChannelCloseAlreadyPending,
+    ChannelNoCloseRequest,
+    ChannelInvalidVoucherSignature { reason: String },
+    ChannelAmountZero,
+    ChannelInvalidInput { reason: String },
+    ChannelCoinTypeMismatch,
+    NotAChannel { object_id: Address },
+    ChannelClockMissing,
+
+    // Provider registry errors
+    ProviderAlreadyExists,
+    ProviderNotFound,
+    ProviderCallerMismatch,
+    ProviderInvalidEndpoint { reason: String },
+    ProviderClockMissing,
+
+    // Per-pair channel cap (ProviderInbox) errors
+    ChannelTooManyOpenForPair { current: u32, max: u32 },
+    ChannelInboxPayeeMismatch { declared: Address, actual: Address },
+    NotAProviderInbox { object_id: Address },
+
+    // Per-(provider, model) Offering errors
+    OfferingAlreadyExists,
+    OfferingNotFound,
+    OfferingCallerMismatch,
+    OfferingUnknownModel { model_id: String },
+    ChannelOfferingMissing { payee: Address, model_id: String },
 
     // Generic error for cases not covered by specific variants
     OtherError(String),

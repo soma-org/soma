@@ -8,18 +8,16 @@ use anyhow::Result;
 use fastcrypto::traits::KeyPair as _;
 use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
+
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use tracing::info;
 
 use super::local_ip_utils;
 use crate::base::SomaAddress;
 use crate::config::Config;
-use crate::crypto::DecryptionKey;
 use crate::crypto::{
     AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
 };
-use crate::digests::ModelWeightsCommitment;
-use crate::metadata::Manifest;
-use crate::model::{ArchitectureVersion, ModelId};
 use crate::multiaddr::Multiaddr;
 
 // All information needed to build a NodeConfig for a validator.
@@ -33,7 +31,6 @@ pub struct ValidatorGenesisConfig {
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub rpc_address: Multiaddr,
-    pub proxy_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
     pub commission_rate: u64,
@@ -50,55 +47,22 @@ impl Clone for ValidatorGenesisConfig {
             consensus_address: self.consensus_address.clone(),
             p2p_address: self.p2p_address.clone(),
             rpc_address: self.rpc_address.clone(),
-            proxy_address: self.proxy_address.clone(),
             stake: self.stake,
             commission_rate: self.commission_rate,
         }
     }
 }
 
-/// Configuration for a seed model created at genesis.
-///
-/// Genesis models skip the commit-reveal lifecycle and are created directly as active
-/// with `activation_epoch = Some(0)`. This mirrors how genesis validators skip the
-/// `AddValidator` transaction and are created directly as active.
-///
-/// Several fields are auto-generated at build time by the genesis builder:
-/// - `model_id`: assigned deterministically (same pattern as staking pool IDs)
-/// - `embedding`: randomly generated using the protocol config's `target_embedding_dim`
-/// - `embedding_commitment`: computed from the generated embedding
-/// - `decryption_key_commitment`: computed from `decryption_key`
-/// - `initial_stake`: deducted from the emission pool and staked with the model
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct GenesisModelConfig {
-    /// Owner address for the model
-    pub owner: SomaAddress,
-    /// Manifest for the encrypted weights (URL + checksum + size)
-    pub manifest: Manifest,
-    /// AES-256 decryption key for the encrypted weights
-    pub decryption_key: DecryptionKey,
-    /// Commitment to the decrypted model weights (stored for integrity)
-    pub weights_commitment: ModelWeightsCommitment,
-    /// Architecture version (must match protocol config)
-    pub architecture_version: ArchitectureVersion,
-    /// Commission rate in basis points (max 10000)
-    pub commission_rate: u64,
-    /// Initial stake from the model owner (defaults to model_min_stake: 1 SOMA).
-    /// Deducted from the emission pool and staked with the model at genesis.
-    #[serde(default = "default_model_stake")]
-    pub initial_stake: u64,
-}
-
-fn default_model_stake() -> u64 {
-    // 1 SOMA in shannons — matches protocol config model_min_stake default
-    1_000_000_000
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct AccountConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub address: Option<SomaAddress>,
+    #[serde(default)]
     pub gas_amounts: Vec<u64>,
+    /// USDC coin amounts (microdollars) to create at genesis for this account.
+    /// Used in test environments — production USDC enters only via the bridge.
+    #[serde(default)]
+    pub usdc_amounts: Vec<u64>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -107,7 +71,9 @@ pub struct GenesisConfig {
     pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
     #[serde(default)]
-    pub genesis_models: Vec<GenesisModelConfig>,
+    pub marketplace_params: Option<MarketplaceParameters>,
+    #[serde(default)]
+    pub bridge_committee: Option<BridgeCommittee>,
 }
 
 pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000_000_000;
@@ -119,7 +85,7 @@ const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
 pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
 /// Total supply denominated in SOMA
-pub const TOTAL_SUPPLY_SOMA: u64 = 10_000_000;
+pub const TOTAL_SUPPLY_SOMA: u64 = 1_000_000_000;
 
 // Note: cannot use checked arithmetic here since `const unwrap` is still unstable.
 /// Total supply denominated in Shannons
@@ -140,6 +106,9 @@ impl GenesisConfig {
             accounts.push(AccountConfig {
                 address: None,
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
+                // USDC is the gas currency on Soma; every test account needs some.
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
+                ..Default::default()
             })
         }
 
@@ -155,28 +124,22 @@ impl GenesisConfig {
             accounts.push(AccountConfig {
                 address: Some(address),
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
+                // USDC is the gas currency on Soma; every test account needs some.
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
+                ..Default::default()
             })
         }
 
         Self { accounts, ..Default::default() }
     }
 
-    /// Add a dedicated faucet account to the genesis config.
-    /// The faucet account gets extra-funded coins for dispensing tokens.
-    pub fn add_faucet_account(mut self) -> Self {
-        self.accounts.push(AccountConfig {
-            address: None,
-            gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT],
-        });
-        self
-    }
-
     pub fn generate_accounts<R: rand::RngCore + rand::CryptoRng>(
         &self,
         mut rng: R,
-    ) -> Result<(Vec<SomaKeyPair>, Vec<TokenAllocation>)> {
+    ) -> Result<(Vec<SomaKeyPair>, Vec<TokenAllocation>, Vec<UsdcAllocation>)> {
         let mut addresses = Vec::new();
         let mut allocations = Vec::new();
+        let mut usdc_allocations = Vec::new();
 
         info!("Creating accounts and token allocations...");
 
@@ -198,12 +161,17 @@ impl GenesisConfig {
                     recipient_address: address,
                     amount_shannons: *a,
                     staked_with_validator: None,
-                    staked_with_model: None,
                 });
+            });
+
+            // Populate USDC allocations (test environments only)
+            account.usdc_amounts.iter().for_each(|a| {
+                usdc_allocations
+                    .push(UsdcAllocation { recipient_address: address, amount_microdollars: *a });
             });
         }
 
-        Ok((keys, allocations))
+        Ok((keys, allocations, usdc_allocations))
     }
 }
 
@@ -265,18 +233,16 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (network_address, consensus_address, p2p_address, rpc_address, proxy_address) =
+        let (network_address, consensus_address, p2p_address, rpc_address) =
             if let Some(offset) = self.port_offset {
                 (
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
                 )
             } else {
                 (
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -293,7 +259,6 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
             rpc_address,
-            proxy_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
         }
@@ -314,18 +279,21 @@ pub struct GenesisCeremonyParameters {
     #[serde(default = "GenesisCeremonyParameters::default_epoch_duration_ms")]
     pub epoch_duration_ms: u64,
 
-    /// The amount of rewards to be drawn down per distribution.
-    #[serde(default = "GenesisCeremonyParameters::default_emission_per_epoch")]
-    pub emission_per_epoch: u64,
+    /// Initial emission amount per epoch (geometric decay from here).
+    #[serde(default = "GenesisCeremonyParameters::default_emission_initial_distribution_amount")]
+    pub emission_initial_distribution_amount: u64,
+
+    /// Number of epochs per decay period.
+    #[serde(default = "GenesisCeremonyParameters::default_emission_period_length")]
+    pub emission_period_length: u64,
+
+    /// Decay rate in basis points (e.g., 1000 = 10% decrease per period).
+    #[serde(default = "GenesisCeremonyParameters::default_emission_decrease_rate")]
+    pub emission_decrease_rate: u16,
 
     /// Which chain this genesis is for. Controls protocol config feature flags.
     #[serde(default)]
     pub chain: Chain,
-
-    /// Override target_embedding_dim from the protocol config.
-    /// Used for small-model testing where embedding dimension differs from production.
-    #[serde(default)]
-    pub target_embedding_dim_override: Option<u64>,
 }
 
 impl GenesisCeremonyParameters {
@@ -334,9 +302,11 @@ impl GenesisCeremonyParameters {
             chain_start_timestamp_ms: Self::default_timestamp_ms(),
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
-            emission_per_epoch: Self::default_emission_per_epoch(),
+            emission_initial_distribution_amount:
+                Self::default_emission_initial_distribution_amount(),
+            emission_period_length: Self::default_emission_period_length(),
+            emission_decrease_rate: Self::default_emission_decrease_rate(),
             chain: Chain::default(),
-            target_embedding_dim_override: None,
         }
     }
 
@@ -350,9 +320,17 @@ impl GenesisCeremonyParameters {
         24 * 60 * 60 * 1000
     }
 
-    fn default_emission_per_epoch() -> u64 {
-        // 1,370 SOMA/epoch — 20-year linear emission (10M SOMA / 7,300 epochs)
-        1_370 * SHANNONS_PER_SOMA
+    fn default_emission_initial_distribution_amount() -> u64 {
+        // 100,000 SOMA/epoch (0.01% of 1B supply)
+        100_000 * SHANNONS_PER_SOMA
+    }
+
+    fn default_emission_period_length() -> u64 {
+        10
+    }
+
+    fn default_emission_decrease_rate() -> u16 {
+        1000 // 10%
     }
 }
 
@@ -370,10 +348,15 @@ pub struct TokenAllocation {
 
     /// Indicates if this allocation should be staked at genesis and with which validator
     pub staked_with_validator: Option<SomaAddress>,
+}
 
-    /// Indicates if this allocation should be staked at genesis and with which model
-    #[serde(default)]
-    pub staked_with_model: Option<ModelId>,
+/// USDC allocation for genesis (test environments only — production USDC enters via bridge).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct UsdcAllocation {
+    pub recipient_address: SomaAddress,
+    /// Amount in microdollars (1 USDC = 1_000_000 microdollars).
+    pub amount_microdollars: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -381,6 +364,9 @@ pub struct TokenAllocation {
 pub struct TokenDistributionSchedule {
     pub emission_fund_shannons: u64,
     pub allocations: Vec<TokenAllocation>,
+    /// USDC allocations for test genesis. Empty in production.
+    #[serde(default)]
+    pub usdc_allocations: Vec<UsdcAllocation>,
 }
 
 impl TokenDistributionSchedule {
@@ -437,7 +423,7 @@ impl TokenDistributionSchedule {
         assert_eq!(
             TOTAL_SUPPLY_SHANNONS,
             allocations.iter().map(|a| a.amount_shannons).sum::<u64>(),
-            "Token Distribution Schedule must add up to {} SHANNONS (10M SOMA)",
+            "Token Distribution Schedule must add up to {} SHANNONS (1B SOMA)",
             TOTAL_SUPPLY_SHANNONS,
         );
 
@@ -451,13 +437,12 @@ impl TokenDistributionSchedule {
             emission_fund_allocation.staked_with_validator.is_none(),
             "Can't stake the emission fund with a validator",
         );
-        assert!(
-            emission_fund_allocation.staked_with_model.is_none(),
-            "Can't stake the emission fund with a model",
-        );
 
-        let schedule =
-            Self { emission_fund_shannons: emission_fund_allocation.amount_shannons, allocations };
+        let schedule = Self {
+            emission_fund_shannons: emission_fund_allocation.amount_shannons,
+            allocations,
+            usdc_allocations: vec![],
+        };
 
         schedule.validate();
         Ok(schedule)
@@ -475,7 +460,6 @@ impl TokenDistributionSchedule {
             recipient_address: SomaAddress::default(),
             amount_shannons: self.emission_fund_shannons,
             staked_with_validator: None,
-            staked_with_model: None,
         })?;
 
         Ok(())
@@ -486,12 +470,13 @@ impl TokenDistributionSchedule {
 pub struct TokenDistributionScheduleBuilder {
     pool: u64,
     allocations: Vec<TokenAllocation>,
+    usdc_allocations: Vec<UsdcAllocation>,
 }
 
 impl TokenDistributionScheduleBuilder {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self { pool: TOTAL_SUPPLY_SHANNONS, allocations: vec![] }
+        Self { pool: TOTAL_SUPPLY_SHANNONS, allocations: vec![], usdc_allocations: vec![] }
     }
 
     pub fn add_allocation(&mut self, allocation: TokenAllocation) {
@@ -499,10 +484,15 @@ impl TokenDistributionScheduleBuilder {
         self.allocations.push(allocation);
     }
 
+    pub fn add_usdc_allocation(&mut self, allocation: UsdcAllocation) {
+        self.usdc_allocations.push(allocation);
+    }
+
     pub fn build(&self) -> TokenDistributionSchedule {
         let schedule = TokenDistributionSchedule {
             emission_fund_shannons: self.pool,
             allocations: self.allocations.clone(),
+            usdc_allocations: self.usdc_allocations.clone(),
         };
 
         schedule.validate();

@@ -18,10 +18,12 @@ tracing.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
 rpc.workspace = true
-sdk.workspace = true
 fastcrypto.workspace = true
-url.workspace = true
+soma-keys.workspace = true
+sdk.workspace = true
 tempfile.workspace = true
+indexer-framework.workspace = true
+prometheus.workspace = true
 
 [lints]
 workspace = true
